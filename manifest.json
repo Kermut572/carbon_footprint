@@ -1,0 +1,11 @@
+{
+  "domain": "carbon_footprint",
+  "name": "Carbon Footprint",
+  "codeowners": ["@Kermut572"],
+  "config_flow": true,
+  "documentation": "https://www.home-assistant.io/integrations/carbon_footprint",
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "requirements": [],
+  "version": "0.1.0"
+}
