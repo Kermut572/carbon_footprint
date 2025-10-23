@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
+from . import web_socket_api
 from .const import DOMAIN
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -26,6 +27,7 @@ type CarbonFootprintConfigEntry = ConfigEntry[None]
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Carbon Footprint component."""
+    web_socket_api.async_register_websocket_handlers(hass)
 
     static_path_config = StaticPathConfig(
         url_path="/api/carbon_footprint",

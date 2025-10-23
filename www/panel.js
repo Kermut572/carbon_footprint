@@ -1,14 +1,7 @@
 class CarbonFootprintPanel extends HTMLElement {
-    connectedCallback() {
-        this.innerHTML = `
-            <div style="padding: 20px; font-family: var(--primary-font-family);">
-                <h1 style="color: var(--primary-text-color);">Carbon Footprint Panel</h1>
-                <p style="color: var(--primary-text-color);">Panel is working! ✓</p>
-                <p style="color: var(--secondary-text-color);">
-                    Hass object available: ${this.hass ? 'Yes ✓' : 'No ✗'}
-                </p>
-            </div>
-        `;
+    async connectedCallback() {
+        const data = await this.getCarbonData();
+        this.render(data);
     }
 
     set hass(hass) {
@@ -20,6 +13,29 @@ class CarbonFootprintPanel extends HTMLElement {
 
     get hass() {
         return this._hass;
+    }
+
+    async getCarbonData() {
+        const data = await this._hass.callWS({
+            type: 'carbon_footprint/get_data'
+        });
+        return data;
+    }
+
+    render(data) {
+        const {devices, co2_intensity} = data;
+        this.innerHTML = `
+            <h1>Carbon Footprint Panel</h1>
+            <p>Current CO2 Intensity: ${co2_intensity} gCO2/kWh</p>
+            <h2>Devices:</h2>
+            <ul>
+                ${devices.map(device => `
+                    <li>
+                        <strong>${device.entity_id}</strong>
+                    </li>
+                `).join('')}
+            </ul>
+        `;
     }
 }
 
