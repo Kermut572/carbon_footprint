@@ -96,7 +96,10 @@ def ws_set_device(
     # only way to asynchronously call this function
     hass.async_create_task(
         store.async_set_device_info(
-            msg["entity_id"], msg["device_type"], msg["carbon_footprint"], msg["metada"]
+            msg["entity_id"],
+            msg["device_type"],
+            msg["carbon_footprint"],
+            msg["metadata"],
         )
     )
 

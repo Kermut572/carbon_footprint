@@ -40,7 +40,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         webcomponent_name="carbon-footprint-panel",
         sidebar_title="Carbon Footprint",
         sidebar_icon="mdi:leaf",
-        js_url="/api/carbon_footprint/panel.js?v=2",  # change the version if your cache is playing tricks on you :-) (I hate js)
+        module_url="/api/carbon_footprint/panel.js?v=3.17",  # change the version if your cache is playing tricks on you :-) (I hate js)
         embed_iframe=True,
         require_admin=False,
     )
