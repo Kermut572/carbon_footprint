@@ -23,15 +23,26 @@ class CarbonFootprintPanel extends HTMLElement {
     }
 
     render(data) {
+        if (!data || !data.devices || Object.keys(data.devices).length === 0) {
+            this.innerHTML = `
+                <h1>Carbon Footprint Panel</h1>
+                <p>No data available</p>
+            `;
+            return;
+        }
         const {devices, co2_intensity} = data;
+        const deviceList = Object.entries(devices).map(([entity_id, info]) => ({entity_id, ...info}));
+
         this.innerHTML = `
             <h1>Carbon Footprint Panel</h1>
-            <p>Current CO2 Intensity: ${co2_intensity} gCO2/kWh</p>
-            <h2>Devices:</h2>
+            <p>Current CO2 Intensity: ${co2_intensity || -1} gCO2/kWh</p>
+            <h2>Devices (${deviceList.length}):</h2>
             <ul>
-                ${devices.map(device => `
+                ${deviceList.map(device => `
                     <li>
                         <strong>${device.entity_id}</strong>
+                        Type: ${device.type || 'Unknown'}<br>
+                        Carbon: ${device.carbon_footprint || 0} kg CO2
                     </li>
                 `).join('')}
             </ul>
