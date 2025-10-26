@@ -51,6 +51,11 @@ class CFStore:
         self.data[entity_id] = entity_info
         await self.async_save_data()
 
+    async def async_remove_device_info(self, entity_id: str) -> None:
+        """Remove a device from the store."""
+        del self.data[entity_id]
+        await self.async_save_data()
+
     def get_devices_data(self) -> dict[str, dict]:
         """Get the data from the store."""
         return self.data

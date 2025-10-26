@@ -1,3 +1,7 @@
+/**
+ * Basic panel for the Carbon Footprint integration. Most of the code is currently ugly and AI-generated
+ * for testing purposes. We should rewrite it properly later.
+ */
 class CarbonFootprintPanel extends HTMLElement {
     constructor() {
         super();
@@ -61,9 +65,20 @@ class CarbonFootprintPanel extends HTMLElement {
                                 <ul>
                                     ${Object.entries(data.devices).map(([entity_id, info]) => `
                                         <li>
-                                            <b>${entity_id}</b><br>
-                                            Type: ${info.type || 'Unknown'}<br>
-                                            Carbon: ${info.carbon_footprint || 0} kgCO₂eq
+                                            <div class="device-info">
+                                                <div>
+                                                    <b>${entity_id}</b><br>
+                                                    Type: ${info.type || 'Unknown'}<br>
+                                                    Carbon: ${info.carbon_footprint || 0} kgCO₂eq
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    class="delete-btn"
+                                                    data-entity-id="${entity_id}"
+                                                    title="Remove device">
+                                                    ✕
+                                                </button>
+                                            </div>
                                         </li>
                                     `).join('')}
                                 </ul>
@@ -76,7 +91,6 @@ class CarbonFootprintPanel extends HTMLElement {
 
         this.attachFormHandler();
 
-        // Inject minimal style to match HA cards and layout spacing
         const style = document.createElement('style');
         style.textContent = `
             .content {
@@ -104,8 +118,12 @@ class CarbonFootprintPanel extends HTMLElement {
                 background-color: var(--card-background-color);
                 color: var(--primary-text-color);
             }
+            .button-group {
+                display: flex;
+                gap: 8px;
+                align-items: center;
+            }
             button {
-                align-self: start;
                 background-color: var(--primary-color);
                 color: var(--text-primary-color);
                 border: none;
@@ -114,8 +132,11 @@ class CarbonFootprintPanel extends HTMLElement {
                 cursor: pointer;
                 font-weight: 500;
             }
+            button[type="button"] {
+                background-color: var(--secondary-background-color);
+                color: var(--primary-text-color);
+            }
             button:hover {
-                background-color: var(--primary-color);
                 opacity: 0.9;
             }
             ul {
@@ -126,6 +147,30 @@ class CarbonFootprintPanel extends HTMLElement {
             li {
                 padding: 8px 0;
                 border-bottom: 1px solid var(--divider-color);
+            }
+            .device-info {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 16px;
+            }
+            .delete-btn {
+                background-color: transparent;
+                color: var(--error-color, #db4437);
+                border: 1px solid var(--divider-color);
+                padding: 4px 8px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 16px;
+                font-weight: bold;
+                min-width: 32px;
+                height: 32px;
+                flex-shrink: 0;
+            }
+            .delete-btn:hover {
+                background-color: var(--error-color, #db4437);
+                color: var(--text-primary-color);
+                opacity: 1;
             }
             .ha-header {
                 display: flex;
@@ -145,7 +190,6 @@ class CarbonFootprintPanel extends HTMLElement {
                 margin-left: 20px;
                 color: var(--app-header-text-color, var(--text-primary-color));
             }
-
         `;
         this.appendChild(style);
     }
@@ -168,9 +212,12 @@ class CarbonFootprintPanel extends HTMLElement {
                 </div>
                 <div>
                     <label for="carbon_footprint">Carbon Footprint (kgCO₂eq)</label>
-                    <input type="number" id="carbon_footprint" name="carbon_footprint" step="0.1" required>
+                    <input type="number" id="carbon_footprint" name="carbon_footprint" step="0.01" required>
                 </div>
-                <button type="submit">Add Device</button>
+                <div class="button-group">
+                    <button type="button" id="compute-footprint-btn">Compute Footprint</button>
+                    <button type="submit">Add Device</button>
+                </div>
             </form>
         `;
     }
@@ -201,10 +248,128 @@ class CarbonFootprintPanel extends HTMLElement {
                 }
             });
         }
+
+        const computeBtn = this.querySelector('#compute-footprint-btn');
+        if (computeBtn) {
+            computeBtn.addEventListener('click', () => this.showHardwareDialogAndCompute());
+        }
+
+        const deleteButtons = this.querySelectorAll('.delete-btn');
+        deleteButtons.forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const entityId = e.currentTarget.dataset.entityId;
+
+                if (!confirm(`Remove ${entityId} from tracking?`)) {
+                    return;
+                }
+
+                try {
+                    await this._hass.callWS({
+                        type: 'carbon_footprint/remove_device',
+                        entity_id: entityId
+                    });
+
+                    const newData = await this.getCarbonData();
+                    this.render(newData);
+
+                } catch (error) {
+                    console.error('Failed to remove device:', error);
+                    alert(`Error removing device: ${error.message}`);
+                }
+            });
+        });
+    }
+
+    async showHardwareDialogAndCompute() {
+        const resp = await fetch('/api/carbon_footprint/blocks_footprints.json');
+        const jsonData = await resp.json();
+
+        const dialog = document.createElement('dialog');
+        dialog.classList.add('ha-dialog');
+
+        const rows = Object.entries(jsonData).map(([blockName, levels]) => {
+            const radios = Object.entries(levels).map(([levelId, values]) => {
+                const disabled = values.every(v => v === null);
+                const label = disabled ? `Level ${levelId} (N/A)` : `Level ${levelId} [${values.join(', ')}]`;
+                return `<label>
+                            <input type="radio" name="${blockName}" value="${levelId}" ${disabled ? 'disabled' : ''}>
+                            ${label}
+                        </label>`;
+            }).join('<br>');
+            return `<tr><td>${blockName}</td><td>${radios}</td></tr>`;
+        }).join('');
+
+        dialog.innerHTML = `
+            <form method="dialog" class="dialog-content">
+                <h2>Select Hardware Levels</h2>
+                <table>
+                    <thead>
+                        <tr><th>Functional Block</th><th>Level</th></tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+                <div class="dialog-actions">
+                    <button value="cancel">Cancel</button>
+                    <button value="confirm">Confirm</button>
+                </div>
+            </form>
+        `;
+
+        dialog.addEventListener('close', async () => {
+            if (dialog.returnValue === 'confirm') {
+                const hsl_values = {};
+                Object.keys(jsonData).forEach(block => {
+                    const checked = dialog.querySelector(`input[name="${block}"]:checked`);
+                    if (checked) hsl_values[block] = checked.value;
+                });
+
+                if (Object.keys(hsl_values).length === 0) {
+                    alert("No blocks selected.");
+                    return;
+                }
+
+                try {
+                    const result = await this._hass.callWS({
+                        type: 'carbon_footprint/compute_footprint',
+                        hsl_values
+                    });
+
+                    console.log('Computed CO2:', result);
+
+                    const formInput = this.querySelector('#carbon_footprint');
+                    if (formInput) {
+                        const values = result.values;
+                        const avg = (values[0] + values[1] + values[2]) / 3;
+                        formInput.value = avg.toFixed(2);
+                    }
+
+                } catch (err) {
+                    console.error('Failed to compute footprint:', err);
+                    alert('Error computing carbon footprint: ' + err.message);
+                }
+            }
+            dialog.remove();
+        });
+
+        const style = document.createElement('style');
+        style.textContent = `
+            .ha-dialog::backdrop { background: rgba(0,0,0,0.4); }
+            .ha-dialog { border: none; border-radius: 12px; padding: 0; background: var(--card-background-color); color: var(--primary-text-color); max-width: 700px; width: 90%; }
+            .dialog-content { padding: 16px; }
+            h2 { margin-top: 0; font-weight: 500; font-size: 1.2rem; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+            th, td { padding: 8px; border-bottom: 1px solid var(--divider-color); vertical-align: top; }
+            .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+            button { background-color: var(--primary-color); color: var(--text-primary-color); border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: 500; }
+            button[value="cancel"] { background-color: var(--secondary-background-color); color: var(--primary-text-color); }
+        `;
+        dialog.appendChild(style);
+
+        document.body.appendChild(dialog);
+        dialog.showModal();
     }
 }
 
-//fixes annoying bug when reloading the panel
 if (!customElements.get('carbon-footprint-panel')) {
     customElements.define('carbon-footprint-panel', CarbonFootprintPanel);
 }

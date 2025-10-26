@@ -17,7 +17,7 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 
-from .const import DOMAIN
+from .const import BLOCKS_FOOTPRINTS, DOMAIN
 
 
 @callback
@@ -25,6 +25,8 @@ def async_register_websocket_handlers(hass: HomeAssistant) -> None:
     """Register WebSocket handlers."""
     websocket_api.async_register_command(hass, ws_get_carbon_data)
     websocket_api.async_register_command(hass, ws_set_device)
+    websocket_api.async_register_command(hass, ws_remove_device)
+    websocket_api.async_register_command(hass, ws_compute_footprint)
 
 
 @websocket_api.websocket_command(
@@ -104,3 +106,55 @@ def ws_set_device(
     )
 
     connection.send_result(msg["id"], {"success": True})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/remove_device",
+        vol.Required("entity_id"): str,
+    }
+)
+@callback
+def ws_remove_device(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Remove a device's data."""
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        connection.send_error(
+            msg["id"], "config_entry_not_found", "Uh oh, no config entry found :-("
+        )
+        return
+
+    store = entries[0].runtime_data
+    hass.async_create_task(store.async_remove_device_info(msg["entity_id"]))
+
+    connection.send_result(msg["id"], {"success": True})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/compute_footprint",
+        vol.Optional("hsl_values", default={}): dict[str, str],
+    }
+)
+@callback
+def ws_compute_footprint(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Compute footprint of a device using all of the HSL."""
+    blocks_hsl = msg["hsl_values"]
+    values = [0.0, 0.0, 0.0]
+
+    for key in blocks_hsl:
+        idx = blocks_hsl.get(key)
+
+        tmp = BLOCKS_FOOTPRINTS.get(key).get(idx)
+        if tmp[0] is not None:
+            values = [round(v + t, 2) for v, t in zip(values, tmp, strict=False)]
+
+    connection.send_result(msg["id"], {"success": True, "values": values})
