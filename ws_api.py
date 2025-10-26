@@ -99,7 +99,7 @@ def ws_set_device(
             msg["entity_id"],
             msg["device_type"],
             msg["carbon_footprint"],
-            msg["metadata"],
+            msg["metadata"],  # maybe save previous consumption in metadata?
         )
     )
 

@@ -21,6 +21,8 @@ class CFStore:
             * metadata is a dict that contains eventual arbitrary information about the device
 
     Basically, whenever we want to integrate/store new data for our plugin we will modify this class.
+
+    In case we want to empty the data, everything is saved in json format in config/.storage/carbon_footprint.data
     """
 
     def __init__(self, hass: HomeAssistant) -> None:
