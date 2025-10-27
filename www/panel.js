@@ -31,13 +31,8 @@ class CarbonFootprintPanel extends HTMLElement {
         return data;
     }
 
-    getAvailableEntities() {
-        const states = this._hass.states;
-        return Object.keys(states).sort();
-    }
-
     render(data) {
-        const entities = this.getAvailableEntities();
+        const devices = Object.values(this._hass.devices || {});
         const hasDevices = data && data.devices && Object.keys(data.devices).length > 0;
 
         this.innerHTML = `
@@ -55,7 +50,7 @@ class CarbonFootprintPanel extends HTMLElement {
 
                     <ha-card header="Add New Device">
                         <div class="card-content">
-                            ${this.renderForm(entities)}
+                            ${this.renderForm(devices)}
                         </div>
                     </ha-card>
 
@@ -99,15 +94,15 @@ class CarbonFootprintPanel extends HTMLElement {
         this.appendChild(link);
     }
 
-    renderForm(entities) {
+    renderForm(devices) {
         return `
             <form id="add-device-form">
                 <div>
                     <label for="entity_id">Entity</label>
                     <select id="entity_id" name="entity_id" required>
                         <option value="">Select an entity...</option>
-                        ${entities.map(entity_id => `
-                            <option value="${entity_id}">${entity_id}</option>
+                        ${devices.map(device => `
+                            <option value="${device.name_by_user || device.name}">${device.name_by_user || device.name}</option>
                         `).join('')}
                     </select>
                 </div>
