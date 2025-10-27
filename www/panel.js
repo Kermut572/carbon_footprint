@@ -6,16 +6,20 @@ class CarbonFootprintPanel extends HTMLElement {
     constructor() {
         super();
         this._devices = [];
+        this._setup = false
     }
 
     async connectedCallback() {
         const data = await this.getCarbonData();
         this.render(data);
+        this._setup = true
     }
 
     set hass(hass) {
         this._hass = hass;
-        if (this.isConnected) {
+        if (this._setup)
+            this.updateDeviceList();
+        else if (this.isConnected) {
             this.connectedCallback();
         }
     }
@@ -31,8 +35,42 @@ class CarbonFootprintPanel extends HTMLElement {
         return data;
     }
 
+    async updateDeviceList() {
+        const data = await this.getCarbonData();
+        const deviceListContainer = this.querySelector('.device-list-container');
+
+        if (!deviceListContainer) return;
+
+        const hasDevices = data && data.devices && Object.keys(data.devices).length > 0;
+
+        deviceListContainer.innerHTML = hasDevices ? `
+            <ul>
+                ${Object.entries(data.devices).map(([entity_id, info]) => `
+                    <li>
+                        <div class="device-info">
+                            <div>
+                                <b>${entity_id}</b><br>
+                                Type: ${info.type || 'Unknown'}<br>
+                                Carbon: ${info.carbon_footprint || 0} kgCO₂eq
+                            </div>
+                            <button
+                                type="button"
+                                class="delete-btn"
+                                data-entity-id="${entity_id}"
+                                title="Remove device">
+                                ✕
+                            </button>
+                        </div>
+                    </li>
+                `).join('')}
+            </ul>
+        ` : `<p>No devices configured yet.</p>`;
+
+        this.attachDeleteHandlers();
+    }
+
     render(data) {
-        const devices = Object.values(this._hass.devices || {});
+        const devicesArray = Object.values(this._hass.devices || {});
         const hasDevices = data && data.devices && Object.keys(data.devices).length > 0;
 
         this.innerHTML = `
@@ -50,12 +88,12 @@ class CarbonFootprintPanel extends HTMLElement {
 
                     <ha-card header="Add New Device">
                         <div class="card-content">
-                            ${this.renderForm(devices)}
+                            ${this.renderForm(devicesArray)}
                         </div>
                     </ha-card>
 
                     <ha-card header="Configured Devices">
-                        <div class="card-content">
+                        <div class="card-content device-list-container">
                             ${hasDevices ? `
                                 <ul>
                                     ${Object.entries(data.devices).map(([entity_id, info]) => `
@@ -90,7 +128,6 @@ class CarbonFootprintPanel extends HTMLElement {
         link.rel = 'stylesheet';
         link.type = 'text/css';
         link.href = '/api/carbon_footprint/style.css';
-
         this.appendChild(link);
     }
 
@@ -171,6 +208,33 @@ class CarbonFootprintPanel extends HTMLElement {
 
                     const newData = await this.getCarbonData();
                     this.render(newData);
+
+                } catch (error) {
+                    console.error('Failed to remove device:', error);
+                    alert(`Error removing device: ${error.message}`);
+                }
+            });
+        });
+    }
+
+    attachDeleteHandlers() {
+        const deleteButtons = this.querySelectorAll('.delete-btn');
+        deleteButtons.forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const entityId = e.currentTarget.dataset.entityId;
+
+                if (!confirm(`Remove ${entityId} from tracking?`)) {
+                    return;
+                }
+
+                try {
+                    await this._hass.callWS({
+                        type: 'carbon_footprint/remove_device',
+                        entity_id: entityId
+                    });
+
+                    // Only update device list
+                    await this.updateDeviceList();
 
                 } catch (error) {
                     console.error('Failed to remove device:', error);
