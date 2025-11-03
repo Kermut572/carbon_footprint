@@ -16,6 +16,7 @@ import voluptuous as vol
 
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr
 
 from .const import BLOCKS_FOOTPRINTS, DOMAIN
 
@@ -73,7 +74,7 @@ def ws_get_carbon_data(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/set_device",
-        vol.Required("entity_id"): str,
+        vol.Required("device_name"): str,
         vol.Required("device_type"): str,
         vol.Required("carbon_footprint"): vol.Coerce(float),
         vol.Optional("metadata", default={}): dict,
@@ -95,13 +96,34 @@ def ws_set_device(
         return
 
     store = entries[0].runtime_data
+
+    metadata = msg["metadata"]
+
+    # config_entries might be an interesting key of register: Config entries that are linked to this device.
+    registry = dr.async_get(hass)
+    device_name = msg["device_name"]
+    register = None  # should always be found, but just in case
+
+    for device in registry.devices.values():
+        if device_name not in (device.name_by_user, device.name):
+            continue
+
+        register = device
+        break
+
+    # all metadata we can add: https://developers.home-assistant.io/docs/device_registry_index/
+    if register:
+        metadata["manufacturer"] = register.manufacturer
+        metadata["model"] = register.model
+        metadata["model_id"] = register.model_id
+
     # only way to asynchronously call this function
     hass.async_create_task(
         store.async_set_device_info(
-            msg["entity_id"],
+            device_name,
             msg["device_type"],
             msg["carbon_footprint"],
-            msg["metadata"],  # maybe save previous consumption in metadata?
+            metadata,  # maybe save previous consumption in metadata?
         )
     )
 
@@ -111,7 +133,7 @@ def ws_set_device(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/remove_device",
-        vol.Required("entity_id"): str,
+        vol.Required("device_name"): str,
     }
 )
 @callback
@@ -129,7 +151,7 @@ def ws_remove_device(
         return
 
     store = entries[0].runtime_data
-    hass.async_create_task(store.async_remove_device_info(msg["entity_id"]))
+    hass.async_create_task(store.async_remove_device_info(msg["device_name"]))
 
     connection.send_result(msg["id"], {"success": True})
 
