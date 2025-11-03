@@ -16,7 +16,7 @@ import voluptuous as vol
 
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import device_registry
+from homeassistant.helpers import device_registry as dr
 
 from .const import BLOCKS_FOOTPRINTS, DOMAIN
 
@@ -100,7 +100,7 @@ def ws_set_device(
     metadata = msg["metadata"]
 
     # config_entries might be an interesting key of register: Config entries that are linked to this device.
-    registry = device_registry.async_get(hass)
+    registry = dr.async_get(hass)
     device_name = msg["device_name"]
     register = None  # should always be found, but just in case
 

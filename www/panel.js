@@ -103,6 +103,9 @@ class CarbonFootprintPanel extends HTMLElement {
                                                     <b>${device_name}</b><br>
                                                     Type: ${info.type || 'Unknown'}<br>
                                                     Carbon: ${info.carbon_footprint || 0} kgCO₂eq
+                                                    Manfucturer: ${info.metadata?.manufacturer || 'N/A'}<br>
+                                                    Model: ${info.metadata?.model || 'N/A'}<br>
+                                                    Model ID: ${info.metadata?.model_id || 'N/A'}<br>
                                                 </div>
                                                 <button
                                                     type="button"
@@ -303,7 +306,7 @@ class CarbonFootprintPanel extends HTMLElement {
                     const formInput = this.querySelector('#carbon_footprint');
                     if (formInput) {
                         const values = result.values;
-                        const avg = (values[0] + values[1] + values[2]) / 3;
+                        const avg = values[1]; // TODO change this so we take the 3 values into account
                         formInput.value = avg.toFixed(2);
                     }
 
