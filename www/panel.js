@@ -45,18 +45,18 @@ class CarbonFootprintPanel extends HTMLElement {
 
         deviceListContainer.innerHTML = hasDevices ? `
             <ul>
-                ${Object.entries(data.devices).map(([entity_id, info]) => `
+                ${Object.entries(data.devices).map(([device_name, info]) => `
                     <li>
                         <div class="device-info">
                             <div>
-                                <b>${entity_id}</b><br>
+                                <b>${device_name}</b><br>
                                 Type: ${info.type || 'Unknown'}<br>
                                 Carbon: ${info.carbon_footprint || 0} kgCO₂eq
                             </div>
                             <button
                                 type="button"
                                 class="delete-btn"
-                                data-entity-id="${entity_id}"
+                                data-entity-id="${device_name}"
                                 title="Remove device">
                                 ✕
                             </button>
@@ -96,18 +96,18 @@ class CarbonFootprintPanel extends HTMLElement {
                         <div class="card-content device-list-container">
                             ${hasDevices ? `
                                 <ul>
-                                    ${Object.entries(data.devices).map(([entity_id, info]) => `
+                                    ${Object.entries(data.devices).map(([device_name, info]) => `
                                         <li>
                                             <div class="device-info">
                                                 <div>
-                                                    <b>${entity_id}</b><br>
+                                                    <b>${device_name}</b><br>
                                                     Type: ${info.type || 'Unknown'}<br>
                                                     Carbon: ${info.carbon_footprint || 0} kgCO₂eq
                                                 </div>
                                                 <button
                                                     type="button"
                                                     class="delete-btn"
-                                                    data-entity-id="${entity_id}"
+                                                    data-entity-id="${device_name}"
                                                     title="Remove device">
                                                     ✕
                                                 </button>
@@ -135,8 +135,8 @@ class CarbonFootprintPanel extends HTMLElement {
         return `
             <form id="add-device-form">
                 <div>
-                    <label for="entity_id">Entity</label>
-                    <select id="entity_id" name="entity_id" required>
+                    <label for="device_name">Entity</label>
+                    <select id="device_name" name="device_name" required>
                         <option value="">Select an entity...</option>
                         ${devices.map(device => `
                             <option value="${device.name_by_user || device.name}">${device.name_by_user || device.name}</option>
@@ -170,7 +170,7 @@ class CarbonFootprintPanel extends HTMLElement {
                 try {
                     await this._hass.callWS({
                         type: 'carbon_footprint/set_device',
-                        entity_id: formData.get('entity_id'),
+                        device_name: formData.get('device_name'),
                         device_type: formData.get('device_type'),
                         carbon_footprint: parseFloat(formData.get('carbon_footprint')),
                         metadata: {}
@@ -203,7 +203,7 @@ class CarbonFootprintPanel extends HTMLElement {
                 try {
                     await this._hass.callWS({
                         type: 'carbon_footprint/remove_device',
-                        entity_id: entityId
+                        device_name: entityId
                     });
 
                     const newData = await this.getCarbonData();
@@ -230,7 +230,7 @@ class CarbonFootprintPanel extends HTMLElement {
                 try {
                     await this._hass.callWS({
                         type: 'carbon_footprint/remove_device',
-                        entity_id: entityId
+                        device_name: entityId
                     });
 
                     // Only update device list
