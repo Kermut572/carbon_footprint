@@ -51,7 +51,7 @@ class CarbonFootprintPanel extends HTMLElement {
                             <div>
                                 <b>${device_name}</b><br>
                                 Type: ${info.type || 'Unknown'}<br>
-                                Carbon: ${info.carbon_footprint || 0} kgCO₂eq
+                                Carbon: ${info.carbon_footprint || 0} kgCO₂eq <br>
                                 Manfucturer: ${info.metadata?.manufacturer || 'N/A'}<br>
                                 Model: ${info.metadata?.model || 'N/A'}<br>
                                 Model ID: ${info.metadata?.model_id || 'N/A'}<br>
@@ -105,7 +105,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                                 <div>
                                                     <b>${device_name}</b><br>
                                                     Type: ${info.type || 'Unknown'}<br>
-                                                    Carbon: ${info.carbon_footprint || 0} kgCO₂eq
+                                                    Carbon: ${info.carbon_footprint || 0} kgCO₂eq <br>
                                                     Manfucturer: ${info.metadata?.manufacturer || 'N/A'}<br>
                                                     Model: ${info.metadata?.model || 'N/A'}<br>
                                                     Model ID: ${info.metadata?.model_id || 'N/A'}<br>
