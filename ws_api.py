@@ -16,9 +16,10 @@ import voluptuous as vol
 
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .const import BLOCKS_FOOTPRINTS, DOMAIN
+from .utils import utils_get_device_classes
 
 
 @callback
@@ -28,6 +29,32 @@ def async_register_websocket_handlers(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_set_device)
     websocket_api.async_register_command(hass, ws_remove_device)
     websocket_api.async_register_command(hass, ws_compute_footprint)
+    websocket_api.async_register_command(hass, ws_get_devices_to_add)
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_devices_to_add"})
+@callback
+def ws_get_devices_to_add(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Returns all relevant devices' names the user could track. As of now, all devices with empty classes are removed."""
+    device_names = []
+    registry = dr.async_get(hass)
+    entity_reg = er.async_get(hass)
+    for device in registry.devices.values():
+        device_entites = er.async_entries_for_device(entity_reg, device.id)
+        device_classes = utils_get_device_classes(hass, device_entites)
+        if len(device_classes) == 0:
+            continue
+
+        device_name = (
+            device.name_by_user if device.name_by_user else device.name
+        )  # just in case device.name_by_user is not defined, which can happen quite a lot
+        device_names.append(device_name)
+
+    connection.send_result(msg["id"], {"device_names": device_names})
 
 
 @websocket_api.websocket_command(
@@ -116,6 +143,12 @@ def ws_set_device(
         metadata["manufacturer"] = register.manufacturer
         metadata["model"] = register.model
         metadata["model_id"] = register.model_id
+
+        entity_reg = er.async_get(hass)
+        device_entities = er.async_entries_for_device(entity_reg, register.id)
+        metadata["device_classes"] = utils_get_device_classes(
+            hass=hass, device_entities=device_entities
+        )
 
     # only way to asynchronously call this function
     hass.async_create_task(
