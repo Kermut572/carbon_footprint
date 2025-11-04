@@ -56,6 +56,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                 Model: ${info.metadata?.model || 'N/A'}<br>
                                 Model ID: ${info.metadata?.model_id || 'N/A'}<br>
                                 Class: ${info.metadata?.device_classes || 'N/A'}<br>
+                                Total Energy Consumed: ${info.metadata?.total_energy || 'N/A'}<br>
                             </div>
                             <button
                                 type="button"
@@ -112,6 +113,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                                     Model: ${info.metadata?.model || 'N/A'}<br>
                                                     Model ID: ${info.metadata?.model_id || 'N/A'}<br>
                                                     Class: ${info.metadata?.device_classes || 'N/A'}<br>
+                                                    Total Energy Consumed: ${info.metadata?.total_energy || 'N/A'}<br>
                                                 </div>
                                                 <button
                                                     type="button"
