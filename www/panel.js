@@ -55,6 +55,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                 Manfucturer: ${info.metadata?.manufacturer || 'N/A'}<br>
                                 Model: ${info.metadata?.model || 'N/A'}<br>
                                 Model ID: ${info.metadata?.model_id || 'N/A'}<br>
+                                Class: ${info.metadata?.device_classes || 'N/A'}<br>
                             </div>
                             <button
                                 type="button"
