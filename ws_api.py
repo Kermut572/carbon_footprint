@@ -16,7 +16,7 @@ import voluptuous as vol
 
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .const import BLOCKS_FOOTPRINTS, DOMAIN
 
@@ -116,6 +116,17 @@ def ws_set_device(
         metadata["manufacturer"] = register.manufacturer
         metadata["model"] = register.model
         metadata["model_id"] = register.model_id
+
+        entity_reg = er.async_get(hass)
+        device_entities = er.async_entries_for_device(entity_reg, register.id)
+
+        device_classes = []
+        for entity in device_entities:
+            if not entity.device_class or entity.device_class in device_classes:
+                continue
+            device_classes.append(entity.device_class)
+
+        metadata["device_classes"] = device_classes
 
     # only way to asynchronously call this function
     hass.async_create_task(
