@@ -150,6 +150,7 @@ def ws_set_device(
             hass=hass, device_entities=device_entities
         )
 
+        # TODO this is not good, as the device's total_energy is only updated once.
         total_energy = utils_get_device_total_energy_consumption(
             hass=hass, device_entities=device_entities
         )
