@@ -19,7 +19,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .const import BLOCKS_FOOTPRINTS, DOMAIN
-from .utils import utils_get_device_classes
+from .utils import utils_get_device_classes, utils_get_device_total_energy_consumption
 
 
 @callback
@@ -149,6 +149,12 @@ def ws_set_device(
         metadata["device_classes"] = utils_get_device_classes(
             hass=hass, device_entities=device_entities
         )
+
+        total_energy = utils_get_device_total_energy_consumption(
+            hass=hass, device_entities=device_entities
+        )
+        if total_energy:
+            metadata["total_energy"] = total_energy
 
     # only way to asynchronously call this function
     hass.async_create_task(
