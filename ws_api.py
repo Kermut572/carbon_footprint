@@ -255,20 +255,5 @@ def ws_get_all_devices_energy(
                 "total_energy_kwh": round(total_energy, 2),
             }
         )
-    # Uncomment the code to test with fake values
-    """
-    if not results:
-        results = [
-            {"device_id": "fake-1", "name": "Test Lamp", "total_energy_kwh": 0.75},
-            {
-                "device_id": "fake-2",
-                "name": "Test Fridge",
-                "total_energy_kwh": 24.5,
-            },
-            {
-                "device_id": "fake-3",
-                "name": "Test Washer",
-                "total_energy_kwh": 12.3,
-            },
-        ]"""
+
     connection.send_result(msg["id"], {"devices_energy": results})
