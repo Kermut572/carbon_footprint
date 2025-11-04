@@ -122,7 +122,7 @@ def ws_set_device(
 
         device_classes = []
         for entity in device_entities:
-            state = hass.states.get(entity)
+            state = hass.states.get(entity.entity_id)
             if not state:
                 continue
 
@@ -130,7 +130,7 @@ def ws_set_device(
             if not entity_device_class:
                 continue
 
-            device_classes.append(entity.device_class)
+            device_classes.append(entity_device_class)
 
         metadata["device_classes"] = device_classes
 
