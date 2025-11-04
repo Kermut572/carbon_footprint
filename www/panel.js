@@ -11,7 +11,7 @@ class CarbonFootprintPanel extends HTMLElement {
 
     async connectedCallback() {
         const data = await this.getCarbonData();
-        this.render(data);
+        await this.render(data);
         this._setup = true
     }
 
@@ -73,8 +73,9 @@ class CarbonFootprintPanel extends HTMLElement {
         this.attachDeleteHandlers();
     }
 
-    render(data) {
-        const devicesArray = Object.values(this._hass.devices || {});
+    async render(data) {
+        const devicesResp = await this._hass.callWS({ type: 'carbon_footprint/get_devices_to_add' });
+        const devicesArray = devicesResp.device_names || [];
         const hasDevices = data && data.devices && Object.keys(data.devices).length > 0;
 
         this.innerHTML = `
@@ -146,8 +147,8 @@ class CarbonFootprintPanel extends HTMLElement {
                     <label for="device_name">Entity</label>
                     <select id="device_name" name="device_name" required>
                         <option value="">Select an entity...</option>
-                        ${devices.map(device => `
-                            <option value="${device.name_by_user || device.name}">${device.name_by_user || device.name}</option>
+                        ${devices.map(deviceName => `
+                            <option value="${deviceName}">${deviceName}</option>
                         `).join('')}
                     </select>
                 </div>
@@ -185,7 +186,7 @@ class CarbonFootprintPanel extends HTMLElement {
                     });
 
                     const newData = await this.getCarbonData();
-                    this.render(newData);
+                    await this.render(newData);
 
                 } catch (error) {
                     console.error('Failed to add device:', error);
@@ -215,7 +216,7 @@ class CarbonFootprintPanel extends HTMLElement {
                     });
 
                     const newData = await this.getCarbonData();
-                    this.render(newData);
+                    await this.render(newData);
 
                 } catch (error) {
                     console.error('Failed to remove device:', error);
