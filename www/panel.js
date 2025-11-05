@@ -92,6 +92,7 @@ class CarbonFootprintPanel extends HTMLElement {
 
         const allDevicesEnergyResp = await this.getAllDevicesEnergy();
         const energyDevices = allDevicesEnergyResp.devices_energy || [];
+        energyDevices.sort((a, b) => b.total_energy_kwh - a.total_energy_kwh);
 
         this.innerHTML = `
             <ha-app-layout>
@@ -144,34 +145,40 @@ class CarbonFootprintPanel extends HTMLElement {
                         </div>
                     </ha-card>
 
-                    <ha-card header="All Devices — Sorted by Energy Consumption">
-                    <div class="card-content">
-                        ${
-                            energyDevices.length > 0
-                                ? `
-                                    <table class="energy-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Device</th>
-                                                <th>Total Energy (kWh)</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            ${energyDevices.map(device => `
-                                                <tr>
-                                                    <td>${device.name}</td>
-                                                    <td>${device.total_energy_kwh?.toFixed(2) ?? 'N/A'}</td>
-                                                </tr>
-                                            `).join('')}
-                                        </tbody>
-                                    </table>
-                                `
-                                : `<p>No devices with measurable energy consumption found.</p>`
-                        }
+                    <ha-card>
+                        <div class="card-header">
+                            <h2>All Devices</h2>
+                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <label for="sort-mode" style="font-weight: 500;">Sort by:</label>
+                            <select id="sort-mode" style="width : auto; min-width=150px; max-width="200px;">
+                                <option value="energy">Energy Consumption</option>
+                                <option value="name">Alphabetical</option>
+                            </select>
+                            </div>
+                        </div>
+                        <div class="card-content" id="energy-table-container">
+                            ${this.renderEnergyTable(energyDevices)}
+                        </div>
                     </ha-card>
                 </div>
             </ha-app-layout>
         `;
+
+        const sortSelect = this.querySelector('#sort-mode');
+        const tableContainer = this.querySelector('#energy-table-container');
+
+        if (sortSelect && tableContainer) {
+        sortSelect.addEventListener('change', () => {
+            let sortedDevices = [...energyDevices];
+            if (sortSelect.value === 'energy') {
+            sortedDevices.sort((a, b) => b.total_energy_kwh - a.total_energy_kwh);
+            } else if (sortSelect.value === 'name') {
+            sortedDevices.sort((a, b) => a.name.localeCompare(b.name));
+            }
+            tableContainer.innerHTML = this.renderEnergyTable(sortedDevices);
+        });
+        }
+
 
         this.attachFormHandler();
 
@@ -209,6 +216,32 @@ class CarbonFootprintPanel extends HTMLElement {
             </form>
         `;
     }
+
+    renderEnergyTable(devices) {
+        if (!devices.length) {
+            return `<p>No devices with measurable energy consumption found.</p>`;
+        }
+
+        return `
+            <table class="energy-table">
+            <thead>
+                <tr>
+                <th>Device</th>
+                <th>Total Energy (kWh)</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${devices.map(device => `
+                <tr>
+                    <td>${device.name}</td>
+                    <td>${device.total_energy_kwh?.toFixed(2) ?? 'N/A'}</td>
+                </tr>
+                `).join('')}
+            </tbody>
+            </table>
+        `;
+    }
+
 
     attachFormHandler() {
         const form = this.querySelector('#add-device-form');
