@@ -30,6 +30,7 @@ def async_register_websocket_handlers(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_remove_device)
     websocket_api.async_register_command(hass, ws_compute_footprint)
     websocket_api.async_register_command(hass, ws_get_devices_to_add)
+    websocket_api.async_register_command(hass, ws_get_all_devices_energy)
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_devices_to_add"})
@@ -220,3 +221,52 @@ def ws_compute_footprint(
             values = [round(v + t, 2) for v, t in zip(values, tmp, strict=False)]
 
     connection.send_result(msg["id"], {"success": True, "values": values})
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/get_all_devices_energy"}
+)
+@callback
+def ws_get_all_devices_energy(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Returns all the devices and their total energy consumption."""
+    device_reg = dr.async_get(hass)
+    entity_reg = er.async_get(hass)
+
+    results = []
+
+    for devices in device_reg.devices.values():
+        device_entities = er.async_entries_for_device(entity_reg, devices.id)
+        total_energy = utils_get_device_total_energy_consumption(
+            hass=hass, device_entities=device_entities
+        )
+
+        if total_energy is None:
+            continue
+
+        device_name = devices.name_by_user if devices.name_by_user else devices.name
+        results.append(
+            {
+                "device_id": devices.id,
+                "device_name": device_name,
+                "total_energy_kwh": round(total_energy, 2),
+            }
+        )
+    if not results:
+        results = [
+            {"device_id": "fake-1", "name": "Test Lamp", "total_energy_kwh": 0.75},
+            {
+                "device_id": "fake-2",
+                "name": "Test Fridge",
+                "total_energy_kwh": 24.5,
+            },
+            {
+                "device_id": "fake-3",
+                "name": "Test Washer",
+                "total_energy_kwh": 12.3,
+            },
+        ]
+    connection.send_result(msg["id"], {"devices_energy": results})

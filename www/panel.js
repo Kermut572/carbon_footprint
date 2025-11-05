@@ -35,6 +35,17 @@ class CarbonFootprintPanel extends HTMLElement {
         return data;
     }
 
+    async getAllDevicesEnergy() {
+    try {
+      return await this._hass.callWS({
+        type: "carbon_footprint/get_all_devices_energy",
+      });
+    } catch (err) {
+      console.error("Error fetching all devices energy:", err);
+      return { devices: [] };
+    }
+  }
+
     async updateDeviceList() {
         const data = await this.getCarbonData();
         const deviceListContainer = this.querySelector('.device-list-container');
@@ -78,6 +89,9 @@ class CarbonFootprintPanel extends HTMLElement {
         const devicesResp = await this._hass.callWS({ type: 'carbon_footprint/get_devices_to_add' });
         const devicesArray = devicesResp.device_names || [];
         const hasDevices = data && data.devices && Object.keys(data.devices).length > 0;
+
+        const allDevicesEnergyResp = await this.getAllDevicesEnergy();
+        const energyDevices = allDevicesEnergyResp.devices_energy || [];
 
         this.innerHTML = `
             <ha-app-layout>
@@ -128,6 +142,32 @@ class CarbonFootprintPanel extends HTMLElement {
                                 </ul>
                             ` : `<p>No devices configured yet.</p>`}
                         </div>
+                    </ha-card>
+
+                    <ha-card header="All Devices — Sorted by Energy Consumption">
+                    <div class="card-content">
+                        ${
+                            energyDevices.length > 0
+                                ? `
+                                    <table class="energy-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Device</th>
+                                                <th>Total Energy (kWh)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${energyDevices.map(device => `
+                                                <tr>
+                                                    <td>${device.name}</td>
+                                                    <td>${device.total_energy_kwh?.toFixed(2) ?? 'N/A'}</td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                `
+                                : `<p>No devices with measurable energy consumption found.</p>`
+                        }
                     </ha-card>
                 </div>
             </ha-app-layout>
