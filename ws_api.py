@@ -300,3 +300,5 @@ def ws_update_devices_energy(
 
     if device_updated:
         hass.async_create_task(store.async_save_data())
+
+    connection.send_result(msg["id"], {"success": True})
