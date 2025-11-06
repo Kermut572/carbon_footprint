@@ -31,6 +31,7 @@ def async_register_websocket_handlers(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_compute_footprint)
     websocket_api.async_register_command(hass, ws_get_devices_to_add)
     websocket_api.async_register_command(hass, ws_get_all_devices_energy)
+    websocket_api.async_register_command(hass, ws_update_devices_energy)
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_devices_to_add"})
@@ -144,6 +145,7 @@ def ws_set_device(
         metadata["manufacturer"] = register.manufacturer
         metadata["model"] = register.model
         metadata["model_id"] = register.model_id
+        metadata["register_id"] = register.id
 
         entity_reg = er.async_get(hass)
         device_entities = er.async_entries_for_device(entity_reg, register.id)
@@ -151,7 +153,6 @@ def ws_set_device(
             hass=hass, device_entities=device_entities
         )
 
-        # TODO this is not good, as the device's total_energy is only updated once.
         total_energy = utils_get_device_total_energy_consumption(
             hass=hass, device_entities=device_entities
         )
@@ -255,20 +256,52 @@ def ws_get_all_devices_energy(
                 "total_energy_kwh": round(total_energy, 2),
             }
         )
-    # Uncomment the code to test with fake values
-    """
-    if not results:
-        results = [
-            {"device_id": "fake-1", "name": "Test Lamp", "total_energy_kwh": 0.75},
-            {
-                "device_id": "fake-2",
-                "name": "Test Fridge",
-                "total_energy_kwh": 24.5,
-            },
-            {
-                "device_id": "fake-3",
-                "name": "Test Washer",
-                "total_energy_kwh": 12.3,
-            },
-        ]"""
+
     connection.send_result(msg["id"], {"devices_energy": results})
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/update_devices_energy"}
+)
+@callback
+def ws_update_devices_energy(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Update the total energy consumed of all registered devices."""
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        connection.send_error(
+            msg["id"], "config_entry_not_found", "Uh oh, no config entry found :-("
+        )
+        return
+
+    store = entries[0].runtime_data
+    devices = store.get_devices_data()
+    device_updated = False
+    for device_data in devices.values():
+        metadata = device_data.get("metadata")
+
+        register_id = metadata.get("register_id")
+        total_energy = metadata.get("total_energy")
+        if not register_id or not total_energy:
+            continue
+
+        entity_reg = er.async_get(hass)
+        device_entities = er.async_entries_for_device(entity_reg, register_id)
+        total_energy = utils_get_device_total_energy_consumption(
+            hass=hass, device_entities=device_entities
+        )
+
+        if not total_energy:
+            continue
+
+        metadata["total_energy"] = total_energy
+        device_data["metadata"] = metadata
+        device_updated = True
+
+    if device_updated:
+        hass.async_create_task(store.async_save_data())
+
+    connection.send_result(msg["id"], {"success": True})

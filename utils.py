@@ -47,4 +47,4 @@ def utils_get_device_total_energy_consumption(
         except (ValueError, TypeError):
             continue
 
-    return total_energy if is_sensor else None
+    return round(total_energy, 4) if is_sensor else None
