@@ -145,9 +145,8 @@ class CarbonFootprintPanel extends HTMLElement {
                         </div>
                     </ha-card>
 
-                    <ha-card>
+                    <ha-card header="All Devices">
                         <div class="card-header">
-                            <h2>All Devices</h2>
                             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                             <label for="sort-mode" style="font-weight: 500;">Sort by:</label>
                             <select id="sort-mode" style="width : auto; min-width=150px; max-width="200px;">
@@ -173,7 +172,7 @@ class CarbonFootprintPanel extends HTMLElement {
             if (sortSelect.value === 'energy') {
             sortedDevices.sort((a, b) => b.total_energy_kwh - a.total_energy_kwh);
             } else if (sortSelect.value === 'name') {
-            sortedDevices.sort((a, b) => a.name.localeCompare(b.name));
+            sortedDevices.sort((a, b) => a.device_name.localeCompare(b.device_name));
             }
             tableContainer.innerHTML = this.renderEnergyTable(sortedDevices);
         });
@@ -185,7 +184,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css';
+        link.href = '/api/carbon_footprint/style.css?version=1.0';
         this.appendChild(link);
     }
 
@@ -233,7 +232,7 @@ class CarbonFootprintPanel extends HTMLElement {
             <tbody>
                 ${devices.map(device => `
                 <tr>
-                    <td>${device.name}</td>
+                    <td>${device.device_name}</td>
                     <td>${device.total_energy_kwh?.toFixed(2) ?? 'N/A'}</td>
                 </tr>
                 `).join('')}
