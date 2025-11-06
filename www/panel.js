@@ -36,17 +36,24 @@ class CarbonFootprintPanel extends HTMLElement {
     }
 
     async getAllDevicesEnergy() {
-    try {
-      return await this._hass.callWS({
-        type: "carbon_footprint/get_all_devices_energy",
-      });
-    } catch (err) {
-      console.error("Error fetching all devices energy:", err);
-      return { devices: [] };
+        try {
+            return await this._hass.callWS({
+                type: "carbon_footprint/get_all_devices_energy",
+            });
+            } catch (err) {
+            console.error("Error fetching all devices energy:", err);
+            return { devices: [] };
+        }
     }
-  }
+
+    async updateDeviceEnergy() {
+        await this._hass.callWS({
+            type: "carbon_footprint/update_devices_energy",
+        });
+    }
 
     async updateDeviceList() {
+        await this.updateDeviceEnergy();
         const data = await this.getCarbonData();
         const deviceListContainer = this.querySelector('.device-list-container');
 
