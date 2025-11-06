@@ -165,3 +165,20 @@ button[value="cancel"] {
     background-color: var(--secondary-background-color);
     color: var(--primary-text-color);
 }
+
+.energy-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.energy-table th,
+.energy-table td {
+    text-align: left; /* Align both headers and data to left */
+    padding: 8px 12px;
+}
+
+.energy-table th {
+    color: var(--primary-text-color);
+    background-color: var(--card-background-color);
+    font-weight: 600;
+}

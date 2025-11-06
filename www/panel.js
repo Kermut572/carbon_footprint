@@ -35,6 +35,17 @@ class CarbonFootprintPanel extends HTMLElement {
         return data;
     }
 
+    async getAllDevicesEnergy() {
+    try {
+      return await this._hass.callWS({
+        type: "carbon_footprint/get_all_devices_energy",
+      });
+    } catch (err) {
+      console.error("Error fetching all devices energy:", err);
+      return { devices: [] };
+    }
+  }
+
     async updateDeviceList() {
         const data = await this.getCarbonData();
         const deviceListContainer = this.querySelector('.device-list-container');
@@ -78,6 +89,10 @@ class CarbonFootprintPanel extends HTMLElement {
         const devicesResp = await this._hass.callWS({ type: 'carbon_footprint/get_devices_to_add' });
         const devicesArray = devicesResp.device_names || [];
         const hasDevices = data && data.devices && Object.keys(data.devices).length > 0;
+
+        const allDevicesEnergyResp = await this.getAllDevicesEnergy();
+        const energyDevices = allDevicesEnergyResp.devices_energy || [];
+        energyDevices.sort((a, b) => b.total_energy_kwh - a.total_energy_kwh);
 
         this.innerHTML = `
             <ha-app-layout>
@@ -129,16 +144,47 @@ class CarbonFootprintPanel extends HTMLElement {
                             ` : `<p>No devices configured yet.</p>`}
                         </div>
                     </ha-card>
+
+                    <ha-card header="All Devices">
+                        <div class="card-header">
+                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <label for="sort-mode" style="font-weight: 500;">Sort by:</label>
+                            <select id="sort-mode" style="width : auto; min-width=150px; max-width="200px;">
+                                <option value="energy">Energy Consumption</option>
+                                <option value="name">Alphabetical</option>
+                            </select>
+                            </div>
+                        </div>
+                        <div class="card-content" id="energy-table-container">
+                            ${this.renderEnergyTable(energyDevices)}
+                        </div>
+                    </ha-card>
                 </div>
             </ha-app-layout>
         `;
+
+        const sortSelect = this.querySelector('#sort-mode');
+        const tableContainer = this.querySelector('#energy-table-container');
+
+        if (sortSelect && tableContainer) {
+        sortSelect.addEventListener('change', () => {
+            let sortedDevices = [...energyDevices];
+            if (sortSelect.value === 'energy') {
+            sortedDevices.sort((a, b) => b.total_energy_kwh - a.total_energy_kwh);
+            } else if (sortSelect.value === 'name') {
+            sortedDevices.sort((a, b) => a.device_name.localeCompare(b.device_name));
+            }
+            tableContainer.innerHTML = this.renderEnergyTable(sortedDevices);
+        });
+        }
+
 
         this.attachFormHandler();
 
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css';
+        link.href = '/api/carbon_footprint/style.css?version=1.0';
         this.appendChild(link);
     }
 
@@ -169,6 +215,32 @@ class CarbonFootprintPanel extends HTMLElement {
             </form>
         `;
     }
+
+    renderEnergyTable(devices) {
+        if (!devices.length) {
+            return `<p>No devices with measurable energy consumption found.</p>`;
+        }
+
+        return `
+            <table class="energy-table">
+            <thead>
+                <tr>
+                <th>Device</th>
+                <th>Total Energy (kWh)</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${devices.map(device => `
+                <tr>
+                    <td>${device.device_name}</td>
+                    <td>${device.total_energy_kwh?.toFixed(2) ?? 'N/A'}</td>
+                </tr>
+                `).join('')}
+            </tbody>
+            </table>
+        `;
+    }
+
 
     attachFormHandler() {
         const form = this.querySelector('#add-device-form');
