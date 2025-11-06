@@ -280,22 +280,25 @@ def ws_update_devices_energy(
     store = entries[0].runtime_data
     devices = store.get_devices_data()
     device_updated = False
-    for device_name in devices:
-        metadata = devices[device_name]["metadata"]
-        if not metadata["total_energy"] or not metadata["register_id"]:
+    for device_data in devices.values():
+        metadata = device_data.get("metadata")
+
+        register_id = metadata.get("register_id")
+        total_energy = metadata.get("total_energy")
+        if not register_id or not total_energy:
             continue
 
         entity_reg = er.async_get(hass)
-        device_entities = er.async_entries_for_device(
-            entity_reg, metadata["register_id"]
-        )
-        metadata["total_energy"] = utils_get_device_total_energy_consumption(
+        device_entities = er.async_entries_for_device(entity_reg, register_id)
+        total_energy = utils_get_device_total_energy_consumption(
             hass=hass, device_entities=device_entities
         )
 
-        if not metadata["total_energy"]:
+        if not total_energy:
             continue
-        devices[device_name]["metadata"] = metadata
+
+        metadata["total_energy"] = total_energy
+        device_data["metadata"] = metadata
         device_updated = True
 
     if device_updated:
