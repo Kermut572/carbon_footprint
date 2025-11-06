@@ -47,9 +47,13 @@ class CarbonFootprintPanel extends HTMLElement {
     }
 
     async updateDeviceEnergy() {
-        await this._hass.callWS({
-            type: "carbon_footprint/update_devices_energy",
-        });
+        try {
+            await this._hass.callWS({
+                type: "carbon_footprint/update_devices_energy",
+            });
+        } catch(err) {
+            console.error("Error fetching all devices energy:", err);
+        }
     }
 
     async updateDeviceList() {
