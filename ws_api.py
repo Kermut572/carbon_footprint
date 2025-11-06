@@ -280,8 +280,8 @@ def ws_update_devices_energy(
     store = entries[0].runtime_data
     devices = store.get_devices_data()
     device_updated = False
-    for device in devices:
-        metadata = device["metadata"]
+    for device_name in devices:
+        metadata = devices[device_name]["metadata"]
         if not metadata["total_energy"] or not metadata["register_id"]:
             continue
 
@@ -295,7 +295,7 @@ def ws_update_devices_energy(
 
         if not metadata["total_energy"]:
             continue
-        device["metadata"] = metadata
+        devices[device_name]["metadata"] = metadata
         device_updated = True
 
     if device_updated:
