@@ -15,12 +15,8 @@ def utils_get_device_classes(
         if not state:
             continue
 
-        entity_device_class = (
-            state.attributes.get("device_class")
-            if state.attributes.get("device_class")
-            else state.attributes.get("domain")
-        )
-        if entity_device_class not in ("light", "switch"):
+        entity_device_class = state.attributes.get("device_class")
+        if not entity_device_class:
             continue
 
         device_classes.append(entity_device_class)
