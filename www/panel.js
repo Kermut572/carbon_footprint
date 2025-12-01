@@ -2,14 +2,23 @@
  * Basic panel for the Carbon Footprint integration. Most of the code is currently ugly and AI-generated
  * for testing purposes. We should rewrite it properly later.
  */
+
 class CarbonFootprintPanel extends HTMLElement {
+
     constructor() {
         super();
         this._devices = [];
         this._setup = false
         this._histogramData = null;
         this._chart = null;
+        this._chartGranularity = {
+            HOUR: "hour",
+            DAY: "day",
+            MONTH: "month"
+        };
+        this._currentChartGranularity = this._chartGranularity.MONTH
     }
+
 
     async connectedCallback() {
         const data = await this.getCarbonData();
@@ -67,7 +76,8 @@ class CarbonFootprintPanel extends HTMLElement {
             const result = await this._hass.callWS({
                 type: 'carbon_footprint/get_energy_footprint_time_interval',
                 start_time: startTime.toISOString(),
-                end_time: endTime.toISOString()
+                end_time: endTime.toISOString(),
+                granularity: this._currentChartGranularity
             });
 
             if (!result.energy_footprints || result.energy_footprints.length === 0) {
@@ -149,7 +159,17 @@ class CarbonFootprintPanel extends HTMLElement {
                     <ha-card header="Overview">
                         <div class="card-content">
                             <p>Current CO₂ Intensity: <b>${data?.co2_intensity ?? 'N/A'}</b> gCO₂eq/kWh</p>
-                            ${energyHistogram}
+                            <div style="display: flex; gap: 8px; align-items: center; margin: 16px 0;">
+                                <label for="granularity-select" style="font-weight: 500;">Granularity:</label>
+                                <select id="granularity-select" style="min-width: 140px;">
+                                    <option value="hour">Hour</option>
+                                    <option value="day">Day</option>
+                                    <option value="month">Month</option>
+                                </select>
+                            </div>
+                            <div id="energy-histogram-container">
+                                ${energyHistogram}
+                            </div>
                         </div>
 
                     </ha-card>
@@ -219,6 +239,16 @@ class CarbonFootprintPanel extends HTMLElement {
             document.head.appendChild(script);
         } else {
             this.renderHistogram();
+        }
+
+        const granSelect = this.querySelector('#granularity-select');
+        if (granSelect) {
+            granSelect.value = this._currentChartGranularity;
+            granSelect.addEventListener('change', async (e) => {
+                this._currentChartGranularity = e.target.value;
+                console.log('Current granularity: ', this._currentChartGranularity);
+                await this.refreshHistogram();
+            });
         }
 
         const sortSelect = this.querySelector('#sort-mode');
@@ -299,6 +329,23 @@ class CarbonFootprintPanel extends HTMLElement {
         `;
     }
 
+    async refreshHistogram() {
+        const newHtml = await this.getEnergyHistogram();
+        const container = this.querySelector('#energy-histogram-container');
+        if (container) {
+            container.innerHTML = newHtml;
+        }
+
+        if (typeof Chart === 'undefined') {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
+            script.onload = () => this.renderHistogram();
+            document.head.appendChild(script);
+        } else {
+            this.renderHistogram();
+        }
+    }
+
     renderHistogram() {
         const canvas = this.querySelector('#energy-histogram-chart');
         if (!canvas || !this._histogramData) {
@@ -307,11 +354,24 @@ class CarbonFootprintPanel extends HTMLElement {
 
         const labels = this._histogramData.map(point => {
             const date = new Date(point.timestamp);
-            return date.toLocaleDateString('fr-FR', {
-                day: '2-digit',
-                month: '2-digit',
-                hour: '2-digit'
-            });
+            switch (this._currentChartGranularity) {
+                case this._chartGranularity.HOUR:
+                    return date.toLocaleDateString('fr-FR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        hour: '2-digit'
+                    });
+                case this._chartGranularity.DAY:
+                    return date.toLocaleDateString('fr-FR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                    });
+                case this._chartGranularity.MONTH:
+                    return date.toLocaleDateString('fr-FR', {
+                        month: '2-digit',
+                        year: 'numeric'
+                    });
+            }
         });
 
         const values = this._histogramData.map(point => point.energy_footprint);

@@ -316,6 +316,7 @@ def ws_update_devices_energy(
         vol.Required("type"): f"{DOMAIN}/get_energy_footprint_time_interval",
         vol.Required("start_time"): str,
         vol.Required("end_time"): str,
+        vol.Required("granularity"): str,
     }
 )
 @callback
@@ -330,11 +331,16 @@ def ws_get_energy_footprint_time_interval(
     end_time = dt_util.parse_datetime(msg["end_time"])
 
     if not start_time or not end_time:
-        connection.send_error(msg["id"], "invalid_format", "Invalide date format")
+        connection.send_error(msg["id"], "invalid_format", "Invalid date format")
         return
 
     if end_time < start_time:
         connection.send_error(msg["id"], "invalid_interval", "Invalid time interval")
+        return
+
+    granularity = msg["granularity"]
+    if granularity not in ("hour", "day", "month"):
+        connection.send_error(msg["id"], "invalid_granularity", "Invalid granularity")
         return
 
     entries = hass.config_entries.async_entries(DOMAIN)
@@ -348,14 +354,82 @@ def ws_get_energy_footprint_time_interval(
 
     results = []
 
-    for date_key, energy_footprint in energy_store.data.items():
-        data_time = dt_util.as_local(datetime.strptime(date_key, "%d-%m-%Y-%H"))
-        if data_time > end_time or data_time < start_time:
-            continue
+    match granularity:
+        case "hour":
+            for date_key, energy_footprint in energy_store.data.items():
+                data_time = dt_util.as_local(datetime.strptime(date_key, "%d-%m-%Y-%H"))
+                if data_time > end_time or data_time < start_time:
+                    continue
 
-        results.append(
-            {"timestamp": data_time.isoformat(), "energy_footprint": energy_footprint}
-        )
+                results.append(
+                    {
+                        "timestamp": data_time.isoformat(),
+                        "energy_footprint": energy_footprint,
+                    }
+                )
+        case "day":
+            curr_date = None
+            cumulated_fp = 0
+            days = 0
+
+            for date_key, energy_footprint in energy_store.data.items():
+                data_time = dt_util.as_local(datetime.strptime(date_key, "%d-%m-%Y-%H"))
+                if data_time > end_time or data_time < start_time:
+                    continue
+
+                if curr_date and curr_date.date() != data_time.date():
+                    results.append(
+                        {
+                            "timestamp": curr_date.isoformat(),
+                            "energy_footprint": cumulated_fp / days,
+                        }
+                    )
+                    days = 0
+                    cumulated_fp = 0
+
+                curr_date = data_time
+                cumulated_fp += energy_footprint
+                days += 1
+
+            if curr_date and days > 0:
+                results.append(
+                    {
+                        "timestamp": curr_date.isoformat(),
+                        "energy_footprint": cumulated_fp / days,
+                    }
+                )
+
+        case "month":
+            curr_date = None
+            cumulated_fp = 0
+            days = 0
+
+            for date_key, energy_footprint in energy_store.data.items():
+                data_time = dt_util.as_local(datetime.strptime(date_key, "%d-%m-%Y-%H"))
+                if data_time > end_time or data_time < start_time:
+                    continue
+
+                if curr_date and curr_date.month != data_time.month:
+                    results.append(
+                        {
+                            "timestamp": data_time.isoformat(),
+                            "energy_footprint": cumulated_fp / days,
+                        }
+                    )
+                    days = 0
+                    cumulated_fp = 0
+
+                curr_date = data_time
+                cumulated_fp += energy_footprint
+                days += 1
+
+            if curr_date and days > 0:
+                results.append(
+                    {
+                        "timestamp": curr_date.isoformat(),
+                        "energy_footprint": cumulated_fp / days,
+                    }
+                )
 
     connection.send_result(msg["id"], {"energy_footprints": results})
 
