@@ -7,6 +7,8 @@ class CarbonFootprintPanel extends HTMLElement {
         super();
         this._devices = [];
         this._setup = false
+        this._histogramData = null;
+        this._chart = null;
     }
 
     async connectedCallback() {
@@ -53,6 +55,36 @@ class CarbonFootprintPanel extends HTMLElement {
             });
         } catch(err) {
             console.error("Error fetching all devices energy:", err);
+        }
+    }
+
+    async getEnergyHistogram() {
+        try {
+            const endTime = new Date();
+            const startTime = new Date(endTime);
+            startTime.setDate(endTime.getDate() - 7);
+
+            const result = await this._hass.callWS({
+                type: 'carbon_footprint/get_energy_footprint_time_interval',
+                start_time: startTime.toISOString(),
+                end_time: endTime.toISOString()
+            });
+
+            if (!result.energy_footprints || result.energy_footprints.length === 0) {
+                return '<p>No historical data available</p>';
+            }
+
+            this._histogramData = result.energy_footprints;
+
+            return `
+                <div style="position: relative; height: 300px; width: 100%;">
+                    <canvas id="energy-histogram-chart"></canvas>
+                </div>
+            `;
+
+        } catch (err) {
+            console.error('Error loading histogram:', err);
+            return '<p>Error loading histogram data</p>';
         }
     }
 
@@ -105,6 +137,8 @@ class CarbonFootprintPanel extends HTMLElement {
         const energyDevices = allDevicesEnergyResp.devices_energy || [];
         energyDevices.sort((a, b) => b.total_energy_kwh - a.total_energy_kwh);
 
+        const energyHistogram = await this.getEnergyHistogram();
+
         this.innerHTML = `
             <ha-app-layout>
                 <header class="ha-header">
@@ -115,7 +149,9 @@ class CarbonFootprintPanel extends HTMLElement {
                     <ha-card header="Overview">
                         <div class="card-content">
                             <p>Current CO₂ Intensity: <b>${data?.co2_intensity ?? 'N/A'}</b> gCO₂eq/kWh</p>
+                            ${energyHistogram}
                         </div>
+
                     </ha-card>
 
                     <ha-card header="Add New Device">
@@ -173,6 +209,17 @@ class CarbonFootprintPanel extends HTMLElement {
                 </div>
             </ha-app-layout>
         `;
+
+        if (typeof Chart === 'undefined') {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
+            script.onload = () => {
+                this.renderHistogram();
+            };
+            document.head.appendChild(script);
+        } else {
+            this.renderHistogram();
+        }
 
         const sortSelect = this.querySelector('#sort-mode');
         const tableContainer = this.querySelector('#energy-table-container');
@@ -250,6 +297,70 @@ class CarbonFootprintPanel extends HTMLElement {
             </tbody>
             </table>
         `;
+    }
+
+    renderHistogram() {
+        const canvas = this.querySelector('#energy-histogram-chart');
+        if (!canvas || !this._histogramData) {
+            return;
+        }
+
+        const labels = this._histogramData.map(point => {
+            const date = new Date(point.timestamp);
+            return date.toLocaleDateString('fr-FR', {
+                day: '2-digit',
+                month: '2-digit',
+                hour: '2-digit'
+            });
+        });
+
+        const values = this._histogramData.map(point => point.energy_footprint);
+        if (this._chart) {
+            this._chart.destroy();
+        }
+        this._chart = new Chart(canvas.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'CO₂ intensity (gCO₂eq/kWh)',
+                    data: values,
+                    backgroundColor: 'rgba(3, 169, 244, 0.5)',
+                    borderColor: 'rgb(3, 169, 244)',
+                    borderWidth: 2,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => `${context.parsed.y.toFixed(1)} gCO₂eq/kWh`
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'gCO₂eq/kWh'
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            maxRotation: 45,
+                            minRotation: 45
+                        }
+                    }
+                }
+            }
+        });
     }
 
 
