@@ -10,6 +10,7 @@ data.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 import voluptuous as vol
@@ -17,6 +18,7 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.util import dt as dt_util
 
 from .const import BLOCKS_FOOTPRINTS, DOMAIN
 from .utils import utils_get_device_classes, utils_get_device_total_energy_consumption
@@ -32,6 +34,7 @@ def async_register_websocket_handlers(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_devices_to_add)
     websocket_api.async_register_command(hass, ws_get_all_devices_energy)
     websocket_api.async_register_command(hass, ws_update_devices_energy)
+    websocket_api.async_register_command(hass, ws_get_energy_footprint_time_interval)
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_devices_to_add"})
@@ -74,7 +77,8 @@ def ws_get_carbon_data(
     # CO_2 intensity in gCO2/kWh
     co2_intensity_state = hass.states.get("sensor.electricity_maps_co2_intensity")
 
-    co2_intensity = 45.0
+    co2_intensity = 200.0  # arbitrary
+
     if co2_intensity_state and co2_intensity_state.state not in (
         "unknown",
         "unavailable",
@@ -88,8 +92,8 @@ def ws_get_carbon_data(
         )
         return
 
-    store = entries[0].runtime_data
-    devices = store.get_devices_data()
+    cf_store = entries[0].runtime_data.cf_store
+    devices = cf_store.get_devices_data()
 
     connection.send_result(
         msg["id"],
@@ -124,7 +128,7 @@ def ws_set_device(
         )
         return
 
-    store = entries[0].runtime_data
+    cf_store = entries[0].runtime_data.cf_store
 
     metadata = msg["metadata"]
 
@@ -161,7 +165,7 @@ def ws_set_device(
 
     # only way to asynchronously call this function
     hass.async_create_task(
-        store.async_set_device_info(
+        cf_store.async_set_device_info(
             device_name,
             msg["device_type"],
             msg["carbon_footprint"],
@@ -192,8 +196,8 @@ def ws_remove_device(
         )
         return
 
-    store = entries[0].runtime_data
-    hass.async_create_task(store.async_remove_device_info(msg["device_name"]))
+    cf_store = entries[0].runtime_data.cf_store
+    hass.async_create_task(cf_store.async_remove_device_info(msg["device_name"]))
 
     connection.send_result(msg["id"], {"success": True})
 
@@ -277,8 +281,8 @@ def ws_update_devices_energy(
         )
         return
 
-    store = entries[0].runtime_data
-    devices = store.get_devices_data()
+    cf_store = entries[0].runtime_data.cf_store
+    devices = cf_store.get_devices_data()
     device_updated = False
     for device_data in devices.values():
         metadata = device_data.get("metadata")
@@ -302,6 +306,131 @@ def ws_update_devices_energy(
         device_updated = True
 
     if device_updated:
-        hass.async_create_task(store.async_save_data())
+        hass.async_create_task(cf_store.async_save_data())
 
     connection.send_result(msg["id"], {"success": True})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/get_energy_footprint_time_interval",
+        vol.Required("start_time"): str,
+        vol.Required("end_time"): str,
+        vol.Required("granularity"): str,
+    }
+)
+@callback
+def ws_get_energy_footprint_time_interval(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Get the history of the energy footprint for a given time interval."""
+
+    start_time = dt_util.parse_datetime(msg["start_time"])
+    end_time = dt_util.parse_datetime(msg["end_time"])
+
+    if not start_time or not end_time:
+        connection.send_error(msg["id"], "invalid_format", "Invalid date format")
+        return
+
+    if end_time < start_time:
+        connection.send_error(msg["id"], "invalid_interval", "Invalid time interval")
+        return
+
+    granularity = msg["granularity"]
+    if granularity not in ("hour", "day", "month"):
+        connection.send_error(msg["id"], "invalid_granularity", "Invalid granularity")
+        return
+
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        connection.send_error(
+            msg["id"], "config_entry_not_found", "Uh oh, no config entry found :-("
+        )
+        return
+
+    energy_store = entries[0].runtime_data.energy_store
+
+    results = []
+
+    match granularity:
+        case "hour":
+            for date_key, energy_footprint in energy_store.data.items():
+                data_time = dt_util.as_local(datetime.strptime(date_key, "%d-%m-%Y-%H"))
+                if data_time > end_time or data_time < start_time:
+                    continue
+
+                results.append(
+                    {
+                        "timestamp": data_time.isoformat(),
+                        "energy_footprint": energy_footprint,
+                    }
+                )
+        case "day":
+            curr_date = None
+            cumulated_fp = 0
+            days = 0
+
+            for date_key, energy_footprint in energy_store.data.items():
+                data_time = dt_util.as_local(datetime.strptime(date_key, "%d-%m-%Y-%H"))
+                if data_time > end_time or data_time < start_time:
+                    continue
+
+                if curr_date and curr_date.date() != data_time.date():
+                    results.append(
+                        {
+                            "timestamp": curr_date.isoformat(),
+                            "energy_footprint": cumulated_fp / days,
+                        }
+                    )
+                    days = 0
+                    cumulated_fp = 0
+
+                curr_date = data_time
+                cumulated_fp += energy_footprint
+                days += 1
+
+            if curr_date and days > 0:
+                results.append(
+                    {
+                        "timestamp": curr_date.isoformat(),
+                        "energy_footprint": cumulated_fp / days,
+                    }
+                )
+
+        case "month":
+            curr_date = None
+            cumulated_fp = 0
+            days = 0
+
+            for date_key, energy_footprint in energy_store.data.items():
+                data_time = dt_util.as_local(datetime.strptime(date_key, "%d-%m-%Y-%H"))
+                if data_time > end_time or data_time < start_time:
+                    continue
+
+                if curr_date and curr_date.month != data_time.month:
+                    results.append(
+                        {
+                            "timestamp": data_time.isoformat(),
+                            "energy_footprint": cumulated_fp / days,
+                        }
+                    )
+                    days = 0
+                    cumulated_fp = 0
+
+                curr_date = data_time
+                cumulated_fp += energy_footprint
+                days += 1
+
+            if curr_date and days > 0:
+                results.append(
+                    {
+                        "timestamp": curr_date.isoformat(),
+                        "energy_footprint": cumulated_fp / days,
+                    }
+                )
+
+    connection.send_result(msg["id"], {"energy_footprints": results})
+
+    return
