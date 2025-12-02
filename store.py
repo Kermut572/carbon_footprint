@@ -9,7 +9,6 @@ STORAGE_VERSION = 1
 STORAGE_KEY = f"{DOMAIN}.data"
 
 
-# First time I write such documented and clean code, thank the linter I guess ¯\_(ツ)_/¯
 class CFStore:
     """Store for carbon footprint related data.
 
