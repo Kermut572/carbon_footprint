@@ -11,12 +11,20 @@ class CarbonFootprintPanel extends HTMLElement {
         this._setup = false
         this._histogramData = null;
         this._chart = null;
+
         this._chartGranularity = {
             HOUR: "hour",
             DAY: "day",
             MONTH: "month"
         };
-        this._currentChartGranularity = this._chartGranularity.MONTH
+        this._currentChartGranularity = this._chartGranularity.HOUR;
+
+        this._timeFrame = {
+            WEEK: "last-week",
+            MONTH: "last-month",
+            YEAR: "last-year"
+        };
+        this._currentTimeFrame = this._timeFrame.WEEK;
     }
 
 
@@ -69,9 +77,27 @@ class CarbonFootprintPanel extends HTMLElement {
 
     async getEnergyHistogram() {
         try {
+            let pastDays;
+            switch (this._currentTimeFrame) {
+                case this._timeFrame.WEEK:
+                    pastDays = 7;
+                    break;
+                case this._timeFrame.MONTH:
+                    pastDays = 30;
+                    break;
+                case this._timeFrame.YEAR:
+                    pastDays = 365;
+                    break;
+                default:
+                    pastDays = 7;
+                    break;
+            }
+
+            console.log('Querying with ', pastDays, ' , timeframe was ', this._currentTimeFrame)
+
             const endTime = new Date();
             const startTime = new Date(endTime);
-            startTime.setDate(endTime.getDate() - 7);
+            startTime.setDate(endTime.getDate() - pastDays);
 
             const result = await this._hass.callWS({
                 type: 'carbon_footprint/get_energy_footprint_time_interval',
@@ -156,15 +182,23 @@ class CarbonFootprintPanel extends HTMLElement {
                 </header>
 
                 <div class="content" slot="content">
-                    <ha-card header="Overview">
+                    <ha-card header="Energy Footprint">
                         <div class="card-content">
-                            <p>Current CO₂ Intensity: <b>${data?.co2_intensity ?? 'N/A'}</b> gCO₂eq/kWh</p>
-                            <div style="display: flex; gap: 8px; align-items: center; margin: 16px 0;">
-                                <label for="granularity-select" style="font-weight: 500;">Granularity:</label>
-                                <select id="granularity-select" style="min-width: 140px;">
+                            <p>Current Energy CO₂ Intensity: <b>${data?.co2_intensity ?? 'N/A'}</b> gCO₂eq/kWh</p>
+                            <div class="histogram-controls">
+                                <label for="granularity-select">Granularity:</label>
+                                <select id="granularity-select">
                                     <option value="hour">Hour</option>
                                     <option value="day">Day</option>
                                     <option value="month">Month</option>
+                                </select>
+
+
+                                <label for="time-frame-select">Time Frame:</label>
+                                <select id="time-frame-select">
+                                    <option value="last-week">Last Week</option>
+                                    <option value="last-month">Last Month</option>
+                                    <option value="last-year">Last Year</option>
                                 </select>
                             </div>
                             <div id="energy-histogram-container">
@@ -246,7 +280,15 @@ class CarbonFootprintPanel extends HTMLElement {
             granSelect.value = this._currentChartGranularity;
             granSelect.addEventListener('change', async (e) => {
                 this._currentChartGranularity = e.target.value;
-                console.log('Current granularity: ', this._currentChartGranularity);
+                await this.refreshHistogram();
+            });
+        }
+
+        const timeFrameSelect = this.querySelector('#time-frame-select');
+        if (timeFrameSelect) {
+            timeFrameSelect.value = this._currentTimeFrame;
+            timeFrameSelect.addEventListener('change', async (e) => {
+                this._currentTimeFrame = e.target.value;
                 await this.refreshHistogram();
             });
         }
@@ -272,7 +314,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.0';
+        link.href = '/api/carbon_footprint/style.css?version=1.2'; // :skull:
         this.appendChild(link);
     }
 

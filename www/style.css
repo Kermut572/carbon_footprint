@@ -245,16 +245,35 @@ button[value="cancel"] {
     font-weight: 500;
 }
 
-#granularity-select {
+#energy-histogram-container {
+    margin-top: 16px;
+}
+
+.histogram-controls {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px 16px;
+    align-items: center;
+    margin: 16px 0;
+}
+
+.histogram-controls label {
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.histogram-controls select {
     padding: 8px 12px;
     border: 1px solid var(--divider-color);
     border-radius: 4px;
     background: var(--card-background-color);
     color: var(--primary-text-color);
     cursor: pointer;
+    min-width: 80px;
+    max-width: 120px;
 }
 
-#granularity-select:hover {
+.histogram-controls select:hover {
     border-color: var(--primary-color);
 }
 
