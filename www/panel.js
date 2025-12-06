@@ -558,7 +558,6 @@ class CarbonFootprintPanel extends HTMLElement {
                         device_name: entityId
                     });
 
-                    // Only update device list
                     await this.updateDeviceList();
 
                 } catch (error) {
@@ -707,66 +706,69 @@ class CarbonFootprintPanel extends HTMLElement {
     }
 
     dialog.innerHTML = `
-        <form method="dialog" class="dialog-content">
+        <form class="dialog-content">
             <h2>Quick Device Questions</h2>
             <p>Select the option that best describes the hardware block for your device.</p>
             <div id="questions-list">
                 ${questionsHtml}
             </div>
 
-            <div style="margin-top:12px; display: flex; justify-content: space-between;">
-                <button value="cancel">Cancel</button>
-                <button value="confirm">Compute Footprint</button>
+            <p id="error-message" style="color: red; margin-top: 10px;"></p> <div style="margin-top:12px; display: flex; justify-content: flex-end; gap: 8px;">
+                <button id="cancel-button" type="button" value="cancel">Cancel</button>
+                <button id="compute-button" type="button" value="confirm">Compute Footprint</button>
             </div>
         </form>
     `;
 
-        dialog.addEventListener('close', async () => {
-        //console.log('Dialog closed with', dialog.returnValue);
-        if (dialog.returnValue === 'confirm') {
-            const hsl_values = Object.assign({}, initialHsl);
-            //console.log('Initial HSL values:', hsl_values);
-            let allAnswered = true;
+    const computeBtn = dialog.querySelector('#compute-button');
+    const cancelBtn = dialog.querySelector('#cancel-button');
+    const errorMessage = dialog.querySelector('#error-message');
 
-            // Collect the selected value for each question
-            for (const blockName of Object.keys(questions)) {
-                const selectedRadio = dialog.querySelector(`input[name="${blockName}"]:checked`);
-                if (selectedRadio) {
-                    hsl_values[blockName] = selectedRadio.value;
-                } else {
-                    allAnswered = false;
-                    break;
-                }
-            }
+    computeBtn.addEventListener('click', async () => {
+        errorMessage.textContent = '';
+        const hsl_values = Object.assign({}, initialHsl);
+        let allAnswered = true;
 
-            if (!allAnswered) {
-                alert("Please answer all the questions before computing the footprint.");
-                return;
+        for (const blockName of Object.keys(questions)) {
+            const selectedRadio = dialog.querySelector(`input[name="${blockName}"]:checked`);
+            if (selectedRadio) {
+                hsl_values[blockName] = selectedRadio.value;
+            } else {
+                allAnswered = false;
+                break;
             }
-            //console.log('Final HSL values to compute:', hsl_values);
-            const blocks = Object.keys(questions);
-            const ALL_BLOCKS = ['ui', 'power_supply', 'sensing', 'connectivity', 'processing', 'memory', 'actuators', 'casing', 'transport', 'security', 'others'];
-            ALL_BLOCKS.forEach(b => {
-                if (hsl_values[b] === undefined) {
-                    hsl_values[b] = initialHsl[b] ?? 0; // Default to HSL 0 if no initial or selected value exists
-                }
-            });
-
-            try {
-                console.log('Computing footprint with HSL values:', hsl_values); //we reach that point
-                const result = await this._hass.callWS({ type: 'carbon_footprint/compute_footprint', hsl_values });
-                console.log('Computed CO2:', result);
-                const formInput = this.querySelector('#carbon_footprint');
-                console.log('formInput', formInput);
-                if (formInput) formInput.value = (result.values?.[1] ?? 0).toFixed(2);
-                console.log('Updated form input value');
-            } catch (err) {
-                console.error('compute error', err);
-                alert('Could not compute footprint: ' + err.message);
-            }
-        } else if (dialog.returnValue === 'cancel') {
-            console.log('User cancelled the computation.');
         }
+
+        if (!allAnswered) {
+            errorMessage.textContent = "Please answer all the questions before computing the footprint.";
+            return;
+        }
+
+        const ALL_BLOCKS = ['ui', 'power_supply', 'sensing', 'connectivity', 'processing', 'memory', 'actuators', 'casing', 'transport', 'security', 'others'];
+        ALL_BLOCKS.forEach(b => {
+            if (hsl_values[b] === undefined) {
+                hsl_values[b] = initialHsl[b] ?? '0'; // Default HSL 0 as string
+            }
+        });
+
+        try {
+            //console.log('Computing footprint with HSL values:', hsl_values);
+            const result = await this._hass.callWS({ type: 'carbon_footprint/compute_footprint', hsl_values });
+
+            const formInput = this.querySelector('#carbon_footprint');
+            if (formInput) formInput.value = (result.values?.[1] ?? 0).toFixed(2);
+
+            dialog.close();
+            dialog.remove();
+
+        } catch (err) {
+            console.error('compute error', err);
+            errorMessage.textContent = `Could not compute footprint: ${err.message}`;
+        }
+    });
+
+    cancelBtn.addEventListener('click', () => {
+        dialog.close();
         dialog.remove();
     });
 
