@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import timedelta
+import logging
 import pathlib
 
 from homeassistant.components import panel_custom
@@ -10,17 +13,30 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.typing import ConfigType
 
 from . import ws_api
 from .const import DOMAIN
+from .energy_store import EnergyStore
+from .periodic import async_update_energy_footprint
 from .store import CFStore
+from .utils import async_populate_energy_store
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+_LOGGER = logging.getLogger(__name__)
+
+
+@dataclass
+class CarbonFootprintData:
+    """Data for CF integration."""
+
+    cf_store: CFStore
+    energy_store: EnergyStore
 
 
 _PLATFORMS: list[Platform] = []
-type CarbonFootprintConfigEntry = ConfigEntry[CFStore]
+type CarbonFootprintConfigEntry = ConfigEntry[CarbonFootprintData]
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -40,7 +56,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         webcomponent_name="carbon-footprint-panel",
         sidebar_title="Carbon Footprint",
         sidebar_icon="mdi:leaf",
-        module_url="/api/carbon_footprint/panel.js?v=1.37",  # change the version if your cache is playing tricks on you :-) (I hate js)
+        module_url="/api/carbon_footprint/panel.js?v=1.63",  # change the version if your cache is playing tricks on you :-) (I hate js)
         embed_iframe=False,
         require_admin=False,
     )
@@ -55,9 +71,31 @@ async def async_setup_entry(
 
     cf_store = CFStore(hass)
     await cf_store.async_load_data()
-    entry.runtime_data = cf_store
+
+    energy_store = EnergyStore(hass)
+    await energy_store.async_load_data()
+
+    entry.runtime_data = CarbonFootprintData(
+        cf_store=cf_store, energy_store=energy_store
+    )
+
+    async def wrapper_async_update_energy_footprint(_now=None) -> None:
+        """Wrapper for async_update_energy_footprint, which makes it periodically callable."""
+        await async_update_energy_footprint(
+            _now=_now, hass=hass, _LOGGER=_LOGGER, energy_store=energy_store
+        )
+
+    entry.async_on_unload(
+        async_track_time_interval(
+            hass,
+            wrapper_async_update_energy_footprint,
+            timedelta(hours=1),
+        )
+    )
 
     await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
+
+    await async_populate_energy_store(hass, energy_store, _LOGGER)
 
     return True
 

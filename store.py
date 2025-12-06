@@ -9,7 +9,6 @@ STORAGE_VERSION = 1
 STORAGE_KEY = f"{DOMAIN}.data"
 
 
-# First time I write such documented and clean code, thank the linter I guess ¯\_(ツ)_/¯
 class CFStore:
     """Store for carbon footprint related data.
 
@@ -36,7 +35,7 @@ class CFStore:
         self.data = data if data is not None else {}
 
     async def async_save_data(self) -> None:
-        """Asynchronously load data."""
+        """Asynchronously save data."""
         await self.store.async_save(data=self.data)
 
     async def async_set_device_info(
