@@ -311,3 +311,25 @@ button[value="cancel"] {
   font-weight: 500;
   opacity: 0.85;
 }
+
+#questions-list { max-height: 400px; overflow-y: auto; padding-right: 15px; }
+
+.question-group {
+    margin-bottom: 20px;
+    padding: 10px;
+    border: 1px solid var(--primary-color, #03a9f4); /* Using HA variable */
+    border-radius: 4px;
+}
+
+.question-group p { margin-top: 0; margin-bottom: 10px; font-size: 1.1em; }
+
+.radio-container { display: flex; flex-direction: column; margin-top: 5px; }
+
+.radio-option { margin-bottom: 5px; }
+
+.radio-option label { margin-left: 8px; font-weight: normal; cursor: pointer; }
+
+.radio-option input[type="radio"] { margin-right: 5px; }
+
+b { font-weight: 600; }
+
