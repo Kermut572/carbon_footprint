@@ -75,6 +75,21 @@ class CarbonFootprintPanel extends HTMLElement {
         }
     }
 
+    getCarbonColor(ci) {
+        if (!ci || isNaN(ci)) return "ci-unknown";
+        if (ci < 150) return "ci-low";
+        if (ci < 300) return "ci-medium";
+        return "ci-high";
+    }
+
+    getCarbonLabel(ci) {
+        if (!ci || isNaN(ci)) return "Unknown";
+        if (ci < 150) return "Good";
+        if (ci < 300) return "Moderate";
+        return "High";
+    }
+
+
     async getEnergyHistogram() {
         try {
             let pastDays;
@@ -184,7 +199,11 @@ class CarbonFootprintPanel extends HTMLElement {
                 <div class="content" slot="content">
                     <ha-card header="Energy Footprint">
                         <div class="card-content">
-                            <p>Current Energy CO₂ Intensity: <b>${data?.co2_intensity ?? 'N/A'}</b> gCO₂eq/kWh</p>
+                            <p>Current Energy CO₂ Intensity:
+                            <span class="ci-value"><b>${data?.co2_intensity ?? 'N/A'}</b></span>
+                            gCO₂eq/kWh
+                            <span class="ci-indicator ${this.getCarbonColor(data?.co2_intensity)}"></span>
+                            <span class="ci-label">${this.getCarbonLabel(data?.co2_intensity)}</span></p>
                             <div class="histogram-controls">
                                 <label for="granularity-select">Granularity:</label>
                                 <select id="granularity-select">
