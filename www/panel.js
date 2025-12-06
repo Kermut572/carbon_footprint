@@ -705,7 +705,6 @@ class CarbonFootprintPanel extends HTMLElement {
     for (const [blockName, data] of Object.entries(questions)) {
         questionsHtml += createRadioGroup(blockName, data.question, data.options);
     }
-    console.log('we are here at line 708');
 
     dialog.innerHTML = `
         <form method="dialog" class="dialog-content">
@@ -723,17 +722,17 @@ class CarbonFootprintPanel extends HTMLElement {
     `;
 
         dialog.addEventListener('close', async () => {
-        console.log('Dialog closed with', dialog.returnValue);
+        //console.log('Dialog closed with', dialog.returnValue);
         if (dialog.returnValue === 'confirm') {
             const hsl_values = Object.assign({}, initialHsl);
-            console.log('Initial HSL values:', hsl_values);
+            //console.log('Initial HSL values:', hsl_values);
             let allAnswered = true;
 
             // Collect the selected value for each question
             for (const blockName of Object.keys(questions)) {
                 const selectedRadio = dialog.querySelector(`input[name="${blockName}"]:checked`);
                 if (selectedRadio) {
-                    hsl_values[blockName] = parseInt(selectedRadio.value);
+                    hsl_values[blockName] = selectedRadio.value;
                 } else {
                     allAnswered = false;
                     break;
@@ -744,7 +743,7 @@ class CarbonFootprintPanel extends HTMLElement {
                 alert("Please answer all the questions before computing the footprint.");
                 return;
             }
-            console.log('Final HSL values to compute:', hsl_values);
+            //console.log('Final HSL values to compute:', hsl_values);
             const blocks = Object.keys(questions);
             const ALL_BLOCKS = ['ui', 'power_supply', 'sensing', 'connectivity', 'processing', 'memory', 'actuators', 'casing', 'transport', 'security', 'others'];
             ALL_BLOCKS.forEach(b => {
@@ -754,7 +753,7 @@ class CarbonFootprintPanel extends HTMLElement {
             });
 
             try {
-                console.log('Computing footprint with HSL values:', hsl_values);
+                console.log('Computing footprint with HSL values:', hsl_values); //we reach that point
                 const result = await this._hass.callWS({ type: 'carbon_footprint/compute_footprint', hsl_values });
                 console.log('Computed CO2:', result);
                 const formInput = this.querySelector('#carbon_footprint');
