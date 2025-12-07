@@ -75,6 +75,20 @@ class CarbonFootprintPanel extends HTMLElement {
         }
     }
 
+    getCarbonColor(ci) {
+        if (!ci || isNaN(ci)) return "ci-unknown";
+        if (ci < 150) return "ci-low";
+        if (ci < 300) return "ci-medium";
+        return "ci-high";
+    }
+
+    getCarbonLabel(ci) {
+        if (!ci || isNaN(ci)) return "Unknown";
+        if (ci < 150) return "Good";
+        if (ci < 300) return "Moderate";
+        return "High";
+    }
+
     async getEnergyHistogram() {
         try {
             let pastDays;
@@ -184,7 +198,11 @@ class CarbonFootprintPanel extends HTMLElement {
                 <div class="content" slot="content">
                     <ha-card header="Energy Footprint">
                         <div class="card-content">
-                            <p>Current Energy CO₂ Intensity: <b>${data?.co2_intensity ?? 'N/A'}</b> gCO₂eq/kWh</p>
+                            <p>Current Energy CO₂ Intensity:
+                            <span class="ci-value"><b>${data?.co2_intensity ?? 'N/A'}</b></span>
+                            gCO₂eq/kWh
+                            <span class="ci-indicator ${this.getCarbonColor(data?.co2_intensity)}"></span>
+                            <span class="ci-label">${this.getCarbonLabel(data?.co2_intensity)}</span></p>
                             <div class="histogram-controls">
                                 <label for="granularity-select">Granularity:</label>
                                 <select id="granularity-select">
@@ -540,7 +558,6 @@ class CarbonFootprintPanel extends HTMLElement {
                         device_name: entityId
                     });
 
-                    // Only update device list
                     await this.updateDeviceList();
 
                 } catch (error) {
@@ -551,87 +568,214 @@ class CarbonFootprintPanel extends HTMLElement {
         });
     }
 
-    async showHardwareDialogAndCompute() {
-        const resp = await fetch('/api/carbon_footprint/blocks_footprints.json');
-        const jsonData = await resp.json();
+    async showHardwareDialogAndCompute(deviceMeta = {}) {
+        const initialHsl = {};
+        const inferred = null;
+        this.openFullForm(initialHsl, null);
+    }
 
-        const dialog = document.createElement('dialog');
-        dialog.classList.add('ha-dialog');
+    openFullForm(initialHsl = {}, inferred = null) {
+    const dialog = document.createElement('dialog');
+    dialog.classList.add('ha-dialog');
 
-        const rows = Object.entries(jsonData).map(([blockName, levels]) => {
-            const radios = Object.entries(levels).map(([levelId, values]) => {
-                const disabled = values.every(v => v === null);
-                const label = disabled ? `Level ${levelId} (N/A)` : `Level ${levelId} [${values.join(', ')}]`;
-                return `<label>
-                            <input type="radio" name="${blockName}" value="${levelId}" ${disabled ? 'disabled' : ''}>
-                            ${label}
-                        </label>`;
-            }).join('<br>');
-            return `<tr><td>${blockName}</td><td>${radios}</td></tr>`;
-        }).join('');
-
-        dialog.innerHTML = `
-            <form method="dialog" class="dialog-content">
-                <h2>Select Hardware Levels</h2>
-                <table>
-                    <thead>
-                        <tr><th>Functional Block</th><th>Level</th></tr>
-                    </thead>
-                    <tbody>${rows}</tbody>
-                </table>
-                <div class="dialog-actions">
-                    <button value="cancel">Cancel</button>
-                    <button value="confirm">Confirm</button>
-                </div>
-            </form>
-        `;
-
-        dialog.addEventListener('close', async () => {
-            if (dialog.returnValue === 'confirm') {
-                const hsl_values = {};
-                Object.keys(jsonData).forEach(block => {
-                    const checked = dialog.querySelector(`input[name="${block}"]:checked`);
-                    if (checked) hsl_values[block] = checked.value;
-                });
-
-                if (Object.keys(hsl_values).length === 0) {
-                    alert("No blocks selected.");
-                    return;
-                }
-
-                try {
-                    const result = await this._hass.callWS({
-                        type: 'carbon_footprint/compute_footprint',
-                        hsl_values
-                    });
-
-                    console.log('Computed CO2:', result);
-
-                    const formInput = this.querySelector('#carbon_footprint');
-                    if (formInput) {
-                        const values = result.values;
-                        const avg = values[1]; // TODO change this so we take the 3 values into account
-                        formInput.value = avg.toFixed(2);
-                    }
-
-                } catch (err) {
-                    console.error('Failed to compute footprint:', err);
-                    alert('Error computing carbon footprint: ' + err.message);
-                }
+    const questions = {
+        'ui': {
+            question: '1. User Interface (UI): Does it have a screen or complex controls?',
+            options: {
+                '0': 'No visible screen or controls.',
+                '1': 'Basic buttons/LEDs only.',
+                '2': 'Small screen / limited touch interface.',
+                '3': 'Medium to large screen (e.g., smart panel, TV).'
             }
-            dialog.remove();
+        },
+        'power_supply': {
+            question: '2. Power Supply: Is it battery powered / has a complex PSU?',
+            options: {
+                '0': 'No battery, mains powered.',
+                '1': 'Alkaline batteries (non-rechargeable).',
+                '2': 'Lithium batteries (rechargeable).',
+                '3': 'Large, complex power supply.'
+            }
+        },
+        'sensing': {
+            question: '3. Sensing: Does it have a camera or advanced sensors?',
+            options: {
+                '0': 'No active sensing.',
+                '1': 'Basic sensing (e.g., temp, humidity).',
+                '2': 'Advanced sensing (e.g., complex motion, sound).',
+                '3': 'High-end sensing (e.g., camera, depth sensor, LIDAR).'
+            }
+        },
+        'connectivity': {
+            question: '4. Connectivity: How does the device communicate?',
+            options: {
+                '0': 'No communications.',
+                '1': 'Simple low-power radio (e.g., Zigbee).',
+                '2': 'Mid-range wireless (e.g., basic Wi-Fi, Ethernet).',
+                '3': 'High-bandwidth / complex (e.g., high-speed Wi-Fi, cellular modem).'
+            }
+        },
+        'processing': {
+            question: '5. Processing: How "smart" is the device?',
+            options: {
+                '0': 'Basic, a switch.',
+                '1': 'Simple data collection.',
+                '2': 'Complex: data aggregation.',
+                '3': 'High-performance: streaming video encoding.'
+            }
+        },
+        'memory': {
+            question: '6. Memory: Does the device store a lot of data?',
+            options: {
+                '0': 'Minimal, no storage of data aside from firmware.',
+                '1': 'Modest: small data logging or storage.',
+                '2': 'Significant: enough to run a full OS, store video clips.',
+                '3': 'Large: has its own memory spot (SSD, HDD).'
+            }
+        },
+        'actuators': {
+            question: '7. Actuators: Does the device move physically or change its state?',
+            options: {
+                '0': 'No movement.',
+                '1': 'Simple mechanical movement (relay).',
+                '2': 'Motorized/complex movement (e.g., small motor).',
+                '3': 'High-power motors (e.g., robotic vacuum, valve control).'
+            }
+        },
+        'casing': {
+            question: '8. Casing: What is the approximate size and material?',
+            options: {
+                '0': 'Very small (no casing or in a wall box).',
+                '1': 'Small plastic casing.',
+                '2': 'Medium plastic / aluminium casing.',
+                '3': 'Large, rugged or complex casing.'
+            }
+        },
+        'transport': {
+            question: '9. Transport: Where do you think the device was shipped from?',
+            options: {
+                '0': 'No transport (locally made).',
+                '1': 'Regional transport (within continent).',
+                '2': 'Transport from another continent (Asia to Europe for example).',
+                '3': 'Long distance / heavy transport.'
+            }
+        },
+        'security': {
+            question: '10. Security: Does it have a security feature beyond standard communication encryption?',
+            options: {
+                '0': 'None or basic encryption.',
+                '1': 'Yes, includes embedded security/passwords.',
+            }
+        },
+        'others': {
+            question: '11. Others: Does the device include many small components not covered above (cables, resistors)?',
+            options: {
+                '0': 'Simple component list.',
+                '1': 'Standard set of small components.',
+                '2': 'Complex components (e.g., many discrete parts).',
+                '3': 'Highly complex (e.g., complex internal wiring).'
+            }
+        },
+    };
+
+    const createRadioGroup = (blockName, question, options) => {
+        let optionsHtml = '';
+        Object.entries(options).forEach(([level, label]) => {
+            const checked = initialHsl[blockName] == level ? 'checked' : '';
+            optionsHtml += `
+                <div class="radio-option">
+                    <input type="radio" id="${blockName}-${level}" name="${blockName}" value="${level}" ${checked}>
+                    <label for="${blockName}-${level}">${label}</label>
+                </div>
+            `;
         });
 
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css';
+        return `
+            <div class="question-group">
+                <p><b>${question}</b></p>
+                <div class="radio-container">
+                    ${optionsHtml}
+                </div>
+            </div>
+        `;
+    };
 
-        dialog.appendChild(link);
-
-        document.body.appendChild(dialog);
-        dialog.showModal();
+    let questionsHtml = '';
+    for (const [blockName, data] of Object.entries(questions)) {
+        questionsHtml += createRadioGroup(blockName, data.question, data.options);
     }
+
+    dialog.innerHTML = `
+        <form class="dialog-content">
+            <h2>Quick Device Questions</h2>
+            <p>Select the option that best describes the hardware block for your device.</p>
+            <div id="questions-list">
+                ${questionsHtml}
+            </div>
+
+            <p id="error-message" style="color: red; margin-top: 10px;"></p> <div style="margin-top:12px; display: flex; justify-content: flex-end; gap: 8px;">
+                <button id="cancel-button" type="button" value="cancel">Cancel</button>
+                <button id="compute-button" type="button" value="confirm">Compute Footprint</button>
+            </div>
+        </form>
+    `;
+
+    const computeBtn = dialog.querySelector('#compute-button');
+    const cancelBtn = dialog.querySelector('#cancel-button');
+    const errorMessage = dialog.querySelector('#error-message');
+
+    computeBtn.addEventListener('click', async () => {
+        errorMessage.textContent = '';
+        const hsl_values = Object.assign({}, initialHsl);
+        let allAnswered = true;
+
+        for (const blockName of Object.keys(questions)) {
+            const selectedRadio = dialog.querySelector(`input[name="${blockName}"]:checked`);
+            if (selectedRadio) {
+                hsl_values[blockName] = selectedRadio.value;
+            } else {
+                allAnswered = false;
+                break;
+            }
+        }
+
+        if (!allAnswered) {
+            errorMessage.textContent = "Please answer all the questions before computing the footprint.";
+            return;
+        }
+
+        const ALL_BLOCKS = ['ui', 'power_supply', 'sensing', 'connectivity', 'processing', 'memory', 'actuators', 'casing', 'transport', 'security', 'others'];
+        ALL_BLOCKS.forEach(b => {
+            if (hsl_values[b] === undefined) {
+                hsl_values[b] = initialHsl[b] ?? '0'; // Default HSL 0 as string
+            }
+        });
+
+        try {
+            //console.log('Computing footprint with HSL values:', hsl_values);
+            const result = await this._hass.callWS({ type: 'carbon_footprint/compute_footprint', hsl_values });
+
+            const formInput = this.querySelector('#carbon_footprint');
+            if (formInput) formInput.value = (result.values?.[1] ?? 0).toFixed(2);
+
+            dialog.close();
+            dialog.remove();
+
+        } catch (err) {
+            console.error('compute error', err);
+            errorMessage.textContent = `Could not compute footprint: ${err.message}`;
+        }
+    });
+
+    cancelBtn.addEventListener('click', () => {
+        dialog.close();
+        dialog.remove();
+    });
+
+    document.body.appendChild(dialog);
+    dialog.showModal();
+    }
+
 }
 
 if (!customElements.get('carbon-footprint-panel')) {

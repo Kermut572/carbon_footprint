@@ -280,3 +280,56 @@ button[value="cancel"] {
 #energy-histogram-container {
     margin-top: 16px;
 }
+
+.ci-indicator {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-left: 8px;
+}
+
+/* Colors */
+.ci-low {
+  background-color: #4caf50; /* green */
+}
+
+.ci-medium {
+  background-color: #ffc107; /* yellow */
+}
+
+.ci-high {
+  background-color: #f44336; /* red */
+}
+
+.ci-unknown {
+  background-color: #9e9e9e; /* gray */
+}
+
+.ci-label {
+  margin-left: 6px;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+#questions-list { max-height: 400px; overflow-y: auto; padding-right: 15px; }
+
+.question-group {
+    margin-bottom: 20px;
+    padding: 10px;
+    border: 1px solid var(--primary-color, #03a9f4); /* Using HA variable */
+    border-radius: 4px;
+}
+
+.question-group p { margin-top: 0; margin-bottom: 10px; font-size: 1.1em; }
+
+.radio-container { display: flex; flex-direction: column; margin-top: 5px; }
+
+.radio-option { margin-bottom: 5px; }
+
+.radio-option label { margin-left: 8px; font-weight: normal; cursor: pointer; }
+
+.radio-option input[type="radio"] { margin-right: 5px; }
+
+b { font-weight: 600; }
+
