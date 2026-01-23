@@ -1,84 +1,106 @@
-/**
- * Manages form rendering and hardware questionnaire.
- */
+//dialog manager
+import { HARDWARE_QUESTIONS } from './questions.js';
 
-import { HardwareQuestionnaire } from './hardware-questionnaire.js';
+export function openFullForm(instance, initialHsl = {}, inferred = null) {
+    const dialog = document.createElement('dialog');
+    dialog.classList.add('ha-dialog');
 
-export class FormManager {
-    constructor() {
-        this._hass = null;
-        this._hardwareQuestionnaire = new HardwareQuestionnaire();
-    }
+    const questions = HARDWARE_QUESTIONS;
 
-    setHass(hass) {
-        this._hass = hass;
-        this._hardwareQuestionnaire.setHass(hass);
-    }
+    const createRadioGroup = (blockName, question, options) => {
+        let optionsHtml = '';
+        Object.entries(options).forEach(([level, label]) => {
+            const checked = initialHsl[blockName] == level ? 'checked' : '';
+            optionsHtml += `
+                <div class="radio-option">
+                    <input type="radio" id="${blockName}-${level}" name="${blockName}" value="${level}" ${checked}>
+                    <label for="${blockName}-${level}">${label}</label>
+                </div>
+            `;
+        });
 
-    renderForm(devices) {
         return `
-            <form id="add-device-form">
-                <div>
-                    <label for="device_name">Entity</label>
-                    <select id="device_name" name="device_name" required>
-                        <option value="">Select an entity...</option>
-                        ${devices.map((deviceName) => `
-                            <option value="${deviceName}">${deviceName}</option>
-                        `).join('')}
-                    </select>
+            <div class="question-group">
+                <p><b>${question}</b></p>
+                <div class="radio-container">
+                    ${optionsHtml}
                 </div>
-                <div>
-                    <label for="device_type">Device Type</label>
-                    <input type="text" id="device_type" name="device_type" required>
-                </div>
-                <div>
-                    <label for="carbon_footprint">Carbon Footprint (kgCO₂eq)</label>
-                    <input type="number" id="carbon_footprint" name="carbon_footprint" step="0.01" required>
-                </div>
-                <div class="button-group">
-                    <button type="button" id="compute-footprint-btn">Compute Footprint</button>
-                    <button type="submit">Add Device</button>
-                </div>
-            </form>
+            </div>
         `;
+    };
+
+    let questionsHtml = '';
+    for (const [blockName, data] of Object.entries(questions)) {
+        questionsHtml += createRadioGroup(blockName, data.question, data.options);
     }
 
-    attachHandlers(form, computeBtn, deviceListContainer, panel) {
-        if (form) {
-            form.addEventListener('submit', async (e) => {
-                await this._handleFormSubmit(e, panel);
-            });
+    dialog.innerHTML = `
+        <form class="dialog-content">
+            <h2>Quick Device Questions</h2>
+            <p>Select the option that best describes the hardware block for your device.</p>
+            <div id="questions-list">
+                ${questionsHtml}
+            </div>
+
+            <p id="error-message" style="color: red; margin-top: 10px;"></p> <div style="margin-top:12px; display: flex; justify-content: flex-end; gap: 8px;">
+                <button id="cancel-button" type="button" value="cancel">Cancel</button>
+                <button id="compute-button" type="button" value="confirm">Compute Footprint</button>
+            </div>
+        </form>
+    `;
+
+    const computeBtn = dialog.querySelector('#compute-button');
+    const cancelBtn = dialog.querySelector('#cancel-button');
+    const errorMessage = dialog.querySelector('#error-message');
+
+    computeBtn.addEventListener('click', async () => {
+        errorMessage.textContent = '';
+        const hsl_values = Object.assign({}, initialHsl);
+        let allAnswered = true;
+
+        for (const blockName of Object.keys(questions)) {
+            const selectedRadio = dialog.querySelector(`input[name="${blockName}"]:checked`);
+            if (selectedRadio) {
+                hsl_values[blockName] = selectedRadio.value;
+            } else {
+                allAnswered = false;
+                break;
+            }
         }
 
-        if (computeBtn) {
-            computeBtn.addEventListener('click', () => {
-                this._hardwareQuestionnaire.show();
-            });
+        if (!allAnswered) {
+            errorMessage.textContent = "Please answer all the questions before computing the footprint.";
+            return;
         }
-    }
 
-    async _handleFormSubmit(e, panel) {
-        e.preventDefault();
-
-        const form = e.target;
-        const formData = new FormData(form);
+        const ALL_BLOCKS = ['ui', 'power_supply', 'sensing', 'connectivity', 'processing', 'memory', 'actuators', 'casing', 'transport', 'security', 'others'];
+        ALL_BLOCKS.forEach(b => {
+            if (hsl_values[b] === undefined) {
+                hsl_values[b] = initialHsl[b] ?? '0'; // Default HSL 0 as string
+            }
+        });
 
         try {
-            await this._hass.callWS({
-                type: 'carbon_footprint/set_device',
-                device_name: formData.get('device_name'),
-                device_type: formData.get('device_type'),
-                carbon_footprint: parseFloat(formData.get('carbon_footprint')),
-                metadata: {},
-            });
+            //console.log('Computing footprint with HSL values:', hsl_values);
+            const result = await instance._hass.callWS({ type: 'carbon_footprint/compute_footprint', hsl_values });
 
-            const newData = await this._hass.callWS({
-                type: 'carbon_footprint/get_data',
-            });
-            await panel.render(newData);
-        } catch (error) {
-            console.error('Failed to add device:', error);
-            alert(`Error adding device: ${error.message}`);
+            const formInput = instance.querySelector('#carbon_footprint');
+            if (formInput) formInput.value = (result.values?.[1] ?? 0).toFixed(2);
+
+            dialog.close();
+            dialog.remove();
+
+        } catch (err) {
+            console.error('compute error', err);
+            errorMessage.textContent = `Could not compute footprint: ${err.message}`;
         }
+    });
+
+    cancelBtn.addEventListener('click', () => {
+        dialog.close();
+        dialog.remove();
+    });
+
+    document.body.appendChild(dialog);
+    dialog.showModal();
     }
-}
