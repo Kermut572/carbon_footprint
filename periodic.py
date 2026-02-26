@@ -39,3 +39,7 @@ async def async_update_energy_footprint(
         energy_store.async_set_energy_footprint(date_key, energy_footprint)
     )
     _LOGGER.debug("Stored %s gCO₂eq in the EnergyStore", energy_footprint)
+
+    # Emit event so sensors can react to the update
+    hass.bus.async_fire("carbon_footprint_energy_updated")
+

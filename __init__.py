@@ -17,7 +17,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.typing import ConfigType
 
 from . import ws_api
-from .const import DOMAIN
+from .const import DOMAIN, TEST_MODE
 from .energy_store import EnergyStore
 from .periodic import async_update_energy_footprint
 from .store import CFStore
@@ -35,7 +35,7 @@ class CarbonFootprintData:
     energy_store: EnergyStore
 
 
-_PLATFORMS: list[Platform] = []
+_PLATFORMS: list[Platform] = [Platform.SENSOR]
 type CarbonFootprintConfigEntry = ConfigEntry[CarbonFootprintData]
 
 
@@ -95,7 +95,14 @@ async def async_setup_entry(
 
     await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
 
-    await async_populate_energy_store(hass, energy_store, _LOGGER)
+    # Generate test data if TEST_MODE is enabled
+    if TEST_MODE:
+        from .test_data import async_setup_test_data
+
+        await async_setup_test_data(hass, energy_store, cf_store)
+    else:
+        # Populate with real historical data from Electricity Maps
+        await async_populate_energy_store(hass, energy_store, _LOGGER)
 
     return True
 

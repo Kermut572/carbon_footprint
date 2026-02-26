@@ -35,6 +35,8 @@ def async_register_websocket_handlers(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_all_devices_energy)
     websocket_api.async_register_command(hass, ws_update_devices_energy)
     websocket_api.async_register_command(hass, ws_get_energy_footprint_time_interval)
+    websocket_api.async_register_command(hass, ws_get_carbon_by_room)
+    websocket_api.async_register_command(hass, ws_get_carbon_by_room_with_usage)
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_devices_to_add"})
@@ -434,3 +436,270 @@ def ws_get_energy_footprint_time_interval(
     connection.send_result(msg["id"], {"energy_footprints": results})
 
     return
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/get_carbon_by_room"}
+)
+@callback
+def ws_get_carbon_by_room(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Get carbon footprint grouped by room/area.
+    
+    Groups all configured devices by their Home Assistant room/area and sums
+    their carbon footprints. Returns data suitable for pie/bar chart visualization.
+    
+    Response format:
+    {
+        "rooms": [
+            {
+                "room": "Living Room",
+                "room_id": "area_id_123",
+                "total_carbon": 45.23,
+                "devices": [
+                    {"name": "TV", "carbon": 20.5},
+                    {"name": "Heater", "carbon": 24.73}
+                ]
+            },
+            ...
+        ]
+    }
+    """
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        connection.send_error(
+            msg["id"], "config_entry_not_found", "No config entry found"
+        )
+        return
+
+    cf_store = entries[0].runtime_data.cf_store
+    devices = cf_store.get_devices_data()
+
+    # Get device and area registries
+    device_reg = dr.async_get(hass)
+    entity_reg = er.async_get(hass)
+
+    # Group devices by room
+    rooms_dict: dict[str, dict] = {}
+
+    for device_name, device_info in devices.items():
+        # Get carbon footprint for this device
+        carbon_value = device_info.get("carbon_footprint", 0)
+        
+        # Try to find the device in the registry
+        device_id = device_info.get("metadata", {}).get("register_id")
+        room_name = "Unknown Room"
+        room_id = None
+
+        if device_id and device_id in device_reg.devices:
+            device_entry = device_reg.devices[device_id]
+            area_id = device_entry.area_id
+            
+            if area_id:
+                room_id = area_id
+                # Get area registry to get the human-readable name
+                area_reg = hass.areas.async_get_area(area_id)
+                if area_reg:
+                    room_name = area_reg.name
+        
+        # Fallback: Try to extract room name from device name (for test data)
+        # e.g., "Living Room TV" -> "Living Room"
+        if room_name == "Unknown Room":
+            parts = device_name.split()
+            if len(parts) >= 2:
+                # Try to detect room name patterns
+                potential_room = " ".join(parts[:-1])
+                # Check if it looks like a room (contains common room keywords)
+                if any(keyword in potential_room.lower() 
+                       for keyword in ["room", "kitchen", "bathroom", "garage", "hallway", "living", "bed", "dining"]):
+                    room_name = potential_room
+
+        # Initialize room if not seen before
+        if room_name not in rooms_dict:
+            rooms_dict[room_name] = {
+                "room": room_name,
+                "room_id": room_id,
+                "total_carbon": 0,
+                "devices": [],
+            }
+
+        # Add device to room
+        rooms_dict[room_name]["devices"].append({
+            "name": device_name,
+            "carbon": carbon_value,
+        })
+        rooms_dict[room_name]["total_carbon"] += carbon_value
+
+    # Convert to list and sort by total carbon (descending)
+    rooms_list = list(rooms_dict.values())
+    rooms_list.sort(key=lambda x: x["total_carbon"], reverse=True)
+
+    connection.send_result(msg["id"], {"rooms": rooms_list})
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_carbon_by_room_with_usage"})
+@callback
+def ws_get_carbon_by_room_with_usage(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Get carbon footprint by room with both embodied and usage breakdown.
+    
+    Returns embodied carbon (manufacturing/transport) and estimated usage carbon
+    (power consumption × CO2 intensity) for each room.
+    
+    Response format:
+    {
+        "rooms": [
+            {
+                "room": "Living Room",
+                "room_id": "area_id_123",
+                "embodied_carbon": 45.0,
+                "usage_carbon": 12.5,
+                "total_carbon": 57.5,
+                "devices": [
+                    {
+                        "name": "TV",
+                        "embodied_carbon": 15.5,
+                        "usage_carbon": 0.5,
+                        "total_carbon": 16.0
+                    },
+                    ...
+                ]
+            },
+            ...
+        ]
+    }
+    """
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        connection.send_error(
+            msg["id"], "config_entry_not_found", "No config entry found"
+        )
+        return
+
+    cf_store = entries[0].runtime_data.cf_store
+    energy_store = entries[0].runtime_data.energy_store
+    devices = cf_store.get_devices_data()
+
+    # Get device and area registries
+    device_reg = dr.async_get(hass)
+    entity_reg = er.async_get(hass)
+
+    # Get current CO2 intensity
+    co2_intensity_state = hass.states.get("sensor.electricity_maps_co2_intensity")
+    co2_intensity = 200.0  # default fallback
+    if co2_intensity_state and co2_intensity_state.state not in ("unknown", "unavailable"):
+        try:
+            co2_intensity = float(co2_intensity_state.state)
+        except (ValueError, TypeError):
+            co2_intensity = 200.0
+
+    # Group devices by room
+    rooms_dict: dict[str, dict] = {}
+
+    for device_name, device_info in devices.items():
+        # Get embodied carbon for this device
+        embodied_carbon = device_info.get("carbon_footprint", 0)
+        
+        # Get usage carbon: prefer metadata value (for test data), fall back to power sensor calculation
+        usage_carbon = 0.0
+        metadata = device_info.get("metadata", {})
+        
+        # Check if there's pre-defined usage carbon in metadata (e.g., from test data)
+        if "usage_carbon_kg" in metadata:
+            try:
+                usage_carbon = float(metadata["usage_carbon_kg"])
+            except (ValueError, TypeError):
+                usage_carbon = 0.0
+        else:
+            # Try to estimate from power sensors if no metadata value
+            entity_id = None
+            if "register_id" in metadata:
+                # Try to find the entity
+                device_id = metadata["register_id"]
+                if device_id in device_reg.devices:
+                    device_entry = device_reg.devices[device_id]
+                    # Get entities for this device
+                    device_entities = er.async_entries_for_device(entity_reg, device_id)
+                    # Find power sensor
+                    for ent in device_entities:
+                        if "power" in ent.entity_id.lower():
+                            entity_id = ent.entity_id
+                            break
+            
+            # If we found a power sensor, calculate usage carbon (simplified: assuming 1 hour)
+            if entity_id:
+                power_state = hass.states.get(entity_id)
+                if power_state and power_state.state not in ("unknown", "unavailable"):
+                    try:
+                        power_w = float(power_state.state)
+                        # Usage carbon = (power_W * co2_intensity_gCO2/kWh) / 1_000_000
+                        # Simplified: hour of usage at current power
+                        usage_carbon = (power_w * co2_intensity) / 1_000_000
+                    except (ValueError, TypeError):
+                        usage_carbon = 0.0
+        
+        # Try to find the room
+        room_name = "Unknown Room"
+        room_id = None
+
+        device_id = metadata.get("register_id")
+        if device_id and device_id in device_reg.devices:
+            device_entry = device_reg.devices[device_id]
+            area_id = device_entry.area_id
+            
+            if area_id:
+                room_id = area_id
+                area_reg = hass.areas.async_get_area(area_id)
+                if area_reg:
+                    room_name = area_reg.name
+        
+        # Fallback: Try to extract room name from device name
+        if room_name == "Unknown Room":
+            parts = device_name.split()
+            if len(parts) >= 2:
+                potential_room = " ".join(parts[:-1])
+                if any(keyword in potential_room.lower() 
+                       for keyword in ["room", "kitchen", "bathroom", "garage", "hallway", "living", "bed", "dining"]):
+                    room_name = potential_room
+
+        # Initialize room if not seen before
+        if room_name not in rooms_dict:
+            rooms_dict[room_name] = {
+                "room": room_name,
+                "room_id": room_id,
+                "embodied_carbon": 0,
+                "usage_carbon": 0,
+                "total_carbon": 0,
+                "devices": [],
+            }
+
+        # Add device to room
+        device_total = embodied_carbon + usage_carbon
+        rooms_dict[room_name]["devices"].append({
+            "name": device_name,
+            "embodied_carbon": round(embodied_carbon, 2),
+            "usage_carbon": round(usage_carbon, 2),
+            "total_carbon": round(device_total, 2),
+        })
+        rooms_dict[room_name]["embodied_carbon"] += embodied_carbon
+        rooms_dict[room_name]["usage_carbon"] += usage_carbon
+        rooms_dict[room_name]["total_carbon"] += device_total
+
+    # Convert to list, round values, and sort by total carbon
+    rooms_list = []
+    for room_data in rooms_dict.values():
+        room_data["embodied_carbon"] = round(room_data["embodied_carbon"], 2)
+        room_data["usage_carbon"] = round(room_data["usage_carbon"], 2)
+        room_data["total_carbon"] = round(room_data["total_carbon"], 2)
+        rooms_list.append(room_data)
+    
+    rooms_list.sort(key=lambda x: x["total_carbon"], reverse=True)
+    
+    connection.send_result(msg["id"], {"rooms": rooms_list})
+

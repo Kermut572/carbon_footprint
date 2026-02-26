@@ -14,7 +14,12 @@ class CarbonFootprintPanel extends HTMLElement {
         this._setup = false
         this._histogramData = null;
         this._chart = null;
+        this._roomChart = null;
+        this._deviceChart = null;
+        this._roomData = null;
+        this._selectedRoom = null;
         this._currentPage = 'main'; // 'main' or 'settings'
+        this._carbonView = 'total'; // 'total', 'embodied', or 'usage'
 
         this._chartGranularity = {
             HOUR: "hour",
@@ -113,6 +118,21 @@ class CarbonFootprintPanel extends HTMLElement {
         }
     }
 
+    async getCarbonByRoom() {
+        try {
+            const result = await this._hass.callWS({
+                type: 'carbon_footprint/get_carbon_by_room_with_usage'
+            });
+
+            this._roomData = result.rooms || [];
+            return this._roomData;
+
+        } catch (err) {
+            console.error('Error loading room data:', err);
+            return [];
+        }
+    }
+
     async updateDeviceList() {
         return await CarbonUtils.updateDeviceList(this);
     }
@@ -140,6 +160,9 @@ class CarbonFootprintPanel extends HTMLElement {
                             gCO₂eq/kWh
                             <span class="ci-indicator ${CarbonUtils.getCarbonColor(data?.co2_intensity)}"></span>
                             <span class="ci-label">${CarbonUtils.getCarbonLabel(data?.co2_intensity)}</span></p>
+                            <p style="font-size: 12px; color: #666; margin-top: 8px; margin-bottom: 16px;">
+                                <em>Grid carbon intensity over time (in grams CO₂ equivalent per kilowatt-hour)</em>
+                            </p>
                             <div class="histogram-controls">
                                 <label for="granularity-select">Granularity:</label>
                                 <select id="granularity-select">
@@ -162,6 +185,61 @@ class CarbonFootprintPanel extends HTMLElement {
                         </div>
 
                     </ha-card>
+
+                    <ha-card header="Carbon Usage by Room">
+                        <div class="card-content">
+                            <!-- Carbon view toggle with unit explanation -->
+                            <div style="margin-bottom: 12px;">
+                                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                    <label style="display: flex; align-items: center; cursor: pointer;">
+                                        <input type="radio" name="carbon-view" value="total" checked style="margin-right: 6px;">
+                                        <span>Total (Stacked)</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; cursor: pointer;">
+                                        <input type="radio" name="carbon-view" value="embodied" style="margin-right: 6px;">
+                                        <span>Embodied Only</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; cursor: pointer;">
+                                        <input type="radio" name="carbon-view" value="usage" style="margin-right: 6px;">
+                                        <span>Usage Only</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Room-level pie chart view -->
+                            <div id="room-chart-view" style="display: block;">
+                                <div style="position: relative; height: 400px; width: 100%;">
+                                    <canvas id="room-pie-chart"></canvas>
+                                </div>
+                            </div>
+
+                            <!-- Device detail view (hidden by default) -->
+                            <div id="device-detail-view" style="display: none;">
+                                <button id="back-to-rooms-btn" style="margin-bottom: 16px; padding: 8px 16px; background-color: #757575; color: white; border: none; border-radius: 4px; cursor: pointer;">← Back to Rooms</button>
+                                <h3 id="selected-room-title"></h3>
+                                
+                                <!-- Legend explaining embodied vs usage -->
+                                <div style="margin-bottom: 16px; padding: 12px; background-color: #f9f9f9; border-radius: 4px; border: 1px solid #ddd; font-size: 13px;">
+                                    <div style="margin-bottom: 8px;"><strong>Carbon Types (kgCO₂eq):</strong></div>
+                                    <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <div style="width: 16px; height: 16px; background-color: rgba(76, 175, 80, 0.7); border: 1px solid rgb(76, 175, 80);"></div>
+                                            <span><strong>Embodied:</strong> Manufacturing, transport, disposal</span>
+                                        </div>
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <div style="width: 16px; height: 16px; background-color: rgba(33, 150, 243, 0.7); border: 1px solid rgb(33, 150, 243);"></div>
+                                            <span><strong>Usage:</strong> Operational energy consumption</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <p id="device-breakdown-text" style="margin-bottom: 12px; font-size: 13px; color: #666;"></p>
+                                <div style="position: relative; height: 300px; width: 100%;">
+                                    <canvas id="device-bar-chart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </ha-card>
                 </div>
             </ha-app-layout>
         `;
@@ -169,12 +247,14 @@ class CarbonFootprintPanel extends HTMLElement {
         if (typeof Chart === 'undefined') {
             const script = document.createElement('script');
             script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
-            script.onload = () => {
+            script.onload = async () => {
                 this.renderHistogram();
+                await this.renderRoomChart();
             };
             document.head.appendChild(script);
         } else {
             this.renderHistogram();
+            await this.renderRoomChart();
         }
 
         const granSelect = this.querySelector('#granularity-select');
@@ -201,6 +281,38 @@ class CarbonFootprintPanel extends HTMLElement {
             settingsBtn.addEventListener('click', () => {
                 this._currentPage = 'settings';
                 this.render(data);
+            });
+        }
+
+        // Add back to rooms button handler
+        const backBtn = this.querySelector('#back-to-rooms-btn');
+        if (backBtn) {
+            backBtn.addEventListener('click', () => {
+                this.showRoomChart();
+            });
+        }
+
+        // Add carbon view radio buttons event listeners
+        const carbonViewRadios = this.querySelectorAll('input[name="carbon-view"]');
+        for (const radio of carbonViewRadios) {
+            radio.addEventListener('change', async (e) => {
+                this._carbonView = e.target.value;
+                await this.renderRoomChart();
+                
+                // If device detail view is visible, also re-render device chart
+                const deviceDetailView = this.querySelector('#device-detail-view');
+                if (deviceDetailView && deviceDetailView.style.display !== 'none') {
+                    // Re-fetch room data to get updated values for the selected view
+                    const rooms = await this.getCarbonByRoom();
+                    if (rooms && this._selectedRoom) {
+                        // Find the updated room in the new data
+                        const updatedRoom = rooms.find(r => r.room === this._selectedRoom.room);
+                        if (updatedRoom) {
+                            this._selectedRoom = updatedRoom;
+                            this.renderDeviceChart();
+                        }
+                    }
+                }
             });
         }
 
@@ -460,6 +572,257 @@ class CarbonFootprintPanel extends HTMLElement {
                         }
                     }
                 }
+            }
+        });
+    }
+
+    async renderRoomChart() {
+        const canvas = this.querySelector('#room-pie-chart');
+        if (!canvas) {
+            return;
+        }
+
+        // Fetch room data
+        const rooms = await this.getCarbonByRoom();
+        if (!rooms || rooms.length === 0) {
+            const container = this.querySelector('#room-chart-view');
+            if (container) {
+                container.innerHTML = '<p>No room data available</p>';
+            }
+            return;
+        }
+
+        // Prepare data for pie chart based on selected view
+        const labels = rooms.map(room => room.room);
+        let values;
+        let datasetLabel;
+
+        switch (this._carbonView) {
+            case 'embodied':
+                values = rooms.map(room => room.embodied_carbon);
+                datasetLabel = 'Embodied Carbon';
+                break;
+            case 'usage':
+                values = rooms.map(room => room.usage_carbon);
+                datasetLabel = 'Usage Carbon';
+                break;
+            case 'total':
+            default:
+                values = rooms.map(room => room.total_carbon);
+                datasetLabel = 'Total Carbon';
+        }
+
+        const colors = [
+            'rgba(76, 175, 80, 0.6)',   // Green
+            'rgba(33, 150, 243, 0.6)',  // Blue
+            'rgba(255, 152, 0, 0.6)',   // Orange
+            'rgba(244, 67, 54, 0.6)',   // Red
+            'rgba(156, 39, 176, 0.6)',  // Purple
+            'rgba(0, 150, 136, 0.6)',   // Teal
+        ];
+
+        if (this._roomChart) {
+            this._roomChart.destroy();
+        }
+
+        this._roomChart = new Chart(canvas.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: datasetLabel,
+                    data: values,
+                    backgroundColor: colors.slice(0, rooms.length),
+                    borderColor: colors.slice(0, rooms.length).map(c => c.replace('0.6', '1')),
+                    borderWidth: 2,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            padding: 15,
+                            font: { size: 13 }
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: 'kgCO₂eq',
+                        font: { size: 12, weight: 'normal' },
+                        padding: { bottom: 10 }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => `${context.label}: ${context.parsed.toFixed(2)} kgCO₂eq`
+                        }
+                    }
+                }
+            }
+        });
+
+        // Add click handler to pie chart
+        this._addRoomChartClickHandler(rooms, canvas);
+    }
+
+    _addRoomChartClickHandler(rooms, canvas) {
+        canvas.onclick = (event) => {
+            const points = this._roomChart.getElementsAtEventForMode(event, 'nearest', { intersect: true }, true);
+            if (points.length > 0) {
+                const index = points[0].index;
+                this._selectedRoom = rooms[index];
+                this.showDeviceDetail();
+                this.renderDeviceChart();
+            }
+        };
+    }
+
+    showDeviceDetail() {
+        const roomChartView = this.querySelector('#room-chart-view');
+        const deviceDetailView = this.querySelector('#device-detail-view');
+        const roomTitle = this.querySelector('#selected-room-title');
+
+        if (roomChartView && deviceDetailView) {
+            roomChartView.style.display = 'none';
+            deviceDetailView.style.display = 'block';
+            roomTitle.textContent = `Devices in ${this._selectedRoom.room}`;
+        }
+    }
+
+    showRoomChart() {
+        const roomChartView = this.querySelector('#room-chart-view');
+        const deviceDetailView = this.querySelector('#device-detail-view');
+
+        if (roomChartView && deviceDetailView) {
+            roomChartView.style.display = 'block';
+            deviceDetailView.style.display = 'none';
+            this._selectedRoom = null;
+        }
+    }
+
+    renderDeviceChart() {
+        if (!this._selectedRoom) {
+            return;
+        }
+
+        const canvas = this.querySelector('#device-bar-chart');
+        if (!canvas) {
+            return;
+        }
+
+        const devices = this._selectedRoom.devices;
+        const labels = devices.map(d => d.name);
+        let values;
+        let datasetLabel;
+        let breakdown = '';
+
+        // Calculate breakdown text
+        const embodiedTotal = devices.reduce((sum, d) => sum + (d.embodied_carbon || 0), 0);
+        const usageTotal = devices.reduce((sum, d) => sum + (d.usage_carbon || 0), 0);
+        const totalSum = devices.reduce((sum, d) => sum + (d.total_carbon || 0), 0);
+
+        breakdown = `Embodied: ${embodiedTotal.toFixed(2)} kgCO₂eq | Usage: ${usageTotal.toFixed(2)} kgCO₂eq | Total: ${totalSum.toFixed(2)} kgCO₂eq`;
+        const breakdownText = this.querySelector('#device-breakdown-text');
+        if (breakdownText) {
+            breakdownText.textContent = breakdown;
+        }
+
+        if (this._deviceChart) {
+            this._deviceChart.destroy();
+        }
+
+        // Build datasets based on view
+        let datasets;
+        let stacked = false;
+
+        if (this._carbonView === 'total') {
+            // Stacked bars showing embodied and usage
+            const embodiedValues = devices.map(d => d.embodied_carbon);
+            const usageValues = devices.map(d => d.usage_carbon);
+            
+            datasets = [
+                {
+                    label: 'Embodied Carbon',
+                    data: embodiedValues,
+                    backgroundColor: 'rgba(76, 175, 80, 0.7)',  // Green
+                    borderColor: 'rgb(76, 175, 80)',
+                    borderWidth: 1,
+                },
+                {
+                    label: 'Usage Carbon',
+                    data: usageValues,
+                    backgroundColor: 'rgba(33, 150, 243, 0.7)',  // Blue
+                    borderColor: 'rgb(33, 150, 243)',
+                    borderWidth: 1,
+                }
+            ];
+            stacked = true;
+        } else if (this._carbonView === 'embodied') {
+            // Single bars for embodied
+            const embodiedValues = devices.map(d => d.embodied_carbon);
+            datasets = [
+                {
+                    label: 'Embodied Carbon',
+                    data: embodiedValues,
+                    backgroundColor: 'rgba(76, 175, 80, 0.7)',  // Green
+                    borderColor: 'rgb(76, 175, 80)',
+                    borderWidth: 2,
+                }
+            ];
+        } else {
+            // Single bars for usage
+            const usageValues = devices.map(d => d.usage_carbon);
+            datasets = [
+                {
+                    label: 'Usage Carbon',
+                    data: usageValues,
+                    backgroundColor: 'rgba(33, 150, 243, 0.7)',  // Blue
+                    borderColor: 'rgb(33, 150, 243)',
+                    borderWidth: 2,
+                }
+            ];
+        }
+
+        this._deviceChart = new Chart(canvas.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: 'y',  // Horizontal bar chart
+                scales: {
+                    x: {
+                        stacked: stacked,
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'kgCO₂eq',
+                            font: { weight: 'bold', size: 12 }
+                        },
+                        ticks: {
+                            callback: (value) => `${value}`
+                        }
+                    },
+                    y: {
+                        stacked: stacked,
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => `${context.dataset.label}: ${context.parsed.x.toFixed(2)} kgCO₂eq`
+                        }
+                    }
+                },
             }
         });
     }
