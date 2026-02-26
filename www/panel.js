@@ -14,6 +14,7 @@ class CarbonFootprintPanel extends HTMLElement {
         this._setup = false
         this._histogramData = null;
         this._chart = null;
+        this._currentPage = 'main'; // 'main' or 'settings'
 
         this._chartGranularity = {
             HOUR: "hour",
@@ -117,20 +118,18 @@ class CarbonFootprintPanel extends HTMLElement {
     }
 
     async render(data) {
-        const devicesResp = await this._hass.callWS({ type: 'carbon_footprint/get_devices_to_add' });
-        const devicesArray = devicesResp.device_names || [];
-        const hasDevices = data && data.devices && Object.keys(data.devices).length > 0;
-
-        const allDevicesEnergyResp = await this.getAllDevicesEnergy();
-        const energyDevices = allDevicesEnergyResp.devices_energy || [];
-        energyDevices.sort((a, b) => b.total_energy_kwh - a.total_energy_kwh);
+        if (this._currentPage === 'settings') {
+            this.renderSettingsPage(data);
+            return;
+        }
 
         const energyHistogram = await this.getEnergyHistogram();
 
         this.innerHTML = `
             <ha-app-layout>
-                <header class="ha-header">
+                <header class="ha-header" style="display: flex; justify-content: space-between; align-items: center;">
                     <h1>Carbon Footprint</h1>
+                    <button id="settings-btn" style="position: absolute; right: 20px; top: 15px; padding: 8px 16px; background-color: #03a9f4; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Settings</button>
                 </header>
 
                 <div class="content" slot="content">
@@ -162,59 +161,6 @@ class CarbonFootprintPanel extends HTMLElement {
                             </div>
                         </div>
 
-                    </ha-card>
-
-                    <ha-card header="Add New Device">
-                        <div class="card-content">
-                            ${this.renderForm(devicesArray)}
-                        </div>
-                    </ha-card>
-
-                    <ha-card header="Configured Devices">
-                        <div class="card-content device-list-container">
-                            ${hasDevices ? `
-                                <ul>
-                                    ${Object.entries(data.devices).map(([device_name, info]) => `
-                                        <li>
-                                            <div class="device-info">
-                                                <div>
-                                                    <b>${device_name}</b><br>
-                                                    Type: ${info.type || 'Unknown'}<br>
-                                                    Carbon: ${info.carbon_footprint || 0} kgCO₂eq <br>
-                                                    Manfucturer: ${info.metadata?.manufacturer || 'N/A'}<br>
-                                                    Model: ${info.metadata?.model || 'N/A'}<br>
-                                                    Model ID: ${info.metadata?.model_id || 'N/A'}<br>
-                                                    Class: ${info.metadata?.device_classes || 'N/A'}<br>
-                                                    Total Energy Consumed: ${info.metadata?.total_energy || 'N/A'}<br>
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    class="delete-btn"
-                                                    data-entity-id="${device_name}"
-                                                    title="Remove device">
-                                                    ✕
-                                                </button>
-                                            </div>
-                                        </li>
-                                    `).join('')}
-                                </ul>
-                            ` : `<p>No devices configured yet.</p>`}
-                        </div>
-                    </ha-card>
-
-                    <ha-card header="All Devices">
-                        <div class="card-header">
-                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                            <label for="sort-mode" style="font-weight: 500;">Sort by:</label>
-                            <select id="sort-mode" style="width : auto; min-width=150px; max-width="200px;">
-                                <option value="energy">Energy Consumption</option>
-                                <option value="name">Alphabetical</option>
-                            </select>
-                            </div>
-                        </div>
-                        <div class="card-content" id="energy-table-container">
-                            ${this.renderEnergyTable(energyDevices)}
-                        </div>
                     </ha-card>
                 </div>
             </ha-app-layout>
@@ -249,23 +195,14 @@ class CarbonFootprintPanel extends HTMLElement {
             });
         }
 
-        const sortSelect = this.querySelector('#sort-mode');
-        const tableContainer = this.querySelector('#energy-table-container');
-
-        if (sortSelect && tableContainer) {
-        sortSelect.addEventListener('change', () => {
-            let sortedDevices = [...energyDevices];
-            if (sortSelect.value === 'energy') {
-            sortedDevices.sort((a, b) => b.total_energy_kwh - a.total_energy_kwh);
-            } else if (sortSelect.value === 'name') {
-            sortedDevices.sort((a, b) => a.device_name.localeCompare(b.device_name));
-            }
-            tableContainer.innerHTML = this.renderEnergyTable(sortedDevices);
-        });
+        // Add settings button click handler
+        const settingsBtn = this.querySelector('#settings-btn');
+        if (settingsBtn) {
+            settingsBtn.addEventListener('click', () => {
+                this._currentPage = 'settings';
+                this.render(data);
+            });
         }
-
-
-        this.attachFormHandler();
 
         const link = document.createElement('link');
         link.rel = 'stylesheet';
@@ -325,6 +262,112 @@ class CarbonFootprintPanel extends HTMLElement {
             </tbody>
             </table>
         `;
+    }
+
+    async renderSettingsPage(data) {
+        const devicesResp = await this._hass.callWS({ type: 'carbon_footprint/get_devices_to_add' });
+        const devicesArray = devicesResp.device_names || [];
+        const hasDevices = data && data.devices && Object.keys(data.devices).length > 0;
+
+        const allDevicesEnergyResp = await this.getAllDevicesEnergy();
+        const energyDevices = allDevicesEnergyResp.devices_energy || [];
+        energyDevices.sort((a, b) => b.total_energy_kwh - a.total_energy_kwh);
+
+        this.innerHTML = `
+            <ha-app-layout>
+                <header class="ha-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <h1>Carbon Footprint</h1>
+                    <button id="back-btn" style="position: absolute; right: 20px; top: 15px; padding: 8px 16px; background-color: #03a9f4; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">← Back</button>
+                </header>
+
+                <div class="content" slot="content">
+                    <ha-card header="Add New Device">
+                        <div class="card-content">
+                            ${this.renderForm(devicesArray)}
+                        </div>
+                    </ha-card>
+
+                    <ha-card header="Configured Devices">
+                        <div class="card-content device-list-container">
+                            ${hasDevices ? `
+                                <ul>
+                                    ${Object.entries(data.devices).map(([device_name, info]) => `
+                                        <li>
+                                            <div class="device-info">
+                                                <div>
+                                                    <b>${device_name}</b><br>
+                                                    Type: ${info.type || 'Unknown'}<br>
+                                                    Carbon: ${info.carbon_footprint || 0} kgCO₂eq <br>
+                                                    Manfucturer: ${info.metadata?.manufacturer || 'N/A'}<br>
+                                                    Model: ${info.metadata?.model || 'N/A'}<br>
+                                                    Model ID: ${info.metadata?.model_id || 'N/A'}<br>
+                                                    Class: ${info.metadata?.device_classes || 'N/A'}<br>
+                                                    Total Energy Consumed: ${info.metadata?.total_energy || 'N/A'}<br>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    class="delete-btn"
+                                                    data-entity-id="${device_name}"
+                                                    title="Remove device">
+                                                    ✕
+                                                </button>
+                                            </div>
+                                        </li>
+                                    `).join('')}
+                                </ul>
+                            ` : `<p>No devices configured yet.</p>`}
+                        </div>
+                    </ha-card>
+
+                    <ha-card header="All Devices">
+                        <div class="card-header">
+                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <label for="sort-mode" style="font-weight: 500;">Sort by:</label>
+                            <select id="sort-mode" style="width : auto; min-width=150px; max-width="200px;">
+                                <option value="energy">Energy Consumption</option>
+                                <option value="name">Alphabetical</option>
+                            </select>
+                            </div>
+                        </div>
+                        <div class="card-content" id="energy-table-container">
+                            ${this.renderEnergyTable(energyDevices)}
+                        </div>
+                    </ha-card>
+                </div>
+            </ha-app-layout>
+        `;
+
+        const backBtn = this.querySelector('#back-btn');
+        if (backBtn) {
+            backBtn.addEventListener('click', async () => {
+                this._currentPage = 'main';
+                const newData = await this.getCarbonData();
+                await this.render(newData);
+            });
+        }
+
+        const sortSelect = this.querySelector('#sort-mode');
+        const tableContainer = this.querySelector('#energy-table-container');
+
+        if (sortSelect && tableContainer) {
+            sortSelect.addEventListener('change', () => {
+                let sortedDevices = [...energyDevices];
+                if (sortSelect.value === 'energy') {
+                    sortedDevices.sort((a, b) => b.total_energy_kwh - a.total_energy_kwh);
+                } else if (sortSelect.value === 'name') {
+                    sortedDevices.sort((a, b) => a.device_name.localeCompare(b.device_name));
+                }
+                tableContainer.innerHTML = this.renderEnergyTable(sortedDevices);
+            });
+        }
+
+        this.attachFormHandler();
+
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.type = 'text/css';
+        link.href = '/api/carbon_footprint/style.css?version=1.2'; // :skull:
+        this.appendChild(link);
     }
 
     async refreshHistogram() {
