@@ -634,6 +634,10 @@ def ws_get_carbon_by_room_with_usage(
         usage_carbon = 0.0
         metadata = device_info.get("metadata", {})
 
+        total_energy = device_info.get("total_energy", None)
+        if total_energy:
+            usage_carbon = (total_energy * co2_intensity) / 1_000_000
+        """
         # Check if there's pre-defined usage carbon in metadata (e.g., from test data)
         if "usage_carbon_kg" in metadata:
             try:
@@ -667,7 +671,7 @@ def ws_get_carbon_by_room_with_usage(
                         usage_carbon = (power_w * co2_intensity) / 1_000_000
                     except ValueError | TypeError:
                         usage_carbon = 0.0
-
+        """
         # Try to find the room
         room_name = "Unknown Room"
         room_id = None
