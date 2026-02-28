@@ -51,7 +51,7 @@ def utils_get_device_total_energy_consumption(
         try:
             total_energy += float(state.state)
             is_sensor = True
-        except (ValueError, TypeError):
+        except ValueError | TypeError:
             continue
 
     return round(total_energy, 4) if is_sensor else None
