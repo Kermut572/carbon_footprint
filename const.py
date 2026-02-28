@@ -12,9 +12,8 @@ DOMAIN = "carbon_footprint"
 # See TESTING.md for detailed instructions on how to remove fake data
 # when integrating with real data sources
 # ============================================================================
-TEST_MODE = True
+TEST_MODE = False
 
 bf_file = pathlib.Path(__file__).parent / "www/blocks_footprints.json"
 with bf_file.open(encoding="utf-8") as file:
     BLOCKS_FOOTPRINTS = json.load(file)
-

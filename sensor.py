@@ -19,7 +19,10 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfMass
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
+from homeassistant.helpers.event import (
+    async_track_state_change_event,
+    async_track_time_interval,
+)
 from homeassistant.helpers.typing import StateType
 
 from .const import DOMAIN
@@ -108,10 +111,8 @@ class CarbonIntensityNowSensor(SensorEntity):
             try:
                 self._attr_native_value = float(state.state)
                 self.async_write_ha_state()
-            except (ValueError, TypeError):
-                _LOGGER.warning(
-                    "Could not parse CO2 intensity value: %s", state.state
-                )
+            except ValueError, TypeError:
+                _LOGGER.warning("Could not parse CO2 intensity value: %s", state.state)
 
     async def _intensity_updated(self, event: Any) -> None:
         """Handle CO2 intensity update from Electricity Maps."""
@@ -120,7 +121,7 @@ class CarbonIntensityNowSensor(SensorEntity):
             try:
                 self._attr_native_value = float(new_state.state)
                 await self.async_write_ha_state()
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 _LOGGER.warning(
                     "Could not parse CO2 intensity value: %s", new_state.state
                 )
@@ -202,7 +203,7 @@ class CarbonEmissionNowSensor(SensorEntity):
 
         try:
             intensity = float(intensity_state.state)  # gCO2/kWh
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             self._attr_native_value = None
             self.async_write_ha_state()
             return
@@ -229,7 +230,7 @@ class CarbonEmissionNowSensor(SensorEntity):
                         # Convert watts to kilowatts
                         power_w = float(state.state)
                         total_power_kw += power_w / 1000.0
-                    except (ValueError, TypeError):
+                    except ValueError, TypeError:
                         continue
 
         # Calculate emission: power (kW) * intensity (gCO2/kWh) = gCO2/h
@@ -341,7 +342,7 @@ class CarbonTotalTodaySensor(SensorEntity):
                     # Note: The energy_store stores the intensity value,
                     # so we're summing the hourly intensity values
                     total_today += float(footprint_value) / 1000.0
-            except (ValueError, IndexError):
+            except ValueError, IndexError:
                 _LOGGER.warning("Could not parse date key: %s", date_key)
                 continue
 
@@ -361,4 +362,3 @@ class CarbonTotalTodaySensor(SensorEntity):
     def native_value(self) -> StateType:
         """Return the native value of the sensor."""
         return self._attr_native_value
-

@@ -82,6 +82,7 @@ export class CarbonUtils {
                                 <b>${device_name}</b><br>
                                 Type: ${info.type || 'Unknown'}<br>
                                 Carbon: ${info.carbon_footprint || 0} kgCO₂eq <br>
+                                Area: ${info.metadata?.area_id || 'N/A'} <br>
                                 Manfucturer: ${info.metadata?.manufacturer || 'N/A'}<br>
                                 Model: ${info.metadata?.model || 'N/A'}<br>
                                 Model ID: ${info.metadata?.model_id || 'N/A'}<br>

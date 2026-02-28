@@ -217,7 +217,7 @@ class CarbonFootprintPanel extends HTMLElement {
                             <div id="device-detail-view" style="display: none;">
                                 <button id="back-to-rooms-btn" style="margin-bottom: 16px; padding: 8px 16px; background-color: #757575; color: white; border: none; border-radius: 4px; cursor: pointer;">← Back to Rooms</button>
                                 <h3 id="selected-room-title"></h3>
-                                
+
                                 <!-- Legend explaining embodied vs usage -->
                                 <div style="margin-bottom: 16px; padding: 12px; background-color: #f9f9f9; border-radius: 4px; border: 1px solid #ddd; font-size: 13px;">
                                     <div style="margin-bottom: 8px;"><strong>Carbon Types (kgCO₂eq):</strong></div>
@@ -232,7 +232,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                         </div>
                                     </div>
                                 </div>
-                                
+
                                 <p id="device-breakdown-text" style="margin-bottom: 12px; font-size: 13px; color: #666;"></p>
                                 <div style="position: relative; height: 300px; width: 100%;">
                                     <canvas id="device-bar-chart"></canvas>
@@ -298,7 +298,7 @@ class CarbonFootprintPanel extends HTMLElement {
             radio.addEventListener('change', async (e) => {
                 this._carbonView = e.target.value;
                 await this.renderRoomChart();
-                
+
                 // If device detail view is visible, also re-render device chart
                 const deviceDetailView = this.querySelector('#device-detail-view');
                 if (deviceDetailView && deviceDetailView.style.display !== 'none') {
@@ -409,6 +409,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                                 <div>
                                                     <b>${device_name}</b><br>
                                                     Type: ${info.type || 'Unknown'}<br>
+                                                    Area: ${info.metadata?.area_id || 'N/A'} <br>
                                                     Carbon: ${info.carbon_footprint || 0} kgCO₂eq <br>
                                                     Manfucturer: ${info.metadata?.manufacturer || 'N/A'}<br>
                                                     Model: ${info.metadata?.model || 'N/A'}<br>
@@ -741,7 +742,7 @@ class CarbonFootprintPanel extends HTMLElement {
             // Stacked bars showing embodied and usage
             const embodiedValues = devices.map(d => d.embodied_carbon);
             const usageValues = devices.map(d => d.usage_carbon);
-            
+
             datasets = [
                 {
                     label: 'Embodied Carbon',
