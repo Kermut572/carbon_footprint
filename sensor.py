@@ -218,7 +218,7 @@ class CarbonEmissionNowSensor(SensorEntity):
             # Common entity suffixes for power: _power, power consumption
             for entity_id in self.hass.states.async_entity_ids("sensor"):
                 state = self.hass.states.get(entity_id)
-                if not state:
+                if not state or state.state in ("unknown", "unavailable"):
                     continue
 
                 # Check if this sensor belongs to the device and is a power sensor
@@ -230,7 +230,7 @@ class CarbonEmissionNowSensor(SensorEntity):
                         # Convert watts to kilowatts
                         power_w = float(state.state)
                         total_power_kw += power_w / 1000.0
-                    except ValueError | TypeError:
+                    except:
                         continue
 
         # Calculate emission: power (kW) * intensity (gCO2/kWh) = gCO2/h

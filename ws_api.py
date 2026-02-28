@@ -295,8 +295,7 @@ def ws_update_devices_energy(
         metadata = device_data.get("metadata")
 
         register_id = metadata.get("register_id")
-        total_energy = metadata.get("total_energy")
-        if not register_id or not total_energy:
+        if not register_id:
             continue
 
         entity_reg = er.async_get(hass)
@@ -634,9 +633,8 @@ def ws_get_carbon_by_room_with_usage(
         usage_carbon = 0.0
         metadata = device_info.get("metadata", {})
 
-        print(f"Processing metadata:\n{metadata}")
         total_energy = metadata.get("total_energy", None)
-        if total_energy:
+        if total_energy is not None:
             usage_carbon = (total_energy * co2_intensity) / 1_000_000
         """
         # Check if there's pre-defined usage carbon in metadata (e.g., from test data)
