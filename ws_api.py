@@ -620,7 +620,7 @@ def ws_get_carbon_by_room_with_usage(
     ):
         try:
             co2_intensity = float(co2_intensity_state.state)
-        except ValueError, TypeError:
+        except ValueError | TypeError:
             co2_intensity = 200.0
 
     # Group devices by room
@@ -638,7 +638,7 @@ def ws_get_carbon_by_room_with_usage(
         if "usage_carbon_kg" in metadata:
             try:
                 usage_carbon = float(metadata["usage_carbon_kg"])
-            except ValueError, TypeError:
+            except ValueError | TypeError:
                 usage_carbon = 0.0
         else:
             # Try to estimate from power sensors if no metadata value
@@ -665,7 +665,7 @@ def ws_get_carbon_by_room_with_usage(
                         # Usage carbon = (power_W * co2_intensity_gCO2/kWh) / 1_000_000
                         # Simplified: hour of usage at current power
                         usage_carbon = (power_w * co2_intensity) / 1_000_000
-                    except ValueError, TypeError:
+                    except ValueError | TypeError:
                         usage_carbon = 0.0
 
         # Try to find the room
