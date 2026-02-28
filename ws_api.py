@@ -635,7 +635,7 @@ def ws_get_carbon_by_room_with_usage(
 
         total_energy = metadata.get("total_energy", None)
         if total_energy is not None:
-            usage_carbon = (total_energy * co2_intensity) / 1_000_000
+            usage_carbon = (total_energy * co2_intensity) / 1000
         """
         # Check if there's pre-defined usage carbon in metadata (e.g., from test data)
         if "usage_carbon_kg" in metadata:
