@@ -634,7 +634,7 @@ def ws_get_carbon_by_room_with_usage(
         usage_carbon = 0.0
         metadata = device_info.get("metadata", {})
 
-        total_energy = device_info.get("total_energy", None)
+        total_energy = metadata.get("total_energy", None)
         if total_energy:
             usage_carbon = (total_energy * co2_intensity) / 1_000_000
         """
