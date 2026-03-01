@@ -40,7 +40,9 @@ def async_register_websocket_handlers(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_update_devices_energy)
     websocket_api.async_register_command(hass, ws_get_energy_footprint_time_interval)
     websocket_api.async_register_command(hass, ws_get_carbon_by_room)
+    websocket_api.async_register_command(hass, ws_get_carbon_by_type)
     websocket_api.async_register_command(hass, ws_get_carbon_by_room_with_usage)
+    websocket_api.async_register_command(hass, ws_get_carbon_by_type_with_usage)
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_devices_to_add"})
@@ -602,12 +604,10 @@ def ws_get_carbon_by_room_with_usage(
         return
 
     cf_store = entries[0].runtime_data.cf_store
-    energy_store = entries[0].runtime_data.energy_store
     devices = cf_store.get_devices_data()
 
     # Get device and area registries
     device_reg = dr.async_get(hass)
-    entity_reg = er.async_get(hass)
     area_reg = ar.async_get(hass)
 
     # Get current CO2 intensity
@@ -743,3 +743,173 @@ def ws_get_carbon_by_room_with_usage(
     rooms_list.sort(key=lambda x: x["total_carbon"], reverse=True)
 
     connection.send_result(msg["id"], {"rooms": rooms_list})
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_carbon_by_type"})
+@callback
+def ws_get_carbon_by_type(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Get carbon footprint grouped by type.
+
+    Groups all configured devices by their type (e.g. smart plug, camera,...) room/area and sums
+    their carbon footprints. Returns data suitable for pie/bar chart visualization.
+
+    Response format:
+    {
+        "types": [
+            {
+                "type": "Smart Plug",
+                "total_carbon": 41.0,
+                "devices": [
+                    {"name": "Fridge plug", "carbon": 20.5},
+                    {"name": "Server plug", "carbon": 20.5}
+                ]
+            },
+            ...
+        ]
+    }
+    """
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        connection.send_error(
+            msg["id"], "config_entry_not_found", "No config entry found"
+        )
+        return
+
+    cf_store = entries[0].runtime_data.cf_store
+    devices = cf_store.get_devices_data()
+
+    type_dict: dict[str, dict] = {}
+
+    for device_name, device_info in devices.items():
+        carbon_value = device_info.get("carbon_footprint", 0)
+        device_type = device_info.get("type", "Unknown")
+
+        if device_type not in type_dict:
+            type_dict[device_type] = {
+                "type": device_type,
+                "total_carbon": 0,
+                "devices": [],
+            }
+
+        type_dict[device_type]["devices"].append(
+            {
+                "name": device_name,
+                "carbon": carbon_value,
+            }
+        )
+        type_dict[device_type]["total_carbon"] += carbon_value
+
+    type_list = list(type_dict.values())
+    type_list.sort(key=lambda x: x["total_carbon"], reverse=True)
+
+    connection.send_result(msg["id"], {"types": type_list})
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/get_carbon_by_type_with_usage"}
+)
+@callback
+def ws_get_carbon_by_type_with_usage(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Get carbon footprint by type with both embodied and usage breakdown.
+
+    Returns embodied carbon (manufacturing/transport) and estimated usage carbon
+    (power consumption × CO2 intensity) for each device type.
+
+    Response format:
+    {
+        "types": [
+            {
+                "type": "Smart plug",
+                "embodied_carbon": 20.5,
+                "usage_carbon": 10.0,
+                "total_carbon": 30.5,
+                "devices": [
+                    {
+                        "name": "Fridge plug",
+                        "embodied_carbon": 20.5,
+                        "usage_carbon": 10.0,
+                        "total_carbon": 30.5
+                    },
+                    ...
+                ]
+            },
+            ...
+        ]
+    }
+    """
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        connection.send_error(
+            msg["id"], "config_entry_not_found", "No config entry found"
+        )
+        return
+
+    co2_intensity_state = hass.states.get("sensor.electricity_maps_co2_intensity")
+    co2_intensity = 200.0  # default fallback
+    if co2_intensity_state and co2_intensity_state.state not in (
+        "unknown",
+        "unavailable",
+    ):
+        try:
+            co2_intensity = float(co2_intensity_state.state)
+        except ValueError | TypeError:
+            co2_intensity = 200.0
+
+    cf_store = entries[0].runtime_data.cf_store
+    devices = cf_store.get_devices_data()
+
+    type_dict: dict[str, dict] = {}
+
+    for device_name, device_info in devices.items():
+        metadata = device_info.get("metadata", {})
+
+        usage_carbon_value = 0.0
+        total_energy = metadata.get("total_energy", None)
+        if total_energy is not None:
+            usage_carbon_value = (total_energy * co2_intensity) / 1000
+
+        embodied_carbon_value = device_info.get("carbon_footprint", 0)
+        device_type = device_info.get("type", "Unknown")
+
+        device_total = embodied_carbon_value + usage_carbon_value
+
+        if device_type not in type_dict:
+            type_dict[device_type] = {
+                "type": device_type,
+                "embodied_carbon": 0,
+                "usage_carbon": 0,
+                "total_carbon": 0,
+                "devices": [],
+            }
+
+        type_dict[device_type]["devices"].append(
+            {
+                "name": device_name,
+                "embodied_carbon": round(embodied_carbon_value, 2),
+                "usage_carbon": round(usage_carbon_value, 2),
+                "total_carbon": round(device_total, 2),
+                "carbon": embodied_carbon_value,
+            }
+        )
+        type_dict[device_type]["embodied_carbon"] += embodied_carbon_value
+        type_dict[device_type]["usage_carbon"] += usage_carbon_value
+        type_dict[device_type]["total_carbon"] += device_total
+
+    type_list = []
+    for type_data in type_dict.values():
+        type_data["embodied_carbon"] = round(type_data["embodied_carbon"], 2)
+        type_data["usage_carbon"] = round(type_data["usage_carbon"], 2)
+        type_data["total_carbon"] = round(type_data["total_carbon"], 2)
+        type_list.append(type_data)
+
+    type_list.sort(key=lambda x: x["total_carbon"], reverse=True)
+
+    connection.send_result(msg["id"], {"types": type_list})

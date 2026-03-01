@@ -20,6 +20,7 @@ class CarbonFootprintPanel extends HTMLElement {
         this._selectedRoom = null;
         this._currentPage = 'main'; // 'main' or 'settings'
         this._carbonView = 'total'; // 'total', 'embodied', or 'usage'
+        this._groupBy = 'room'; // 'room' or 'type'
 
         this._chartGranularity = {
             HOUR: "hour",
@@ -133,6 +134,21 @@ class CarbonFootprintPanel extends HTMLElement {
         }
     }
 
+    async getCarbonByType() {
+        try {
+            const result = await this._hass.callWS({
+                type: 'carbon_footprint/get_carbon_by_type_with_usage'
+            });
+
+            this._typeData = result.types || [];
+            return this._typeData;
+
+        } catch (err) {
+            console.error('Error loading type data:', err);
+            return [];
+        }
+    }
+
     async updateDeviceList() {
         return await CarbonUtils.updateDeviceList(this);
     }
@@ -186,8 +202,16 @@ class CarbonFootprintPanel extends HTMLElement {
 
                     </ha-card>
 
-                    <ha-card header="Carbon Usage by Room">
+                    <ha-card header="Carbon Usage">
                         <div class="card-content">
+                            <div class="histogram-controls">
+                                <label for="group-by-select">Group by:</label>
+                                <select id="group-by-select">
+                                    <option value="room" ${this._groupBy === 'room' ? 'selected' : ''}>Room</option>
+                                    <option value="type" ${this._groupBy === 'type' ? 'selected' : ''}>Type</option>
+                                </select>
+                            </div>
+
                             <!-- Carbon view toggle with unit explanation -->
                             <div style="margin-bottom: 12px;">
                                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
@@ -284,6 +308,14 @@ class CarbonFootprintPanel extends HTMLElement {
             });
         }
 
+        const groupBySelect = this.querySelector('#group-by-select');
+        if (groupBySelect) {
+            groupBySelect.addEventListener('change', async (e) => {
+                this._groupBy = e.target.value;
+                await this.renderRoomChart();
+            });
+        }
+
         // Add back to rooms button handler
         const backBtn = this.querySelector('#back-to-rooms-btn');
         if (backBtn) {
@@ -303,12 +335,17 @@ class CarbonFootprintPanel extends HTMLElement {
                 const deviceDetailView = this.querySelector('#device-detail-view');
                 if (deviceDetailView && deviceDetailView.style.display !== 'none') {
                     // Re-fetch room data to get updated values for the selected view
-                    const rooms = await this.getCarbonByRoom();
-                    if (rooms && this._selectedRoom) {
-                        // Find the updated room in the new data
-                        const updatedRoom = rooms.find(r => r.room === this._selectedRoom.room);
-                        if (updatedRoom) {
-                            this._selectedRoom = updatedRoom;
+                    const data = this._groupBy === 'type'
+                        ? await this.getCarbonByType()
+                        : await this.getCarbonByRoom();
+
+                    if (data && this._selectedRoom) {
+                        const updatedItem = data.find(item =>
+                            item.room === this._selectedRoom.room ||
+                            item.type === this._selectedRoom.type
+                        );
+                        if (updatedItem) {
+                            this._selectedRoom = updatedItem;
                             this.renderDeviceChart();
                         }
                     }
@@ -584,8 +621,14 @@ class CarbonFootprintPanel extends HTMLElement {
         }
 
         // Fetch room data
-        const rooms = await this.getCarbonByRoom();
-        if (!rooms || rooms.length === 0) {
+        let data;
+        if (this._groupBy === 'type') {
+            data = await this.getCarbonByType();
+        } else {
+            data = await this.getCarbonByRoom();
+        }
+
+        if (!data || data.length === 0) {
             const container = this.querySelector('#room-chart-view');
             if (container) {
                 container.innerHTML = '<p>No room data available</p>';
@@ -594,22 +637,22 @@ class CarbonFootprintPanel extends HTMLElement {
         }
 
         // Prepare data for pie chart based on selected view
-        const labels = rooms.map(room => room.room);
+        const labels = data.map(item => item.room || item.type);
         let values;
         let datasetLabel;
 
         switch (this._carbonView) {
             case 'embodied':
-                values = rooms.map(room => room.embodied_carbon);
+                values = data.map(item => item.embodied_carbon);
                 datasetLabel = 'Embodied Carbon';
                 break;
             case 'usage':
-                values = rooms.map(room => room.usage_carbon);
+                values = data.map(item => item.usage_carbon);
                 datasetLabel = 'Usage Carbon';
                 break;
             case 'total':
             default:
-                values = rooms.map(room => room.total_carbon);
+                values = data.map(item => item.total_carbon);
                 datasetLabel = 'Total Carbon';
         }
 
@@ -633,8 +676,8 @@ class CarbonFootprintPanel extends HTMLElement {
                 datasets: [{
                     label: datasetLabel,
                     data: values,
-                    backgroundColor: colors.slice(0, rooms.length),
-                    borderColor: colors.slice(0, rooms.length).map(c => c.replace('0.6', '1')),
+                    backgroundColor: colors.slice(0, data.length),
+                    borderColor: colors.slice(0, data.length).map(c => c.replace('0.6', '1')),
                     borderWidth: 2,
                 }]
             },
@@ -665,7 +708,7 @@ class CarbonFootprintPanel extends HTMLElement {
         });
 
         // Add click handler to pie chart
-        this._addRoomChartClickHandler(rooms, canvas);
+        this._addRoomChartClickHandler(data, canvas);
     }
 
     _addRoomChartClickHandler(rooms, canvas) {
@@ -688,7 +731,7 @@ class CarbonFootprintPanel extends HTMLElement {
         if (roomChartView && deviceDetailView) {
             roomChartView.style.display = 'none';
             deviceDetailView.style.display = 'block';
-            roomTitle.textContent = `Devices in ${this._selectedRoom.room}`;
+            roomTitle.textContent = `Devices in ${this._selectedRoom.room || this._selectedRoom.type}`;
         }
     }
 

@@ -120,7 +120,7 @@ class CarbonIntensityNowSensor(SensorEntity):
         if new_state and new_state.state not in ("unknown", "unavailable"):
             try:
                 self._attr_native_value = float(new_state.state)
-                await self.async_write_ha_state()
+                self.async_write_ha_state()
             except ValueError | TypeError:
                 _LOGGER.warning(
                     "Could not parse CO2 intensity value: %s", new_state.state
