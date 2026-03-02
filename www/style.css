@@ -65,9 +65,33 @@ li {
 
 .device-info {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 16px;
+    align-items: flex-start;
+    gap: 8px;
+    position: relative;
+}
+
+.device-header {
+    flex: 1;
+    min-width: 0;
+}
+
+.device-header h2 {
+    margin: 0;
+    margin-bottom: 4px;
+}
+
+.device-extended {
+    display: none;
+    margin-top: 8px;
+    padding-top: 8px;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.extend-btn,
+.delete-btn {
+    flex-shrink: 0;
+    margin-left: auto;
 }
 
 .delete-btn {
@@ -81,12 +105,32 @@ li {
     font-weight: bold;
     min-width: 32px;
     height: 32px;
-    flex-shrink: 0;
 }
+
 
 .delete-btn:hover {
     background-color: var(--error-color, #db4437);
     color: var(--text-primary-color);
+    opacity: 1;
+}
+
+.extend-btn {
+    background-color: transparent;
+    color: var(--primary-text-color);
+    border: 1px solid var(--divider-color);
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: bold;
+    min-width: 32px;
+    height: 32px;
+}
+
+.extend-btn:hover {
+    background-color: var(--secondary-background-color);
+    border-color: var(--primary-color);
+    color: var(--primary-text-color);
     opacity: 1;
 }
 

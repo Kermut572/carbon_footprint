@@ -356,7 +356,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.2'; // :skull:
+        link.href = '/api/carbon_footprint/style.css?version=1.3'; // :skull:
         this.appendChild(link);
     }
 
@@ -443,17 +443,25 @@ class CarbonFootprintPanel extends HTMLElement {
                                     ${Object.entries(data.devices).map(([device_name, info]) => `
                                         <li>
                                             <div class="device-info">
-                                                <div>
-                                                    <b>${device_name}</b><br>
-                                                    Type: ${info.type || 'Unknown'}<br>
-                                                    Area: ${info.metadata?.area_id || 'N/A'} <br>
-                                                    Carbon: ${info.carbon_footprint || 0} kgCO₂eq <br>
-                                                    Manfucturer: ${info.metadata?.manufacturer || 'N/A'}<br>
-                                                    Model: ${info.metadata?.model || 'N/A'}<br>
-                                                    Model ID: ${info.metadata?.model_id || 'N/A'}<br>
-                                                    Class: ${info.metadata?.device_classes || 'N/A'}<br>
-                                                    Total Energy Consumed: ${info.metadata?.total_energy || 'N/A'}<br>
+                                                <div class="device-header">
+                                                    <h2><b>${device_name}</b></h2><br>
+                                                    <div class="device-extended">
+                                                        Type: ${info.type || 'Unknown'}<br>
+                                                        Area: ${info.metadata?.area_id || 'N/A'} <br>
+                                                        Carbon: ${info.carbon_footprint || 0} kgCO₂eq <br>
+                                                        Manfucturer: ${info.metadata?.manufacturer || 'N/A'}<br>
+                                                        Model: ${info.metadata?.model || 'N/A'}<br>
+                                                        Model ID: ${info.metadata?.model_id || 'N/A'}<br>
+                                                        Class: ${info.metadata?.device_classes || 'N/A'}<br>
+                                                        Total Energy Consumed: ${info.metadata?.total_energy || 'N/A'}<br>
+                                                    </div>
                                                 </div>
+                                                <button
+                                                    type="button"
+                                                    class="extend-btn"
+                                                    title="More information">
+                                                    ▼
+                                                </button>
                                                 <button
                                                     type="button"
                                                     class="delete-btn"
@@ -466,21 +474,6 @@ class CarbonFootprintPanel extends HTMLElement {
                                     `).join('')}
                                 </ul>
                             ` : `<p>No devices configured yet.</p>`}
-                        </div>
-                    </ha-card>
-
-                    <ha-card header="All Devices">
-                        <div class="card-header">
-                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                            <label for="sort-mode" style="font-weight: 500;">Sort by:</label>
-                            <select id="sort-mode" style="width : auto; min-width=150px; max-width="200px;">
-                                <option value="energy">Energy Consumption</option>
-                                <option value="name">Alphabetical</option>
-                            </select>
-                            </div>
-                        </div>
-                        <div class="card-content" id="energy-table-container">
-                            ${this.renderEnergyTable(energyDevices)}
                         </div>
                     </ha-card>
                 </div>
@@ -516,7 +509,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.2'; // :skull:
+        link.href = '/api/carbon_footprint/style.css?version=1.11'; // :skull:
         this.appendChild(link);
     }
 
@@ -902,6 +895,21 @@ class CarbonFootprintPanel extends HTMLElement {
         if (computeBtn) {
             computeBtn.addEventListener('click', () => this.showHardwareDialogAndCompute());
         }
+
+        const extendButtons = this.querySelectorAll('.extend-btn');
+        extendButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const deviceInfo = e.currentTarget.closest('.device-info');
+                const extendedDiv = deviceInfo.querySelector('.device-extended');
+
+                if (extendedDiv) {
+                    const isHidden = extendedDiv.style.display === 'none' || !extendedDiv.style.display;
+                    extendedDiv.style.display = isHidden ? 'block' : 'none';
+
+                    e.currentTarget.textContent = isHidden ? '▲' : '▼';
+                }
+            })
+        })
 
         const deleteButtons = this.querySelectorAll('.delete-btn');
         deleteButtons.forEach(btn => {
