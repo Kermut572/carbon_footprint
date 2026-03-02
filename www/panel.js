@@ -46,9 +46,9 @@ class CarbonFootprintPanel extends HTMLElement {
 
     set hass(hass) {
         this._hass = hass;
-        if (this._setup)
-            this.updateDeviceList();
-        else if (this.isConnected) {
+        //if (this._setup)
+        //    this.updateDeviceList();
+        if (this.isConnected) {
             this.connectedCallback();
         }
     }
