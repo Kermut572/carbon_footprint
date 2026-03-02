@@ -40,7 +40,7 @@ export class CarbonUtils {
                 type: "carbon_footprint/get_all_devices_energy",
             });
         } catch (err) {
-            console.error("Error fetching all devices energy:", err);
+            //console.error("Error fetching all devices energy:", err);
             return { devices: [] };
         }
     }
