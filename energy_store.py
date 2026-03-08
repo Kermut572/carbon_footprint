@@ -12,10 +12,6 @@ STORAGE_KEY = f"{DOMAIN}_energy.data"
 class EnergyStore:
     """Store for electricity maps related data.
 
-    Basically, there is no way to query historical data from HA itself, so we either:
-        - Ask an API key when installing the integration and populate this store with a query.
-        - Populate the store hour by hour, day by day and someday we will have enough data.
-
     An EnergyStore object has two fields:
     * store: Store object from HomeAssistant
     * data: dictionary in the following format:

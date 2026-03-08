@@ -6,6 +6,8 @@
   "documentation": "https://www.home-assistant.io/integrations/carbon_footprint",
   "integration_type": "service",
   "iot_class": "calculated",
-  "requirements": [],
+  "requirements": [
+    "openrouter"
+  ],
   "version": "0.1.0"
 }

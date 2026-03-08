@@ -14,6 +14,13 @@ class CarbonFootprintPanel extends HTMLElement {
         this._setup = false
         this._histogramData = null;
         this._chart = null;
+        this._roomChart = null;
+        this._deviceChart = null;
+        this._roomData = null;
+        this._selectedRoom = null;
+        this._currentPage = 'main'; // 'main' or 'settings'
+        this._carbonView = 'total'; // 'total', 'embodied', or 'usage'
+        this._groupBy = 'room'; // 'room' or 'type'
 
         this._chartGranularity = {
             HOUR: "hour",
@@ -39,9 +46,8 @@ class CarbonFootprintPanel extends HTMLElement {
 
     set hass(hass) {
         this._hass = hass;
-        if (this._setup)
-            this.updateDeviceList();
-        else if (this.isConnected) {
+
+        if (!this._setup && this.isConnected) {
             this.connectedCallback();
         }
     }
@@ -112,25 +118,53 @@ class CarbonFootprintPanel extends HTMLElement {
         }
     }
 
+    async getCarbonByRoom() {
+        try {
+            const result = await this._hass.callWS({
+                type: 'carbon_footprint/get_carbon_by_room_with_usage'
+            });
+
+            this._roomData = result.rooms || [];
+            return this._roomData;
+
+        } catch (err) {
+            console.error('Error loading room data:', err);
+            return [];
+        }
+    }
+
+    async getCarbonByType() {
+        try {
+            const result = await this._hass.callWS({
+                type: 'carbon_footprint/get_carbon_by_type_with_usage'
+            });
+
+            this._typeData = result.types || [];
+            return this._typeData;
+
+        } catch (err) {
+            console.error('Error loading type data:', err);
+            return [];
+        }
+    }
+
     async updateDeviceList() {
         return await CarbonUtils.updateDeviceList(this);
     }
 
     async render(data) {
-        const devicesResp = await this._hass.callWS({ type: 'carbon_footprint/get_devices_to_add' });
-        const devicesArray = devicesResp.device_names || [];
-        const hasDevices = data && data.devices && Object.keys(data.devices).length > 0;
-
-        const allDevicesEnergyResp = await this.getAllDevicesEnergy();
-        const energyDevices = allDevicesEnergyResp.devices_energy || [];
-        energyDevices.sort((a, b) => b.total_energy_kwh - a.total_energy_kwh);
+        if (this._currentPage === 'settings') {
+            this.renderSettingsPage(data);
+            return;
+        }
 
         const energyHistogram = await this.getEnergyHistogram();
 
         this.innerHTML = `
             <ha-app-layout>
-                <header class="ha-header">
+                <header class="ha-header" style="display: flex; justify-content: space-between; align-items: center;">
                     <h1>Carbon Footprint</h1>
+                    <button id="settings-btn" style="position: absolute; right: 20px; top: 15px; padding: 8px 16px; background-color: #03a9f4; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Settings</button>
                 </header>
 
                 <div class="content" slot="content">
@@ -141,6 +175,9 @@ class CarbonFootprintPanel extends HTMLElement {
                             gCO₂eq/kWh
                             <span class="ci-indicator ${CarbonUtils.getCarbonColor(data?.co2_intensity)}"></span>
                             <span class="ci-label">${CarbonUtils.getCarbonLabel(data?.co2_intensity)}</span></p>
+                            <p style="font-size: 12px; color: #666; margin-top: 8px; margin-bottom: 16px;">
+                                <em>Grid carbon intensity over time (in grams CO₂ equivalent per kilowatt-hour)</em>
+                            </p>
                             <div class="histogram-controls">
                                 <label for="granularity-select">Granularity:</label>
                                 <select id="granularity-select">
@@ -164,56 +201,66 @@ class CarbonFootprintPanel extends HTMLElement {
 
                     </ha-card>
 
-                    <ha-card header="Add New Device">
+                    <ha-card header="Carbon Usage">
                         <div class="card-content">
-                            ${this.renderForm(devicesArray)}
-                        </div>
-                    </ha-card>
-
-                    <ha-card header="Configured Devices">
-                        <div class="card-content device-list-container">
-                            ${hasDevices ? `
-                                <ul>
-                                    ${Object.entries(data.devices).map(([device_name, info]) => `
-                                        <li>
-                                            <div class="device-info">
-                                                <div>
-                                                    <b>${device_name}</b><br>
-                                                    Type: ${info.type || 'Unknown'}<br>
-                                                    Carbon: ${info.carbon_footprint || 0} kgCO₂eq <br>
-                                                    Manfucturer: ${info.metadata?.manufacturer || 'N/A'}<br>
-                                                    Model: ${info.metadata?.model || 'N/A'}<br>
-                                                    Model ID: ${info.metadata?.model_id || 'N/A'}<br>
-                                                    Class: ${info.metadata?.device_classes || 'N/A'}<br>
-                                                    Total Energy Consumed: ${info.metadata?.total_energy || 'N/A'}<br>
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    class="delete-btn"
-                                                    data-entity-id="${device_name}"
-                                                    title="Remove device">
-                                                    ✕
-                                                </button>
-                                            </div>
-                                        </li>
-                                    `).join('')}
-                                </ul>
-                            ` : `<p>No devices configured yet.</p>`}
-                        </div>
-                    </ha-card>
-
-                    <ha-card header="All Devices">
-                        <div class="card-header">
-                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                            <label for="sort-mode" style="font-weight: 500;">Sort by:</label>
-                            <select id="sort-mode" style="width : auto; min-width=150px; max-width="200px;">
-                                <option value="energy">Energy Consumption</option>
-                                <option value="name">Alphabetical</option>
-                            </select>
+                            <div class="histogram-controls">
+                                <label for="group-by-select">Group by:</label>
+                                <select id="group-by-select">
+                                    <option value="room" ${this._groupBy === 'room' ? 'selected' : ''}>Room</option>
+                                    <option value="type" ${this._groupBy === 'type' ? 'selected' : ''}>Type</option>
+                                </select>
                             </div>
-                        </div>
-                        <div class="card-content" id="energy-table-container">
-                            ${this.renderEnergyTable(energyDevices)}
+
+                            <!-- Carbon view toggle with unit explanation -->
+                            <div style="margin-bottom: 12px;">
+                                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                    <label style="display: flex; align-items: center; cursor: pointer;">
+                                        <input type="radio" name="carbon-view" value="total" checked style="margin-right: 6px;">
+                                        <span>Total (Stacked)</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; cursor: pointer;">
+                                        <input type="radio" name="carbon-view" value="embodied" style="margin-right: 6px;">
+                                        <span>Embodied Only</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; cursor: pointer;">
+                                        <input type="radio" name="carbon-view" value="usage" style="margin-right: 6px;">
+                                        <span>Usage Only</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Room-level pie chart view -->
+                            <div id="room-chart-view" style="display: block;">
+                                <div style="position: relative; height: 400px; width: 100%;">
+                                    <canvas id="room-pie-chart"></canvas>
+                                </div>
+                            </div>
+
+                            <!-- Device detail view (hidden by default) -->
+                            <div id="device-detail-view" style="display: none;">
+                                <button id="back-to-rooms-btn" style="margin-bottom: 16px; padding: 8px 16px; background-color: #757575; color: white; border: none; border-radius: 4px; cursor: pointer;">← Back to Rooms</button>
+                                <h3 id="selected-room-title"></h3>
+
+                                <!-- Legend explaining embodied vs usage -->
+                                <div style="margin-bottom: 16px; padding: 12px; background-color: #f9f9f9; border-radius: 4px; border: 1px solid #ddd; font-size: 13px;">
+                                    <div style="margin-bottom: 8px;"><strong>Carbon Types (kgCO₂eq):</strong></div>
+                                    <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <div style="width: 16px; height: 16px; background-color: rgba(76, 175, 80, 0.7); border: 1px solid rgb(76, 175, 80);"></div>
+                                            <span><strong>Embodied:</strong> Manufacturing, transport, disposal</span>
+                                        </div>
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <div style="width: 16px; height: 16px; background-color: rgba(33, 150, 243, 0.7); border: 1px solid rgb(33, 150, 243);"></div>
+                                            <span><strong>Usage:</strong> Operational energy consumption</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <p id="device-breakdown-text" style="margin-bottom: 12px; font-size: 13px; color: #666;"></p>
+                                <div style="position: relative; height: 300px; width: 100%;">
+                                    <canvas id="device-bar-chart"></canvas>
+                                </div>
+                            </div>
                         </div>
                     </ha-card>
                 </div>
@@ -223,12 +270,14 @@ class CarbonFootprintPanel extends HTMLElement {
         if (typeof Chart === 'undefined') {
             const script = document.createElement('script');
             script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
-            script.onload = () => {
+            script.onload = async () => {
                 this.renderHistogram();
+                await this.renderRoomChart();
             };
             document.head.appendChild(script);
         } else {
             this.renderHistogram();
+            await this.renderRoomChart();
         }
 
         const granSelect = this.querySelector('#granularity-select');
@@ -249,28 +298,64 @@ class CarbonFootprintPanel extends HTMLElement {
             });
         }
 
-        const sortSelect = this.querySelector('#sort-mode');
-        const tableContainer = this.querySelector('#energy-table-container');
-
-        if (sortSelect && tableContainer) {
-        sortSelect.addEventListener('change', () => {
-            let sortedDevices = [...energyDevices];
-            if (sortSelect.value === 'energy') {
-            sortedDevices.sort((a, b) => b.total_energy_kwh - a.total_energy_kwh);
-            } else if (sortSelect.value === 'name') {
-            sortedDevices.sort((a, b) => a.device_name.localeCompare(b.device_name));
-            }
-            tableContainer.innerHTML = this.renderEnergyTable(sortedDevices);
-        });
+        // Add settings button click handler
+        const settingsBtn = this.querySelector('#settings-btn');
+        if (settingsBtn) {
+            settingsBtn.addEventListener('click', () => {
+                this._currentPage = 'settings';
+                this.render(data);
+            });
         }
 
+        const groupBySelect = this.querySelector('#group-by-select');
+        if (groupBySelect) {
+            groupBySelect.addEventListener('change', async (e) => {
+                this._groupBy = e.target.value;
+                await this.renderRoomChart();
+            });
+        }
 
-        this.attachFormHandler();
+        // Add back to rooms button handler
+        const backBtn = this.querySelector('#back-to-rooms-btn');
+        if (backBtn) {
+            backBtn.addEventListener('click', () => {
+                this.showRoomChart();
+            });
+        }
+
+        // Add carbon view radio buttons event listeners
+        const carbonViewRadios = this.querySelectorAll('input[name="carbon-view"]');
+        for (const radio of carbonViewRadios) {
+            radio.addEventListener('change', async (e) => {
+                this._carbonView = e.target.value;
+                await this.renderRoomChart();
+
+                // If device detail view is visible, also re-render device chart
+                const deviceDetailView = this.querySelector('#device-detail-view');
+                if (deviceDetailView && deviceDetailView.style.display !== 'none') {
+                    // Re-fetch room data to get updated values for the selected view
+                    const data = this._groupBy === 'type'
+                        ? await this.getCarbonByType()
+                        : await this.getCarbonByRoom();
+
+                    if (data && this._selectedRoom) {
+                        const updatedItem = data.find(item =>
+                            item.room === this._selectedRoom.room ||
+                            item.type === this._selectedRoom.type
+                        );
+                        if (updatedItem) {
+                            this._selectedRoom = updatedItem;
+                            this.renderDeviceChart();
+                        }
+                    }
+                }
+            });
+        }
 
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.2'; // :skull:
+        link.href = '/api/carbon_footprint/style.css?version=1.9'; // :skull:
         this.appendChild(link);
     }
 
@@ -297,6 +382,7 @@ class CarbonFootprintPanel extends HTMLElement {
                 <div class="button-group">
                     <button type="button" id="compute-footprint-btn">Compute Footprint</button>
                     <button type="submit">Add Device</button>
+                    <button type="button" id="detect-devices-btn"><div class="loader" id="loader"></div>Detect Device Types</button>
                 </div>
             </form>
         `;
@@ -327,6 +413,106 @@ class CarbonFootprintPanel extends HTMLElement {
         `;
     }
 
+    async renderSettingsPage(data) {
+        const devicesResp = await this._hass.callWS({ type: 'carbon_footprint/get_devices_to_add' });
+        const devicesArray = devicesResp.device_names || [];
+        const hasDevices = data && data.devices && Object.keys(data.devices).length > 0;
+
+        const allDevicesEnergyResp = await this.getAllDevicesEnergy();
+        const energyDevices = allDevicesEnergyResp.devices_energy || [];
+        energyDevices.sort((a, b) => b.total_energy_kwh - a.total_energy_kwh);
+
+        this.innerHTML = `
+            <ha-app-layout>
+                <header class="ha-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <h1>Carbon Footprint</h1>
+                    <button id="back-btn" style="position: absolute; right: 20px; top: 15px; padding: 8px 16px; background-color: #03a9f4; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">← Back</button>
+                </header>
+
+                <div class="content" slot="content">
+                    <ha-card header="Add New Device">
+                        <div class="card-content">
+                            ${this.renderForm(devicesArray)}
+                        </div>
+                    </ha-card>
+
+                    <ha-card header="Configured Devices">
+                        <div class="card-content device-list-container">
+                            ${hasDevices ? `
+                                <ul>
+                                    ${Object.entries(data.devices).map(([device_name, info]) => `
+                                        <li>
+                                            <div class="device-info">
+                                                <div class="device-header">
+                                                    <h2><b>${device_name}</b></h2><br>
+                                                    <div class="device-extended">
+                                                        Type: ${info.type || 'Unknown'}<br>
+                                                        Area: ${info.metadata?.area_id || 'N/A'} <br>
+                                                        Carbon: ${info.carbon_footprint || 0} kgCO₂eq <br>
+                                                        Manfucturer: ${info.metadata?.manufacturer || 'N/A'}<br>
+                                                        Model: ${info.metadata?.model || 'N/A'}<br>
+                                                        Model ID: ${info.metadata?.model_id || 'N/A'}<br>
+                                                        Class: ${info.metadata?.device_classes || 'N/A'}<br>
+                                                        Total Energy Consumed: ${info.metadata?.total_energy || 'N/A'}<br>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    class="extend-btn"
+                                                    title="More information">
+                                                    ▼
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    class="delete-btn"
+                                                    data-entity-id="${device_name}"
+                                                    title="Remove device">
+                                                    ✕
+                                                </button>
+                                            </div>
+                                        </li>
+                                    `).join('')}
+                                </ul>
+                            ` : `<p>No devices configured yet.</p>`}
+                        </div>
+                    </ha-card>
+                </div>
+            </ha-app-layout>
+        `;
+
+        const backBtn = this.querySelector('#back-btn');
+        if (backBtn) {
+            backBtn.addEventListener('click', async () => {
+                this._currentPage = 'main';
+                const newData = await this.getCarbonData();
+                await this.render(newData);
+            });
+        }
+
+        const sortSelect = this.querySelector('#sort-mode');
+        const tableContainer = this.querySelector('#energy-table-container');
+
+        if (sortSelect && tableContainer) {
+            sortSelect.addEventListener('change', () => {
+                let sortedDevices = [...energyDevices];
+                if (sortSelect.value === 'energy') {
+                    sortedDevices.sort((a, b) => b.total_energy_kwh - a.total_energy_kwh);
+                } else if (sortSelect.value === 'name') {
+                    sortedDevices.sort((a, b) => a.device_name.localeCompare(b.device_name));
+                }
+                tableContainer.innerHTML = this.renderEnergyTable(sortedDevices);
+            });
+        }
+
+        this.attachFormHandler();
+
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.type = 'text/css';
+        link.href = '/api/carbon_footprint/style.css?version=1.15'; // :skull:
+        this.appendChild(link);
+    }
+
     async refreshHistogram() {
         const newHtml = await this.getEnergyHistogram();
         const container = this.querySelector('#energy-histogram-container');
@@ -341,6 +527,66 @@ class CarbonFootprintPanel extends HTMLElement {
             document.head.appendChild(script);
         } else {
             this.renderHistogram();
+        }
+    }
+
+    async detectDevicesType(detectBtn, loaderAnim) {
+        const devicesResp = await this._hass.callWS({ type: 'carbon_footprint/get_devices_to_add' });
+        let deviceNames = devicesResp.device_names || [];
+        let deviceModels = devicesResp.device_models || [];
+        let deviceManufacturers = devicesResp.device_manufacturers || [];
+
+        let devicesDict = {};
+        for (let i = 0; i < deviceNames.length; i++) {
+            let infoDict = {};
+            infoDict['model'] = deviceModels[i];
+            infoDict['manufacturer'] = deviceManufacturers[i];
+            devicesDict[deviceNames[i]] = infoDict;
+        }
+
+        try {
+            const llmResp = await this._hass.callWS({
+                type: 'carbon_footprint/llm_detection',
+                devices: devicesDict
+            });
+
+            console.log('Device Types Detection successful, continuing...');
+
+            let deviceTypes = llmResp.device_types
+            const dbMatchingResp = await this._hass.callWS({
+                type: 'carbon_footprint/db_matching',
+                device_types: JSON.parse(deviceTypes),
+            });
+            let devicesMatched = dbMatchingResp.devices_matched;
+            console.log(`${devicesMatched}`)
+
+            //flow: Once we got the device types: pull the db and match carbon values, this will automatically setup everything where possible.
+            //idea: pass the device_types json as argument for another websocket, which will return another json in the following format:
+            //{
+            //  "<device_name>" : {
+            //      "device_type": "<type>"
+            //      "carbon_footprint": "<value>"
+            //  }
+            //}
+            //then use this for set_device
+
+            for (const [deviceName, deviceInfo] of Object.entries(devicesMatched)) {
+                console.log(`Processing ${deviceName}: `, deviceInfo)
+                await this._hass.callWS({
+                        type: 'carbon_footprint/set_device',
+                        device_name: deviceName,
+                        device_type: deviceInfo.device_type,
+                        carbon_footprint: deviceInfo.carbon_footprint,
+                        metadata: {}
+                    });
+            }
+        } catch (error) {
+            console.error('LLM detection failed:', error);
+            alert(`Device type detection failed: ${error.message || error.code}`);
+        }
+        finally {
+            detectBtn.disabled = false;
+            loaderAnim.style.display = 'none';
         }
     }
 
@@ -421,6 +667,273 @@ class CarbonFootprintPanel extends HTMLElement {
         });
     }
 
+    async renderRoomChart() {
+        const canvas = this.querySelector('#room-pie-chart');
+        if (!canvas) {
+            return;
+        }
+
+        // Fetch room data
+        let data;
+        if (this._groupBy === 'type') {
+            data = await this.getCarbonByType();
+        } else {
+            data = await this.getCarbonByRoom();
+        }
+
+        if (!data || data.length === 0) {
+            const container = this.querySelector('#room-chart-view');
+            if (container) {
+                container.innerHTML = '<p>No room data available</p>';
+            }
+            return;
+        }
+
+        // Prepare data for pie chart based on selected view
+        const labels = data.map(item => item.room || item.type);
+        let values;
+        let datasetLabel;
+
+        switch (this._carbonView) {
+            case 'embodied':
+                values = data.map(item => item.embodied_carbon);
+                datasetLabel = 'Embodied Carbon';
+                break;
+            case 'usage':
+                values = data.map(item => item.usage_carbon);
+                datasetLabel = 'Usage Carbon';
+                break;
+            case 'total':
+            default:
+                values = data.map(item => item.total_carbon);
+                datasetLabel = 'Total Carbon';
+        }
+
+        const colors = [
+            'rgba(76, 175, 80, 0.6)',   // Green
+            'rgba(33, 150, 243, 0.6)',  // Blue
+            'rgba(255, 152, 0, 0.6)',   // Orange
+            'rgba(244, 67, 54, 0.6)',   // Red
+            'rgba(156, 39, 176, 0.6)',  // Purple
+            'rgba(0, 150, 136, 0.6)',   // Teal
+        ];
+
+        if (this._roomChart) {
+            this._roomChart.destroy();
+        }
+
+        this._roomChart = new Chart(canvas.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: datasetLabel,
+                    data: values,
+                    backgroundColor: colors.slice(0, data.length),
+                    borderColor: colors.slice(0, data.length).map(c => c.replace('0.6', '1')),
+                    borderWidth: 2,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            padding: 15,
+                            font: { size: 13 }
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: 'kgCO₂eq',
+                        font: { size: 12, weight: 'normal' },
+                        padding: { bottom: 10 }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => `${context.label}: ${context.parsed.toFixed(2)} kgCO₂eq`
+                        }
+                    }
+                }
+            }
+        });
+
+        // Add click handler to pie chart
+        this._addRoomChartClickHandler(data, canvas);
+    }
+
+    _addRoomChartClickHandler(rooms, canvas) {
+        canvas.onclick = (event) => {
+            const points = this._roomChart.getElementsAtEventForMode(event, 'nearest', { intersect: true }, true);
+            if (points.length > 0) {
+                const index = points[0].index;
+                this._selectedRoom = rooms[index];
+                this.showDeviceDetail();
+                this.renderDeviceChart();
+            }
+        };
+    }
+
+    showDeviceDetail() {
+        const roomChartView = this.querySelector('#room-chart-view');
+        const deviceDetailView = this.querySelector('#device-detail-view');
+        const roomTitle = this.querySelector('#selected-room-title');
+
+        if (roomChartView && deviceDetailView) {
+            roomChartView.style.display = 'none';
+            deviceDetailView.style.display = 'block';
+            roomTitle.textContent = `Devices in ${this._selectedRoom.room || this._selectedRoom.type}`;
+        }
+    }
+
+    showRoomChart() {
+        const roomChartView = this.querySelector('#room-chart-view');
+        const deviceDetailView = this.querySelector('#device-detail-view');
+
+        if (roomChartView && deviceDetailView) {
+            roomChartView.style.display = 'block';
+            deviceDetailView.style.display = 'none';
+            this._selectedRoom = null;
+        }
+    }
+
+    renderDeviceChart() {
+        if (!this._selectedRoom) {
+            return;
+        }
+
+        const canvas = this.querySelector('#device-bar-chart');
+        if (!canvas) {
+            return;
+        }
+
+        const devices = this._selectedRoom.devices;
+        const labels = devices.map(d => d.name);
+
+        const minHeight = 300;
+        const heightPerDevice = 40;
+        const newHeight = Math.max(minHeight, devices.length * heightPerDevice);
+
+        const canvasContainer = canvas.parentElement;
+        if (canvasContainer) {
+            canvasContainer.style.height = `${newHeight}px`;
+        }
+
+        let values;
+        let datasetLabel;
+        let breakdown = '';
+
+        // Calculate breakdown text
+        const embodiedTotal = devices.reduce((sum, d) => sum + (d.embodied_carbon || 0), 0);
+        const usageTotal = devices.reduce((sum, d) => sum + (d.usage_carbon || 0), 0);
+        const totalSum = devices.reduce((sum, d) => sum + (d.total_carbon || 0), 0);
+
+        breakdown = `Embodied: ${embodiedTotal.toFixed(2)} kgCO₂eq | Usage: ${usageTotal.toFixed(2)} kgCO₂eq | Total: ${totalSum.toFixed(2)} kgCO₂eq`;
+        const breakdownText = this.querySelector('#device-breakdown-text');
+        if (breakdownText) {
+            breakdownText.textContent = breakdown;
+        }
+
+        if (this._deviceChart) {
+            this._deviceChart.destroy();
+        }
+
+        // Build datasets based on view
+        let datasets;
+        let stacked = false;
+
+        if (this._carbonView === 'total') {
+            // Stacked bars showing embodied and usage
+            const embodiedValues = devices.map(d => d.embodied_carbon);
+            const usageValues = devices.map(d => d.usage_carbon);
+
+            datasets = [
+                {
+                    label: 'Embodied Carbon',
+                    data: embodiedValues,
+                    backgroundColor: 'rgba(76, 175, 80, 0.7)',  // Green
+                    borderColor: 'rgb(76, 175, 80)',
+                    borderWidth: 1,
+                },
+                {
+                    label: 'Usage Carbon',
+                    data: usageValues,
+                    backgroundColor: 'rgba(33, 150, 243, 0.7)',  // Blue
+                    borderColor: 'rgb(33, 150, 243)',
+                    borderWidth: 1,
+                }
+            ];
+            stacked = true;
+        } else if (this._carbonView === 'embodied') {
+            // Single bars for embodied
+            const embodiedValues = devices.map(d => d.embodied_carbon);
+            datasets = [
+                {
+                    label: 'Embodied Carbon',
+                    data: embodiedValues,
+                    backgroundColor: 'rgba(76, 175, 80, 0.7)',  // Green
+                    borderColor: 'rgb(76, 175, 80)',
+                    borderWidth: 2,
+                }
+            ];
+        } else {
+            // Single bars for usage
+            const usageValues = devices.map(d => d.usage_carbon);
+            datasets = [
+                {
+                    label: 'Usage Carbon',
+                    data: usageValues,
+                    backgroundColor: 'rgba(33, 150, 243, 0.7)',  // Blue
+                    borderColor: 'rgb(33, 150, 243)',
+                    borderWidth: 2,
+                }
+            ];
+        }
+
+        this._deviceChart = new Chart(canvas.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: 'y',  // Horizontal bar chart
+                scales: {
+                    x: {
+                        stacked: stacked,
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'kgCO₂eq',
+                            font: { weight: 'bold', size: 12 }
+                        },
+                        ticks: {
+                            callback: (value) => `${value}`
+                        }
+                    },
+                    y: {
+                        stacked: stacked,
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => `${context.dataset.label}: ${context.parsed.x.toFixed(2)} kgCO₂eq`
+                        }
+                    }
+                },
+            }
+        });
+    }
+
     attachFormHandler() {
         const form = this.querySelector('#add-device-form');
         if (form) {
@@ -448,10 +961,35 @@ class CarbonFootprintPanel extends HTMLElement {
             });
         }
 
+        const detectBtn = this.querySelector('#detect-devices-btn');
+        const loaderAnim = this.querySelector('#loader');
+        if (detectBtn) {
+            detectBtn.addEventListener('click', async () => {
+                this.detectDevicesType(detectBtn, loaderAnim)
+                detectBtn.disabled = true;
+                loaderAnim.style.display = 'inline-block';
+            });
+        }
+
         const computeBtn = this.querySelector('#compute-footprint-btn');
         if (computeBtn) {
             computeBtn.addEventListener('click', () => this.showHardwareDialogAndCompute());
         }
+
+        const extendButtons = this.querySelectorAll('.extend-btn');
+        extendButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const deviceInfo = e.currentTarget.closest('.device-info');
+                const extendedDiv = deviceInfo.querySelector('.device-extended');
+
+                if (extendedDiv) {
+                    const isHidden = extendedDiv.style.display === 'none' || !extendedDiv.style.display;
+                    extendedDiv.style.display = isHidden ? 'block' : 'none';
+
+                    e.currentTarget.textContent = isHidden ? '▲' : '▼';
+                }
+            })
+        })
 
         const deleteButtons = this.querySelectorAll('.delete-btn');
         deleteButtons.forEach(btn => {

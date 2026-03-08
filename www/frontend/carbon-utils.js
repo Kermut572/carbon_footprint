@@ -40,7 +40,7 @@ export class CarbonUtils {
                 type: "carbon_footprint/get_all_devices_energy",
             });
         } catch (err) {
-            console.error("Error fetching all devices energy:", err);
+            //console.error("Error fetching all devices energy:", err);
             return { devices: [] };
         }
     }
@@ -73,21 +73,31 @@ export class CarbonUtils {
 
         const hasDevices = data && data.devices && Object.keys(data.devices).length > 0;
 
+        //crime de guerre de l'avoir en dupliqué
         deviceListContainer.innerHTML = hasDevices ? `
             <ul>
                 ${Object.entries(data.devices).map(([device_name, info]) => `
                     <li>
                         <div class="device-info">
-                            <div>
-                                <b>${device_name}</b><br>
-                                Type: ${info.type || 'Unknown'}<br>
-                                Carbon: ${info.carbon_footprint || 0} kgCO₂eq <br>
-                                Manfucturer: ${info.metadata?.manufacturer || 'N/A'}<br>
-                                Model: ${info.metadata?.model || 'N/A'}<br>
-                                Model ID: ${info.metadata?.model_id || 'N/A'}<br>
-                                Class: ${info.metadata?.device_classes || 'N/A'}<br>
-                                Total Energy Consumed: ${info.metadata?.total_energy || 'N/A'}<br>
+                            <div class="device-header">
+                                <h2><b>${device_name}</b></h2><br>
+                                <div class="device-extended">
+                                    Type: ${info.type || 'Unknown'}<br>
+                                    Area: ${info.metadata?.area_id || 'N/A'} <br>
+                                    Carbon: ${info.carbon_footprint || 0} kgCO₂eq <br>
+                                    Manfucturer: ${info.metadata?.manufacturer || 'N/A'}<br>
+                                    Model: ${info.metadata?.model || 'N/A'}<br>
+                                    Model ID: ${info.metadata?.model_id || 'N/A'}<br>
+                                    Class: ${info.metadata?.device_classes || 'N/A'}<br>
+                                    Total Energy Consumed: ${info.metadata?.total_energy || 'N/A'}<br>
+                                </div>
                             </div>
+                            <button
+                                type="button"
+                                class="extend-btn"
+                                title="More information">
+                                ▼
+                            </button>
                             <button
                                 type="button"
                                 class="delete-btn"
