@@ -10,9 +10,11 @@ data.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from typing import Any
 
+import aiohttp
 from openrouter import OpenRouter
 import voluptuous as vol
 
@@ -45,6 +47,7 @@ def async_register_websocket_handlers(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_carbon_by_room_with_usage)
     websocket_api.async_register_command(hass, ws_get_carbon_by_type_with_usage)
     websocket_api.async_register_command(hass, ws_llm_detection)
+    websocket_api.async_register_command(hass, ws_db_matching)
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_devices_to_add"})
@@ -959,7 +962,8 @@ async def ws_llm_detection(
 
     devices = msg["devices"]
 
-    def _openai_call():
+    # TODO set a list of device types.
+    def _openrouter_call():
         with OpenRouter(api_key=api_key) as client:
             response = client.chat.send(
                 model="google/gemma-3-12b-it:free",
@@ -975,9 +979,76 @@ async def ws_llm_detection(
         return response.choices[0].message.content
 
     try:
-        result = await hass.async_add_executor_job(_openai_call)
+        result = await hass.async_add_executor_job(_openrouter_call)
         connection.send_result(msg["id"], {"device_types": result})
     except Exception as err:
         connection.send_error(
-            msg["id"], "openai_call_error", f"Device type detection failed: {err}"
+            msg["id"], "openrouter_call_error", f"Device type detection failed: {err}"
         )
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/db_matching", vol.Required("device_types"): dict}
+)
+@websocket_api.async_response
+async def ws_db_matching(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Calls the DB REST API in order to match carbon values."""
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        connection.send_error(
+            msg["id"], "config_entry_not_found", "No config entry found"
+        )
+        return
+
+    entry = entries[0]
+    db_ip = entry.options.get("db_ip")
+    if not db_ip or len(db_ip) == 0:
+        connection.send_error(
+            msg["id"],
+            "db_ip_not_set",
+            "No API endpoint (db_ip) was set. You can set it in the integration's settings.",
+        )
+        return
+
+    device_db = None
+    try:
+        async with (
+            aiohttp.ClientSession() as session,
+            session.get(db_ip + "/api/devices/approved") as resp,
+        ):
+            device_db = await resp.json()
+    except Exception as e:
+        connection.send_error(
+            msg["id"],
+            "db_http_error",
+            f"An error occured while fetching database information: {e}",
+        )
+        return
+
+    types_carbon = {}
+    for device in device_db:
+        device_type = device.get("type", "").lower()
+        device_carbon = device.get("carbon_footprint")[0]["mid"]
+        if not device_type or not device_carbon:
+            continue
+
+        if device_type in types_carbon:
+            continue
+
+        types_carbon[device_type] = device_carbon
+
+    devices_matched = {}
+    device_types: dict = msg["device_types"]
+    for d_name, d_type in device_types.items():
+        d_type = d_type.lower()
+        d_footprint = types_carbon.get(d_type, 0.0)
+        devices_matched[d_name] = {
+            "device_type": f"{d_type}",
+            "carbon_footprint": d_footprint,
+        }
+
+    connection.send_result(msg["id"], {"devices_matched": devices_matched})

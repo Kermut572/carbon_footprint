@@ -550,9 +550,36 @@ class CarbonFootprintPanel extends HTMLElement {
                 devices: devicesDict
             });
 
-            console.log('Device Types Detection Result:');
-            console.log(llmResp.device_types);
+            console.log('Device Types Detection successful, continuing...');
 
+            let deviceTypes = llmResp.device_types
+            const dbMatchingResp = await this._hass.callWS({
+                type: 'carbon_footprint/db_matching',
+                device_types: JSON.parse(deviceTypes),
+            });
+            let devicesMatched = dbMatchingResp.devices_matched;
+            console.log(`${devicesMatched}`)
+
+            //flow: Once we got the device types: pull the db and match carbon values, this will automatically setup everything where possible.
+            //idea: pass the device_types json as argument for another websocket, which will return another json in the following format:
+            //{
+            //  "<device_name>" : {
+            //      "device_type": "<type>"
+            //      "carbon_footprint": "<value>"
+            //  }
+            //}
+            //then use this for set_device
+
+            for (const [deviceName, deviceInfo] of Object.entries(devicesMatched)) {
+                console.log(`Processing ${deviceName}: `, deviceInfo)
+                await this._hass.callWS({
+                        type: 'carbon_footprint/set_device',
+                        device_name: deviceName,
+                        device_type: deviceInfo.device_type,
+                        carbon_footprint: deviceInfo.carbon_footprint,
+                        metadata: {}
+                    });
+            }
         } catch (error) {
             console.error('LLM detection failed:', error);
             alert(`Device type detection failed: ${error.message || error.code}`);
@@ -784,6 +811,16 @@ class CarbonFootprintPanel extends HTMLElement {
 
         const devices = this._selectedRoom.devices;
         const labels = devices.map(d => d.name);
+
+        const minHeight = 300;
+        const heightPerDevice = 40;
+        const newHeight = Math.max(minHeight, devices.length * heightPerDevice);
+
+        const canvasContainer = canvas.parentElement;
+        if (canvasContainer) {
+            canvasContainer.style.height = `${newHeight}px`;
+        }
+
         let values;
         let datasetLabel;
         let breakdown = '';
