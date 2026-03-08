@@ -1029,6 +1029,9 @@ async def ws_db_matching(
         )
         return
 
+    # TODO have a specific dict that contains model_manufacturer as key and cf as value. Lookup in this dict
+    # first and if nothing is found use the types_carbon.
+
     types_carbon = {}
     for device in device_db:
         device_type = device.get("type", "").lower()
