@@ -205,6 +205,24 @@ button {
     font-weight: 500;
 }
 
+.loader {
+    display: none;
+    width: 8px;
+    height: 8px;
+    border: 3px solid var(--divider-color);
+    border-top: 3px solid var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-left: 8px;
+    margin-right: 8px;
+    vertical-align: middle;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
 button[value="cancel"] {
     background-color: var(--secondary-background-color);
     color: var(--primary-text-color);

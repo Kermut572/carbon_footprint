@@ -13,6 +13,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from openrouter import OpenRouter
 import voluptuous as vol
 
 from homeassistant.components import websocket_api
@@ -43,6 +44,7 @@ def async_register_websocket_handlers(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_carbon_by_type)
     websocket_api.async_register_command(hass, ws_get_carbon_by_room_with_usage)
     websocket_api.async_register_command(hass, ws_get_carbon_by_type_with_usage)
+    websocket_api.async_register_command(hass, ws_llm_detection)
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_devices_to_add"})
@@ -52,22 +54,34 @@ def ws_get_devices_to_add(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Returns all relevant devices' names the user could track. As of now, all devices with empty classes are removed."""
+    """Returns all relevant devices' names (and their related models and manufacturers) the user could track. As of now, all devices with empty classes are removed."""
     device_names = []
+    device_manufacturers = []
+    device_models = []
     registry = dr.async_get(hass)
     entity_reg = er.async_get(hass)
     for device in registry.devices.values():
-        device_entites = er.async_entries_for_device(entity_reg, device.id)
-        device_classes = utils_get_device_classes(hass, device_entites)
+        device_entities = er.async_entries_for_device(entity_reg, device.id)
+        device_classes = utils_get_device_classes(hass, device_entities)
         # if len(device_classes) == 0:
         #    continue
 
         device_name = (
-            device.name_by_user if device.name_by_user else device.name
+            device.name_by_user or device.name
         )  # just in case device.name_by_user is not defined, which can happen quite a lot
-        device_names.append(device_name)
 
-    connection.send_result(msg["id"], {"device_names": device_names})
+        device_names.append(device_name)
+        device_manufacturers.append(device.manufacturer)
+        device_models.append(device.model)
+
+    connection.send_result(
+        msg["id"],
+        {
+            "device_names": device_names,
+            "device_manufacturers": device_manufacturers,
+            "device_models": device_models,
+        },
+    )
 
 
 @websocket_api.websocket_command(
@@ -913,3 +927,57 @@ def ws_get_carbon_by_type_with_usage(
     type_list.sort(key=lambda x: x["total_carbon"], reverse=True)
 
     connection.send_result(msg["id"], {"types": type_list})
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/llm_detection", vol.Required("devices"): dict}
+)
+@websocket_api.async_response
+async def ws_llm_detection(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Calls an OpenAI model to determine the type of the user's devices."""
+
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        connection.send_error(
+            msg["id"], "config_entry_not_found", "No config entry found"
+        )
+        return
+
+    entry = entries[0]
+    api_key = entry.options.get("api_key")
+    if not api_key or len(api_key) == 0:
+        connection.send_error(
+            msg["id"],
+            "api_key_not_set",
+            "No API key was set. You can set it in the integration's settings.",
+        )
+        return
+
+    devices = msg["devices"]
+
+    def _openai_call():
+        with OpenRouter(api_key=api_key) as client:
+            response = client.chat.send(
+                model="google/gemma-3-12b-it:free",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": f"You are given a dictionary mapping device names to their model and manufacturer. Return ONLY a valid JSON object (no explanation, no markdown, no code blocks) mapping each device name to its device type category (e.g., 'Smart Plug', 'Temperature Sensor', 'Light', 'Camera'). Input devices: {devices}",
+                    }
+                ],
+                response_format={"type": "json_object"},
+            )
+
+        return response.choices[0].message.content
+
+    try:
+        result = await hass.async_add_executor_job(_openai_call)
+        connection.send_result(msg["id"], {"device_types": result})
+    except Exception as err:
+        connection.send_error(
+            msg["id"], "openai_call_error", f"Device type detection failed: {err}"
+        )

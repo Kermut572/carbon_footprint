@@ -355,7 +355,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.3'; // :skull:
+        link.href = '/api/carbon_footprint/style.css?version=1.9'; // :skull:
         this.appendChild(link);
     }
 
@@ -382,6 +382,7 @@ class CarbonFootprintPanel extends HTMLElement {
                 <div class="button-group">
                     <button type="button" id="compute-footprint-btn">Compute Footprint</button>
                     <button type="submit">Add Device</button>
+                    <button type="button" id="detect-devices-btn"><div class="loader" id="loader"></div>Detect Device Types</button>
                 </div>
             </form>
         `;
@@ -508,7 +509,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.11'; // :skull:
+        link.href = '/api/carbon_footprint/style.css?version=1.15'; // :skull:
         this.appendChild(link);
     }
 
@@ -526,6 +527,39 @@ class CarbonFootprintPanel extends HTMLElement {
             document.head.appendChild(script);
         } else {
             this.renderHistogram();
+        }
+    }
+
+    async detectDevicesType(detectBtn, loaderAnim) {
+        const devicesResp = await this._hass.callWS({ type: 'carbon_footprint/get_devices_to_add' });
+        let deviceNames = devicesResp.device_names || [];
+        let deviceModels = devicesResp.device_models || [];
+        let deviceManufacturers = devicesResp.device_manufacturers || [];
+
+        let devicesDict = {};
+        for (let i = 0; i < deviceNames.length; i++) {
+            let infoDict = {};
+            infoDict['model'] = deviceModels[i];
+            infoDict['manufacturer'] = deviceManufacturers[i];
+            devicesDict[deviceNames[i]] = infoDict;
+        }
+
+        try {
+            const llmResp = await this._hass.callWS({
+                type: 'carbon_footprint/llm_detection',
+                devices: devicesDict
+            });
+
+            console.log('Device Types Detection Result:');
+            console.log(llmResp.device_types);
+
+        } catch (error) {
+            console.error('LLM detection failed:', error);
+            alert(`Device type detection failed: ${error.message || error.code}`);
+        }
+        finally {
+            detectBtn.disabled = false;
+            loaderAnim.style.display = 'none';
         }
     }
 
@@ -887,6 +921,16 @@ class CarbonFootprintPanel extends HTMLElement {
                     console.error('Failed to add device:', error);
                     alert(`Error adding device: ${error.message}`);
                 }
+            });
+        }
+
+        const detectBtn = this.querySelector('#detect-devices-btn');
+        const loaderAnim = this.querySelector('#loader');
+        if (detectBtn) {
+            detectBtn.addEventListener('click', async () => {
+                this.detectDevicesType(detectBtn, loaderAnim)
+                detectBtn.disabled = true;
+                loaderAnim.style.display = 'inline-block';
             });
         }
 
