@@ -74,8 +74,8 @@ def ws_get_devices_to_add(
             continue
 
         # services should not have hardware version
-        if not device.hw_version:
-            continue
+        # if not device.hw_version:
+        #    continue
 
         device_name = (
             device.name_by_user or device.name
