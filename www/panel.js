@@ -549,16 +549,21 @@ class CarbonFootprintPanel extends HTMLElement {
                 type: 'carbon_footprint/llm_detection',
                 devices: devicesDict
             });
-
+            let deviceTypes = JSON.parse(llmResp.device_types);
             console.log('Device Types Detection successful, continuing...');
 
-            let deviceTypes = llmResp.device_types
+            for(const key in devicesDict) {
+                devicesDict[key]['device_type'] = deviceTypes[key]
+            }
+
+            console.log(`Sending ${JSON.stringify(devicesDict)}`)
             const dbMatchingResp = await this._hass.callWS({
                 type: 'carbon_footprint/db_matching',
-                device_types: JSON.parse(deviceTypes),
+                device_types: devicesDict,
             });
             let devicesMatched = dbMatchingResp.devices_matched;
             console.log(`${devicesMatched}`)
+
 
             //flow: Once we got the device types: pull the db and match carbon values, this will automatically setup everything where possible.
             //idea: pass the device_types json as argument for another websocket, which will return another json in the following format:

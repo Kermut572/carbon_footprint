@@ -1029,8 +1029,14 @@ async def ws_db_matching(
         )
         return
 
-    # TODO have a specific dict that contains model_manufacturer as key and cf as value. Lookup in this dict
-    # first and if nothing is found use the types_carbon.
+    devices_carbon = {}
+    for device in device_db:
+        device_id = device.get("id").lower()
+        device_carbon = device.get("carbon_footprint")[0]["mid"]
+        if not device_id or not device_carbon:
+            continue
+
+        devices_carbon[device_id] = device_carbon
 
     types_carbon = {}
     for device in device_db:
@@ -1046,9 +1052,21 @@ async def ws_db_matching(
 
     devices_matched = {}
     device_types: dict = msg["device_types"]
-    for d_name, d_type in device_types.items():
-        d_type = d_type.lower()
-        d_footprint = types_carbon.get(d_type, 0.0)
+    for d_name, values in device_types.items():
+        d_type = values.get("device_type").lower()
+
+        d_model = values.get("model")
+        d_manufacturer = values.get("manufacturer")
+        d_id = (
+            d_model.lower() + "-" + d_manufacturer.lower()
+            if d_model and d_manufacturer
+            else "none"
+        )
+        d_footprint = (
+            devices_carbon.get(d_id)
+            if d_id in devices_carbon
+            else types_carbon.get(d_type, 0.0)
+        )
         devices_matched[d_name] = {
             "device_type": f"{d_type}",
             "carbon_footprint": d_footprint,
