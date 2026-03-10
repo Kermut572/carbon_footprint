@@ -355,7 +355,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.9'; // :skull:
+        link.href = '/api/carbon_footprint/style.css?version=1.12'; // :skull:
         this.appendChild(link);
     }
 
@@ -509,7 +509,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.15'; // :skull:
+        link.href = '/api/carbon_footprint/style.css?version=1.18'; // :skull:
         this.appendChild(link);
     }
 
@@ -530,6 +530,28 @@ class CarbonFootprintPanel extends HTMLElement {
         }
     }
 
+    showLoadingOverlay(message = 'Loading...') {
+        this.hideLoadingOverlay();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'loading-overlay';
+        overlay.innerHTML = `
+            <div class="loading-content">
+                <div class="spinner"></div>
+                <p>${message}</p>
+            </div>
+        `;
+
+        this.appendChild(overlay);
+    }
+
+    hideLoadingOverlay() {
+        const overlay = this.querySelector('#loading-overlay');
+        if (overlay) {
+            overlay.remove();
+        }
+    }
+
     async detectDevicesType(detectBtn, loaderAnim) {
         const devicesResp = await this._hass.callWS({ type: 'carbon_footprint/get_devices_to_add' });
         let deviceNames = devicesResp.device_names || [];
@@ -545,6 +567,7 @@ class CarbonFootprintPanel extends HTMLElement {
         }
 
         try {
+            this.showLoadingOverlay('Detecting device types...');
             const llmResp = await this._hass.callWS({
                 type: 'carbon_footprint/llm_detection',
                 devices: devicesDict
@@ -555,6 +578,8 @@ class CarbonFootprintPanel extends HTMLElement {
             for(const key in devicesDict) {
                 devicesDict[key]['device_type'] = deviceTypes[key]
             }
+
+            this.showLoadingOverlay('Matching devices with database...');
 
             console.log(`Sending ${JSON.stringify(devicesDict)}`)
             const dbMatchingResp = await this._hass.callWS({
@@ -575,6 +600,7 @@ class CarbonFootprintPanel extends HTMLElement {
             //}
             //then use this for set_device
 
+            this.showLoadingOverlay('Adding devices to Carbon Footprint Integration...');
             for (const [deviceName, deviceInfo] of Object.entries(devicesMatched)) {
                 console.log(`Processing ${deviceName}: `, deviceInfo)
                 await this._hass.callWS({
@@ -590,8 +616,11 @@ class CarbonFootprintPanel extends HTMLElement {
             alert(`Device type detection failed: ${error.message || error.code}`);
         }
         finally {
+            this.hideLoadingOverlay();
             detectBtn.disabled = false;
             loaderAnim.style.display = 'none';
+            const updatedData = await this.getCarbonData();
+            await this.renderSettingsPage(updatedData);
         }
     }
 

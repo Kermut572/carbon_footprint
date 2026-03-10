@@ -66,16 +66,10 @@ def ws_get_devices_to_add(
     for device in registry.devices.values():
         device_entities = er.async_entries_for_device(entity_reg, device.id)
         device_classes = utils_get_device_classes(hass, device_entities)
-        # if len(device_classes) == 0:
-        #    continue
 
         # The type of entry. Possible values are None and DeviceEntryType enum members (only service). <- we don't care about services
         if device.entry_type is not None:
             continue
-
-        # services should not have hardware version
-        # if not device.hw_version:
-        #    continue
 
         device_name = (
             device.name_by_user or device.name
