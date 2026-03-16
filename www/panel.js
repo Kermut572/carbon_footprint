@@ -901,7 +901,7 @@ class CarbonFootprintPanel extends HTMLElement {
                 },
                 {
                     label: 'Predicted Carbon (5 years)',
-                    data: usageValues,
+                    data: predictedValues,
                     backgroundColor: 'rgba(243, 33, 33, 0.7)',
                     borderColor: 'rgba(243, 33, 33, 1)',
                     borderWidth: 1,
