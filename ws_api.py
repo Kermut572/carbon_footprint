@@ -699,6 +699,7 @@ def ws_get_carbon_by_room_with_usage(
                 "room_id": room_id,
                 "embodied_carbon": 0,
                 "usage_carbon": 0,
+                "predicted_carbon": 0,
                 "total_carbon": 0,
                 "devices": [],
             }
