@@ -907,8 +907,9 @@ def ws_get_carbon_by_type_with_usage(
         predicted_usage_carbon_value = 0.0
         install_date = metadata.get("install_date", None)
         if install_date is not None:
-            datetime_from_installation = datetime.now() - install_date
-            days_from_installation = datetime_from_installation.days
+            install_dt = dt_util.parse_datetime(install_date)
+            datetime_from_installation = datetime.now() - install_dt
+            days_from_installation = max(datetime_from_installation.days, 1)
             predicted_usage_carbon_value = (
                 usage_carbon_value / days_from_installation
             ) * 1825  # 1825 days for five years
