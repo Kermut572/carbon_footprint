@@ -86,7 +86,7 @@ def utils_get_device_total_energy_consumption(
             try:
                 if val is not None:
                     return float(val), cand
-            except TypeError, ValueError:
+            except Exception:
                 continue
 
     return None, None
