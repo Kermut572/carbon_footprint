@@ -940,12 +940,14 @@ def ws_get_carbon_by_type_with_usage(
         )
         type_dict[device_type]["embodied_carbon"] += embodied_carbon_value
         type_dict[device_type]["usage_carbon"] += usage_carbon_value
+        type_dict[device_type]["predicted_carbon"] += predicted_usage_carbon_value
         type_dict[device_type]["total_carbon"] += device_total
 
     type_list = []
     for type_data in type_dict.values():
         type_data["embodied_carbon"] = round(type_data["embodied_carbon"], 2)
         type_data["usage_carbon"] = round(type_data["usage_carbon"], 2)
+        type_data["predicted_carbon"] = round(type_data["predicted_carbon"], 2)
         type_data["total_carbon"] = round(type_data["total_carbon"], 2)
         type_list.append(type_data)
 
