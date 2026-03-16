@@ -904,6 +904,15 @@ def ws_get_carbon_by_type_with_usage(
         if total_energy is not None:
             usage_carbon_value = (total_energy * co2_intensity) / 1000
 
+        predicted_usage_carbon_value = 0.0
+        install_date = metadata.get("install_date", None)
+        if install_date is not None:
+            datetime_from_installation = datetime.now() - install_date
+            days_from_installation = datetime_from_installation.days
+            predicted_usage_carbon_value = (
+                usage_carbon_value / days_from_installation
+            ) * 1825  # 1825 days for five years
+
         embodied_carbon_value = device_info.get("carbon_footprint", 0)
         device_type = device_info.get("type", "Unknown")
 
@@ -915,6 +924,7 @@ def ws_get_carbon_by_type_with_usage(
                 "embodied_carbon": 0,
                 "usage_carbon": 0,
                 "total_carbon": 0,
+                "predicted_carbon": 0,
                 "devices": [],
             }
 
@@ -924,6 +934,7 @@ def ws_get_carbon_by_type_with_usage(
                 "embodied_carbon": round(embodied_carbon_value, 2),
                 "usage_carbon": round(usage_carbon_value, 2),
                 "total_carbon": round(device_total, 2),
+                "predicted_carbon": round(predicted_usage_carbon_value, 2),
                 "carbon": embodied_carbon_value,
             }
         )

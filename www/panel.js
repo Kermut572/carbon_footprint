@@ -882,6 +882,7 @@ class CarbonFootprintPanel extends HTMLElement {
             // Stacked bars showing embodied and usage
             const embodiedValues = devices.map(d => d.embodied_carbon);
             const usageValues = devices.map(d => d.usage_carbon);
+            const predictedValues = devices.map(d => d.predicted_carbon);
 
             datasets = [
                 {
@@ -896,6 +897,13 @@ class CarbonFootprintPanel extends HTMLElement {
                     data: usageValues,
                     backgroundColor: 'rgba(33, 150, 243, 0.7)',  // Blue
                     borderColor: 'rgb(33, 150, 243)',
+                    borderWidth: 1,
+                },
+                {
+                    label: 'Predicted Carbon (5 years)',
+                    data: usageValues,
+                    backgroundColor: 'rgba(243, 33, 33, 0.7)',
+                    borderColor: 'rgba(243, 33, 33, 1)',
                     borderWidth: 1,
                 }
             ];
