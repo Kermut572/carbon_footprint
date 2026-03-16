@@ -56,39 +56,10 @@ def utils_get_device_total_energy_consumption(
         except Exception:
             continue
 
-    if is_sensor:
-        return (round(total_energy, 4), sensor_name)
+    if not is_sensor:
+        return (None, None)
 
-    # try lookup of historical data if the device is off when added
-    candidates = [e.entity_id for e in device_entities]
-    for cand in candidates:
-        try:
-            data = statistics_during_period(
-                hass,
-                dt_util.utcnow() - timedelta(days=7),
-                None,
-                {cand},
-                "hour",
-                None,
-                {"sum", "state", "mean"},
-            )
-        except Exception:
-            continue
-
-        series = data.get(cand) if isinstance(data, dict) else None
-        if not series:
-            continue
-
-        for point in reversed(series):
-            val = point.get("sum") or point.get("state") or point.get("mean")
-            if val is None:
-                continue
-            try:
-                return float(val), cand
-            except Exception:
-                continue
-
-    return None, None
+    return (round(total_energy, 4), sensor_name)
 
 
 def utils_get_device_install_date(hass: HomeAssistant, sensor: str) -> date:
@@ -116,10 +87,7 @@ def utils_get_device_install_date(hass: HomeAssistant, sensor: str) -> date:
     fp = series[0]
     start_ts = fp.get("start")
 
-    if not isinstance(start_ts, datetime):
-        return None
-
-    return dt_util.as_local(start_ts)
+    return dt_util.as_local(dt_util.utc_from_timestamp(start_ts))
 
 
 async def async_populate_energy_store(
