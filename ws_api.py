@@ -28,7 +28,11 @@ from homeassistant.helpers import (
 from homeassistant.util import dt as dt_util
 
 from .const import BLOCKS_FOOTPRINTS, DOMAIN
-from .utils import utils_get_device_classes, utils_get_device_total_energy_consumption
+from .utils import (
+    utils_get_device_classes,
+    utils_get_device_install_date,
+    utils_get_device_total_energy_consumption,
+)
 
 
 @callback
@@ -185,19 +189,21 @@ def ws_set_device(
             hass=hass, device_entities=device_entities
         )
 
-        total_energy = utils_get_device_total_energy_consumption(
+        total_energy, sensor_name = utils_get_device_total_energy_consumption(
             hass=hass, device_entities=device_entities
         )
         if total_energy:
             metadata["total_energy"] = total_energy
 
-    # only way to asynchronously call this function
+        if sensor_name:
+            metadata["install_date"] = utils_get_device_install_date(hass, sensor_name)
+
     hass.async_create_task(
         cf_store.async_set_device_info(
             device_name,
             msg["device_type"],
             msg["carbon_footprint"],
-            metadata,  # maybe save previous consumption in metadata?
+            metadata,
         )
     )
 
@@ -273,7 +279,7 @@ def ws_get_all_devices_energy(
 
     for devices in device_reg.devices.values():
         device_entities = er.async_entries_for_device(entity_reg, devices.id)
-        total_energy = utils_get_device_total_energy_consumption(
+        total_energy, _ = utils_get_device_total_energy_consumption(
             hass=hass, device_entities=device_entities
         )
 
@@ -321,7 +327,7 @@ def ws_update_devices_energy(
 
         entity_reg = er.async_get(hass)
         device_entities = er.async_entries_for_device(entity_reg, register_id)
-        total_energy = utils_get_device_total_energy_consumption(
+        total_energy, _ = utils_get_device_total_energy_consumption(
             hass=hass, device_entities=device_entities
         )
 

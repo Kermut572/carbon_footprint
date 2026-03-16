@@ -1,6 +1,6 @@
 """This file contains general utils functions."""
 
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 from logging import Logger
 
 from homeassistant.components.recorder.statistics import statistics_during_period
@@ -33,10 +33,11 @@ def utils_get_device_classes(
 
 def utils_get_device_total_energy_consumption(
     hass: HomeAssistant, device_entities: list[RegistryEntry]
-) -> float:
+) -> tuple[float, str]:
     """Return the total energy consumed by a given device."""
     total_energy = 0.0
     is_sensor = False
+    sensor_name = None
     for entity in device_entities:
         state = hass.states.get(entity.entity_id)
         if not state:
@@ -50,11 +51,43 @@ def utils_get_device_total_energy_consumption(
 
         try:
             total_energy += float(state.state)
+            sensor_name = entity.entity_id
             is_sensor = True
         except Exception:
             continue
 
-    return round(total_energy, 4) if is_sensor else None
+    return (round(total_energy, 4), sensor_name) if is_sensor else (None, None)
+
+
+def utils_get_device_install_date(hass: HomeAssistant, sensor: str) -> date:
+    """Return the date on which the device was installed, by using the first date recorded by the sensors."""
+    if not sensor or sensor == "":
+        return None
+
+    data_points = statistics_during_period(
+        hass,
+        dt_util.now() - timedelta(weeks=520),
+        None,
+        {sensor},
+        "day",
+        None,
+        {"mean"},
+    )
+
+    if not data_points or sensor not in data_points:
+        return None
+
+    series = data_points[sensor]
+    if not series:
+        return None
+
+    fp = series[0]
+    start_ts = fp.get("start")
+
+    if not isinstance(start_ts, datetime):
+        return None
+
+    return dt_util.as_local(start_ts)
 
 
 async def async_populate_energy_store(
