@@ -144,7 +144,7 @@ def ws_get_carbon_data(
         vol.Optional("metadata", default={}): dict,
     }
 )
-@callback
+@websocket_api.async_response
 async def ws_set_device(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
@@ -189,9 +189,10 @@ async def ws_set_device(
             hass=hass, device_entities=device_entities
         )
 
-        total_energy, sensor_name = utils_get_device_total_energy_consumption(
-            hass=hass, device_entities=device_entities
+        total_energy, sensor_name = await hass.async_add_executor_nob(
+            utils_get_device_total_energy_consumption, hass, device_entities
         )
+
         if total_energy:
             metadata["total_energy"] = total_energy
 

@@ -56,7 +56,40 @@ def utils_get_device_total_energy_consumption(
         except Exception:
             continue
 
-    return (round(total_energy, 4), sensor_name) if is_sensor else (None, None)
+    if is_sensor:
+        return (round(total_energy, 4), sensor_name)
+
+    # try lookup of historical data if the device is off when added
+    candidates = [e.entity_id for e in device_entities]
+    for cand in candidates:
+        try:
+            data = statistics_during_period(
+                hass,
+                dt_util.utcnow() - timedelta(days=7),
+                None,
+                {cand},
+                "hour",
+                None,
+                {"mean"},
+            )
+        except Exception:
+            continue
+
+        series = data.get(cand) if isinstance(data, dict) else None
+        if not series:
+            continue
+
+        for point in reversed(series):
+            val = point.get("mean") if isinstance(point, dict) else None
+            if val is None:
+                val = point.get("state") if isinstance(point, dict) else None
+            try:
+                if val is not None:
+                    return float(val), cand
+            except TypeError, ValueError:
+                continue
+
+    return None, None
 
 
 def utils_get_device_install_date(hass: HomeAssistant, sensor: str) -> date:
