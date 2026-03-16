@@ -70,7 +70,7 @@ def utils_get_device_total_energy_consumption(
                 {cand},
                 "hour",
                 None,
-                {"mean"},
+                {"sum", "state", "mean"},
             )
         except Exception:
             continue
@@ -80,12 +80,11 @@ def utils_get_device_total_energy_consumption(
             continue
 
         for point in reversed(series):
-            val = point.get("mean") if isinstance(point, dict) else None
+            val = point.get("sum") or point.get("state") or point.get("mean")
             if val is None:
-                val = point.get("state") if isinstance(point, dict) else None
+                continue
             try:
-                if val is not None:
-                    return float(val), cand
+                return float(val), cand
             except Exception:
                 continue
 
