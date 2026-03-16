@@ -664,41 +664,19 @@ def ws_get_carbon_by_room_with_usage(
         total_energy = metadata.get("total_energy", None)
         if total_energy is not None:
             usage_carbon = (total_energy * co2_intensity) / 1000
-        """
-        # Check if there's pre-defined usage carbon in metadata (e.g., from test data)
-        if "usage_carbon_kg" in metadata:
-            try:
-                usage_carbon = float(metadata["usage_carbon_kg"])
-            except ValueError | TypeError:
-                usage_carbon = 0.0
-        else:
-            # Try to estimate from power sensors if no metadata value
-            entity_id = None
-            if "register_id" in metadata:
-                # Try to find the entity
-                device_id = metadata["register_id"]
-                if device_id in device_reg.devices:
-                    device_entry = device_reg.devices[device_id]
-                    # Get entities for this device
-                    device_entities = er.async_entries_for_device(entity_reg, device_id)
-                    # Find power sensor
-                    for ent in device_entities:
-                        if "power" in ent.entity_id.lower():
-                            entity_id = ent.entity_id
-                            break
 
-            # If we found a power sensor, calculate usage carbon (simplified: assuming 1 hour)
-            if entity_id:
-                power_state = hass.states.get(entity_id)
-                if power_state and power_state.state not in ("unknown", "unavailable"):
-                    try:
-                        power_w = float(power_state.state)
-                        # Usage carbon = (power_W * co2_intensity_gCO2/kWh) / 1_000_000
-                        # Simplified: hour of usage at current power
-                        usage_carbon = (power_w * co2_intensity) / 1_000_000
-                    except ValueError | TypeError:
-                        usage_carbon = 0.0
-        """
+        predicted_usage_carbon_value = 0.0
+        install_date = metadata.get("install_date", None)
+        if install_date is not None:
+            install_dt = dt_util.parse_datetime(install_date)
+            datetime_from_installation = datetime.now().replace(
+                tzinfo=None
+            ) - install_dt.replace(tzinfo=None)
+            days_from_installation = max(datetime_from_installation.days, 1)
+            predicted_usage_carbon_value = (
+                usage_carbon / days_from_installation
+            ) * 1825  # 1825 days for five years
+
         # Try to find the room
         room_name = "Unknown Room"
         room_id = None
@@ -713,28 +691,6 @@ def ws_get_carbon_by_room_with_usage(
                 area_ent = area_reg.async_get_area(area_id)
                 if area_ent:
                     room_name = area_ent.name
-
-        # Fallback: Try to extract room name from device name
-        """
-        if room_name == "Unknown Room":
-            parts = device_name.split()
-            if len(parts) >= 2:
-                potential_room = " ".join(parts[:-1])
-                if any(
-                    keyword in potential_room.lower()
-                    for keyword in [
-                        "room",
-                        "kitchen",
-                        "bathroom",
-                        "garage",
-                        "hallway",
-                        "living",
-                        "bed",
-                        "dining",
-                    ]
-                ):
-                    room_name = potential_room
-        """
 
         # Initialize room if not seen before
         if room_name not in rooms_dict:
@@ -753,11 +709,13 @@ def ws_get_carbon_by_room_with_usage(
                 "name": device_name,
                 "embodied_carbon": round(embodied_carbon, 2),
                 "usage_carbon": round(usage_carbon, 2),
+                "predicted_carbon": round(predicted_usage_carbon_value, 2),
                 "total_carbon": round(device_total, 2),
             }
         )
         rooms_dict[room_name]["embodied_carbon"] += embodied_carbon
         rooms_dict[room_name]["usage_carbon"] += usage_carbon
+        rooms_dict[room_name]["predicted_carbon"] += predicted_usage_carbon_value
         rooms_dict[room_name]["total_carbon"] += device_total
 
     # Convert to list, round values, and sort by total carbon
@@ -765,6 +723,7 @@ def ws_get_carbon_by_room_with_usage(
     for room_data in rooms_dict.values():
         room_data["embodied_carbon"] = round(room_data["embodied_carbon"], 2)
         room_data["usage_carbon"] = round(room_data["usage_carbon"], 2)
+        room_data["predicted_carbon"] = round(room_data["predicted_carbon"], 2)
         room_data["total_carbon"] = round(room_data["total_carbon"], 2)
         rooms_list.append(room_data)
 
