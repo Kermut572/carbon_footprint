@@ -145,7 +145,7 @@ def ws_get_carbon_data(
     }
 )
 @callback
-def ws_set_device(
+async def ws_set_device(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
@@ -196,7 +196,9 @@ def ws_set_device(
             metadata["total_energy"] = total_energy
 
         if sensor_name:
-            metadata["install_date"] = utils_get_device_install_date(hass, sensor_name)
+            metadata["install_date"] = await hass.async_add_executor_job(
+                utils_get_device_install_date, hass, sensor_name
+            )
 
     hass.async_create_task(
         cf_store.async_set_device_info(
