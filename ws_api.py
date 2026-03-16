@@ -189,7 +189,7 @@ async def ws_set_device(
             hass=hass, device_entities=device_entities
         )
 
-        total_energy, sensor_name = await hass.async_add_executor_nob(
+        total_energy, sensor_name = await hass.async_add_executor_job(
             utils_get_device_total_energy_consumption, hass, device_entities
         )
 
