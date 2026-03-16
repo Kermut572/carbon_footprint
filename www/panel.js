@@ -382,7 +382,8 @@ class CarbonFootprintPanel extends HTMLElement {
                 <div class="button-group">
                     <button type="button" id="compute-footprint-btn">Compute Footprint</button>
                     <button type="submit">Add Device</button>
-                    <button type="button" id="detect-devices-btn"><div class="loader" id="loader"></div>Detect Device Types</button>
+                    <button type="button" id="detect-devices-btn"><div class="loader" id="loader"></div>Automatic Setup</button>
+                    <button type="button" id="export-json-btn">Export to JSON</button>
                 </div>
             </form>
         `;
@@ -1011,6 +1012,15 @@ class CarbonFootprintPanel extends HTMLElement {
                 detectBtn.disabled = true;
                 loaderAnim.style.display = 'inline-block';
             });
+        }
+
+        const exportBtn = this.querySelector('#export-json-btn');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', async () => {
+                let jsonArray = await this._hass.callWS({ type: 'carbon_footprint/export_json' });
+                navigator.clipboard.writeText(JSON.stringify(jsonArray.json_array));
+                alert("Devices array copied to clipboard!");
+            })
         }
 
         const computeBtn = this.querySelector('#compute-footprint-btn');

@@ -52,6 +52,7 @@ def async_register_websocket_handlers(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_carbon_by_type_with_usage)
     websocket_api.async_register_command(hass, ws_llm_detection)
     websocket_api.async_register_command(hass, ws_db_matching)
+    websocket_api.async_register_command(hass, ws_export_json)
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_devices_to_add"})
@@ -538,30 +539,6 @@ def ws_get_carbon_by_room(
                 if area_ent:
                     room_name = area_ent.name
 
-        """
-        # Fallback: Try to extract room name from device name (for test data)
-        # e.g., "Living Room TV" -> "Living Room"
-        if room_name == "Unknown Room":
-            parts = device_name.split()
-            if len(parts) >= 2:
-                # Try to detect room name patterns
-                potential_room = " ".join(parts[:-1])
-                # Check if it looks like a room (contains common room keywords)
-                if any(
-                    keyword in potential_room.lower()
-                    for keyword in [
-                        "room",
-                        "kitchen",
-                        "bathroom",
-                        "garage",
-                        "hallway",
-                        "living",
-                        "bed",
-                        "dining",
-                    ]
-                ):
-                    room_name = potential_room
-        """
         # Initialize room if not seen before
         if room_name not in rooms_dict:
             rooms_dict[room_name] = {
@@ -1045,7 +1022,7 @@ async def ws_db_matching(
         d_model = values.get("model")
         d_manufacturer = values.get("manufacturer")
         d_id = (
-            d_model.lower() + "-" + d_manufacturer.lower()
+            d_model.lower().strip() + "-" + d_manufacturer.lower().strip()
             if d_model and d_manufacturer
             else "none"
         )
@@ -1060,3 +1037,50 @@ async def ws_db_matching(
         }
 
     connection.send_result(msg["id"], {"devices_matched": devices_matched})
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/export_json"})
+@callback
+def ws_export_json(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Export the added devices to a JSON array to upload them on the interface."""
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        connection.send_error(
+            msg["id"], "config_entry_not_found", "Uh oh, no config entry found :-("
+        )
+        return
+
+    cf_store = entries[0].runtime_data.cf_store
+    devices = cf_store.get_devices_data()
+
+    json_array = []
+    for device in devices.values():
+        device_dict = {}
+
+        metadata = device.get("metadata", {})
+        model = metadata.get("model", "unknown")
+        manufacturer = metadata.get("manufacturer", "unknown")
+
+        carbon_footprint = device.get("carbon_footprint", 0)
+        d_type = device.get("type", "unknown")
+        d_id = (
+            model.lower().strip() + "-" + manufacturer.lower().strip()
+            if model and manufacturer
+            else "demoObj-nullType"
+        )
+
+        device_dict["id"] = d_id
+        device_dict["model"] = model
+        device_dict["manufacturer"] = manufacturer
+        device_dict["type"] = d_type
+        device_dict["carbon_footprint"] = [
+            {"low": carbon_footprint, "mid": carbon_footprint, "high": carbon_footprint}
+        ]
+
+        json_array.append(device_dict)
+
+    connection.send_result(msg["id"], {"json_array": json_array})
