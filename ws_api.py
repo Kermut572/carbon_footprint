@@ -1063,7 +1063,6 @@ async def ws_db_matching(
     device_types: dict = msg["device_types"]
     for d_name, values in device_types.items():
         d_type = values.get("device_type").lower()
-        d_ha_id = values.get("device_id")
         d_model = values.get("model")
         d_manufacturer = values.get("manufacturer")
         d_id = (
@@ -1076,7 +1075,7 @@ async def ws_db_matching(
             if d_id in devices_carbon
             else types_carbon.get(d_type, 0.0)
         )
-        devices_matched[d_ha_id] = {
+        devices_matched[d_name] = {
             "device_type": f"{d_type}",
             "carbon_footprint": d_footprint,
         }
