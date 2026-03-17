@@ -441,11 +441,11 @@ class CarbonFootprintPanel extends HTMLElement {
                         <div class="card-content device-list-container">
                             ${hasDevices ? `
                                 <ul>
-                                    ${Object.entries(data.devices).map(([device_name, info]) => `
+                                    ${Object.entries(data.devices).map(([device_id, info]) => `
                                         <li>
                                             <div class="device-info">
                                                 <div class="device-header">
-                                                    <h2><b>${device_name}</b></h2><br>
+                                                    <h2><b>${info.metadata?.display_name || device_id}</b></h2><br>
                                                     <div class="device-extended">
                                                         Type: ${info.type || 'Unknown'}<br>
                                                         Area: ${info.metadata?.area_id || 'N/A'} <br>
@@ -454,6 +454,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                                         Model: ${info.metadata?.model || 'N/A'}<br>
                                                         Model ID: ${info.metadata?.model_id || 'N/A'}<br>
                                                         Class: ${info.metadata?.device_classes || 'N/A'}<br>
+                                                        HA ID: ${device_id || 'UNKNOWN'} <br>
                                                         Total Energy Consumed: ${info.metadata?.total_energy || 'N/A'}<br>
                                                     </div>
                                                 </div>
@@ -466,7 +467,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                                 <button
                                                     type="button"
                                                     class="delete-btn"
-                                                    data-entity-id="${device_name}"
+                                                    data-entity-id="${device_id}"
                                                     title="Remove device">
                                                     ✕
                                                 </button>
@@ -555,6 +556,7 @@ class CarbonFootprintPanel extends HTMLElement {
 
     async detectDevicesType(detectBtn, loaderAnim) {
         const devicesResp = await this._hass.callWS({ type: 'carbon_footprint/get_devices_to_add' });
+        let deviceIds = devicesResp.device_ids || [];
         let deviceNames = devicesResp.device_names || [];
         let deviceModels = devicesResp.device_models || [];
         let deviceManufacturers = devicesResp.device_manufacturers || [];
@@ -576,8 +578,11 @@ class CarbonFootprintPanel extends HTMLElement {
             let deviceTypes = JSON.parse(llmResp.device_types);
             console.log('Device Types Detection successful, continuing...');
 
+            let i = 0;
             for(const key in devicesDict) {
-                devicesDict[key]['device_type'] = deviceTypes[key]
+                devicesDict[key]['device_type'] = deviceTypes[key];
+                devicesDict[key]['device_id'] = deviceIds[i];
+                i++;
             }
 
             this.showLoadingOverlay('Matching devices with database...');

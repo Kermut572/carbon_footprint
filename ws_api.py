@@ -63,6 +63,7 @@ def ws_get_devices_to_add(
     msg: dict[str, Any],
 ) -> None:
     """Returns all relevant devices' names (and their related models and manufacturers) the user could track. As of now, all devices with empty classes are removed."""
+    device_ids = []
     device_names = []
     device_manufacturers = []
     device_models = []
@@ -80,6 +81,9 @@ def ws_get_devices_to_add(
             device.name_by_user or device.name
         )  # just in case device.name_by_user is not defined, which can happen quite a lot
 
+        device_id = device.id
+
+        device_ids.append(device_id)
         device_names.append(device_name)
         device_manufacturers.append(device.manufacturer)
         device_models.append(device.model)
@@ -87,6 +91,7 @@ def ws_get_devices_to_add(
     connection.send_result(
         msg["id"],
         {
+            "device_ids": device_ids,
             "device_names": device_names,
             "device_manufacturers": device_manufacturers,
             "device_models": device_models,
@@ -125,7 +130,22 @@ def ws_get_carbon_data(
         return
 
     cf_store = entries[0].runtime_data.cf_store
+    device_reg = dr.async_get(hass)
     devices = cf_store.get_devices_data()
+
+    updated_name = False
+    for device_id, device_info in devices.items():
+        updated_device_name = (
+            device_reg.devices.get(device_id).name_by_user
+            or device_reg.devices.get(device_id).name
+        )
+        curr_device_name = device_info.get("metadata", {}).get("display_name", "")
+        if updated_device_name != curr_device_name:
+            updated_name = True
+            device_info.get("metadata", {})["display_name"] = updated_device_name
+
+    if updated_name:
+        hass.async_create_task(cf_store.async_save_data())
 
     connection.send_result(
         msg["id"],
@@ -177,12 +197,15 @@ async def ws_set_device(
         break
 
     # all metadata we can add: https://developers.home-assistant.io/docs/device_registry_index/
+    device_id = "UNKNOWN"
     if register:
         metadata["area_id"] = register.area_id or "undefined"
         metadata["manufacturer"] = register.manufacturer
         metadata["model"] = register.model
         metadata["model_id"] = register.model_id
         metadata["register_id"] = register.id
+        metadata["display_name"] = device_name
+        device_id = register.id
 
         entity_reg = er.async_get(hass)
         device_entities = er.async_entries_for_device(entity_reg, register.id)
@@ -204,7 +227,7 @@ async def ws_set_device(
 
     hass.async_create_task(
         cf_store.async_set_device_info(
-            device_name,
+            device_id,
             msg["device_type"],
             msg["carbon_footprint"],
             metadata,
@@ -519,12 +542,15 @@ def ws_get_carbon_by_room(
     # Group devices by room
     rooms_dict: dict[str, dict] = {}
 
-    for device_name, device_info in devices.items():
+    for device_id, device_info in devices.items():
         # Get carbon footprint for this device
         carbon_value = device_info.get("carbon_footprint", 0)
 
         # Try to find the device in the registry
-        device_id = device_info.get("metadata", {}).get("register_id")
+        device_name = (
+            device_reg.devices.get(device_id).name_by_user
+            or device_reg.devices.get(device_id).name
+        )
         room_name = "Unknown Room"
         room_id = None
 
@@ -551,6 +577,7 @@ def ws_get_carbon_by_room(
         # Add device to room
         rooms_dict[room_name]["devices"].append(
             {
+                "id": device_id,
                 "name": device_name,
                 "carbon": carbon_value,
             }
@@ -630,13 +657,18 @@ def ws_get_carbon_by_room_with_usage(
     # Group devices by room
     rooms_dict: dict[str, dict] = {}
 
-    for device_name, device_info in devices.items():
+    for device_id, device_info in devices.items():
         # Get embodied carbon for this device
         embodied_carbon = device_info.get("carbon_footprint", 0)
 
         # Get usage carbon: prefer metadata value (for test data), fall back to power sensor calculation
         usage_carbon = 0.0
         metadata = device_info.get("metadata", {})
+
+        device_name = (
+            device_reg.devices.get(device_id).name_by_user
+            or device_reg.devices.get(device_id).name
+        )
 
         total_energy = metadata.get("total_energy", None)
         if total_energy is not None:
@@ -684,6 +716,7 @@ def ws_get_carbon_by_room_with_usage(
         device_total = embodied_carbon + usage_carbon
         rooms_dict[room_name]["devices"].append(
             {
+                "id": device_id,
                 "name": device_name,
                 "embodied_carbon": round(embodied_carbon, 2),
                 "usage_carbon": round(usage_carbon, 2),
@@ -744,12 +777,17 @@ def ws_get_carbon_by_type(
         )
         return
 
+    device_reg = dr.async_get(hass)
     cf_store = entries[0].runtime_data.cf_store
     devices = cf_store.get_devices_data()
 
     type_dict: dict[str, dict] = {}
 
-    for device_name, device_info in devices.items():
+    for device_id, device_info in devices.items():
+        device_name = (
+            device_reg.devices.get(device_id).name_by_user
+            or device_reg.devices.get(device_id).name
+        )
         carbon_value = device_info.get("carbon_footprint", 0)
         device_type = device_info.get("type", "Unknown")
 
@@ -762,6 +800,7 @@ def ws_get_carbon_by_type(
 
         type_dict[device_type]["devices"].append(
             {
+                "id": device_id,
                 "name": device_name,
                 "carbon": carbon_value,
             }
@@ -829,12 +868,17 @@ def ws_get_carbon_by_type_with_usage(
             co2_intensity = 200.0
 
     cf_store = entries[0].runtime_data.cf_store
+    device_reg = dr.async_get(hass)
     devices = cf_store.get_devices_data()
 
     type_dict: dict[str, dict] = {}
 
-    for device_name, device_info in devices.items():
+    for device_id, device_info in devices.items():
         metadata = device_info.get("metadata", {})
+        device_name = (
+            device_reg.devices.get(device_id).name_by_user
+            or device_reg.devices.get(device_id).name
+        )
 
         usage_carbon_value = 0.0
         total_energy = metadata.get("total_energy", None)
@@ -870,6 +914,7 @@ def ws_get_carbon_by_type_with_usage(
 
         type_dict[device_type]["devices"].append(
             {
+                "id": device_id,
                 "name": device_name,
                 "embodied_carbon": round(embodied_carbon_value, 2),
                 "usage_carbon": round(usage_carbon_value, 2),
@@ -1018,7 +1063,7 @@ async def ws_db_matching(
     device_types: dict = msg["device_types"]
     for d_name, values in device_types.items():
         d_type = values.get("device_type").lower()
-
+        d_ha_id = values.get("device_id")
         d_model = values.get("model")
         d_manufacturer = values.get("manufacturer")
         d_id = (
@@ -1031,7 +1076,7 @@ async def ws_db_matching(
             if d_id in devices_carbon
             else types_carbon.get(d_type, 0.0)
         )
-        devices_matched[d_name] = {
+        devices_matched[d_ha_id] = {
             "device_type": f"{d_type}",
             "carbon_footprint": d_footprint,
         }
