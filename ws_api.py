@@ -677,7 +677,11 @@ def ws_get_carbon_by_room_with_usage(
         predicted_usage_carbon_value = 0.0
         install_date = metadata.get("install_date", None)
         if install_date is not None:
-            install_dt = dt_util.parse_datetime(install_date)
+            install_dt = (
+                dt_util.parse_datetime(install_date)
+                if install_date is str
+                else install_date
+            )
             datetime_from_installation = datetime.now().replace(
                 tzinfo=None
             ) - install_dt.replace(tzinfo=None)
@@ -888,7 +892,11 @@ def ws_get_carbon_by_type_with_usage(
         predicted_usage_carbon_value = 0.0
         install_date = metadata.get("install_date", None)
         if install_date is not None:
-            install_dt = dt_util.parse_datetime(install_date)
+            install_dt = (
+                dt_util.parse_datetime(install_date)
+                if install_date is str
+                else install_date
+            )
             datetime_from_installation = datetime.now().replace(
                 tzinfo=None
             ) - install_dt.replace(tzinfo=None)
