@@ -677,7 +677,9 @@ def ws_get_carbon_by_room_with_usage(
         predicted_usage_carbon_value = 0.0
         install_date = metadata.get("install_date", None)
         if install_date is not None:
-            install_dt = dt_util.parse_datetime(str(install_date))
+            install_dt = dt_util.parse_datetime(
+                str(install_date)
+            )  # weirdly, install_date is neither a str neither a datetime??
             datetime_from_installation = datetime.now().replace(
                 tzinfo=None
             ) - install_dt.replace(tzinfo=None)
@@ -1027,7 +1029,7 @@ async def ws_db_matching(
     try:
         async with (
             aiohttp.ClientSession() as session,
-            session.get(db_ip + "/api/devices/approved") as resp,
+            session.get(db_ip.rstrip("/") + "/api/devices/approved") as resp,
         ):
             device_db = await resp.json()
     except Exception as e:
@@ -1084,8 +1086,8 @@ async def ws_db_matching(
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/export_json"})
-@callback
-def ws_export_json(
+@websocket_api.async_response
+async def ws_export_json(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
@@ -1127,4 +1129,37 @@ def ws_export_json(
 
         json_array.append(device_dict)
 
-    connection.send_result(msg["id"], {"json_array": json_array})
+    cfdb_token = entries[0].options.get("cfdb_token")
+    if not cfdb_token or len(cfdb_token) == 0:
+        # no token defined so we just return the json_array
+        connection.send_result(msg["id"], {"json_array": json_array, "uploaded": "no"})
+        return
+
+    db_ip = entries[0].options.get("db_ip")
+    if not db_ip or len(db_ip) == 0:
+        connection.send_result(msg["id"], {"json_array": json_array, "uploaded": "no"})
+        return
+
+    url = db_ip.rstrip("/") + "/ha/devices"
+    headers = {
+        "Authorization": f"Bearer {cfdb_token}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+
+    try:
+        async with (
+            aiohttp.ClientSession() as session,
+            session.post(url=url, headers=headers, json=json_array) as resp,
+        ):
+            text = await resp.text()
+            if resp.status >= 400:
+                connection.send_result(
+                    msg["id"], {"json_array": json_array, "uploaded": "no"}
+                )
+
+    except Exception as e:
+        connection.send_result(msg["id"], {"json_array": json_array, "uploaded": "no"})
+        return
+
+    connection.send_result(msg["id"], {"json_array": json_array, "uploaded": "yes"})

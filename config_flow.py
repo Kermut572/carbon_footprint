@@ -61,7 +61,13 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     return {"title": "Name of the device"}
 
 
-OPTIONS_SCHEMA = vol.Schema({vol.Optional("db_ip"): str, vol.Optional("api_key"): str})
+OPTIONS_SCHEMA = vol.Schema(
+    {
+        vol.Optional("db_ip"): str,
+        vol.Optional("api_key"): str,
+        vol.Optional("cfdb_token"): str,
+    }
+)
 
 
 class OptionsFlowHandler(OptionsFlowWithReload):

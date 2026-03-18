@@ -1023,8 +1023,16 @@ class CarbonFootprintPanel extends HTMLElement {
         if (exportBtn) {
             exportBtn.addEventListener('click', async () => {
                 let jsonArray = await this._hass.callWS({ type: 'carbon_footprint/export_json' });
-                navigator.clipboard.writeText(JSON.stringify(jsonArray.json_array));
-                alert("Devices array copied to clipboard!");
+
+                const array = JSON.stringify(jsonArray.json_array);
+                const uploaded = jsonArray.uploaded
+                if (uploaded === 'yes') {
+                    alert("Devices have been uploaded to the db interface!");
+                }
+                else {
+                    navigator.clipboard.writeText(array);
+                    alert("Devices have been copied to the clipboard! If you wanted to upload to the interface, please make sure db_ip and cfdb_token are set.");
+                }
             })
         }
 
