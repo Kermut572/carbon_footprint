@@ -159,6 +159,16 @@ class CarbonFootprintPanel extends HTMLElement {
         }
 
         const energyHistogram = await this.getEnergyHistogram();
+        const emissionNowRaw = this._hass.states['sensor.carbon_emission_now']?.state;
+        const carbonTodayRaw = this._hass.states['sensor.carbon_total_today']?.state;
+
+        const emissionNow = emissionNowRaw && emissionNowRaw !== 'unknown' && emissionNowRaw !== 'unavailable'
+            ? parseFloat(emissionNowRaw)
+            : null;
+
+        const carbonToday = carbonTodayRaw && carbonTodayRaw !== 'unknown' && carbonTodayRaw !== 'unavailable'
+            ? parseFloat(carbonTodayRaw)
+            : null;
 
         this.innerHTML = `
             <ha-app-layout>
@@ -263,6 +273,98 @@ class CarbonFootprintPanel extends HTMLElement {
                             </div>
                         </div>
                     </ha-card>
+                    <ha-card header="Recommendations">
+                        <div class="card-content">
+                            <div style="display: flex; flex-direction: column; gap: 8px;">
+
+                                <!-- Current emissions -->
+                                <div style="border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
+                                    <div class="recommendation-header"
+                                        style="padding: 12px; background-color: ${
+                                            emissionNow === null ? '#f5f5f5' :
+                                            emissionNow > 500 ? '#ffebee' :
+                                            emissionNow > 200 ? '#fff8e1' :
+                                            '#e8f5e9'
+                                        }; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;"
+                                        onclick="this.parentElement.querySelector('.recommendation-content-1').style.display = this.parentElement.querySelector('.recommendation-content-1').style.display === 'none' ? 'block' : 'none'; this.querySelector('.toggle-icon-1').textContent = this.parentElement.querySelector('.recommendation-content-1').style.display === 'none' ? '▼' : '▲';">
+                                        <strong>Current Emissions</strong>
+                                        <span class="toggle-icon-1" style="font-size: 12px;">▲</span>
+                                    </div>
+                                    <div class="recommendation-content-1"
+                                        style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
+                                        <p style="margin: 0; font-size: 13px; color: #555;">
+                                            ${
+                                                emissionNow === null
+                                                    ? `No current emission data is available yet.`
+                                                    : emissionNow > 500
+                                                        ? `Your current emissions are <b>high (${emissionNow.toFixed(2)} gCO₂/h)</b>. Consider reducing active devices or delaying heavy usage.`
+                                                        : emissionNow > 200
+                                                            ? `Your current emissions are <b>moderate (${emissionNow.toFixed(2)} gCO₂/h)</b>. You may be able to optimize usage.`
+                                                            : `Your current emissions are <b>low (${emissionNow.toFixed(2)} gCO₂/h)</b>. Your home is currently using energy efficiently.`
+                                            }
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <!-- Carbon intensity usage -->
+                                <div style="border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
+                                    <div class="recommendation-header"
+                                        style="padding: 12px; background-color: ${
+                                            data?.co2_intensity < 100 ? '#e8f5e9' :
+                                            data?.co2_intensity < 250 ? '#fff8e1' :
+                                            '#ffebee'
+                                        }; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;"
+                                        onclick="this.parentElement.querySelector('.recommendation-content-2').style.display = this.parentElement.querySelector('.recommendation-content-2').style.display === 'none' ? 'block' : 'none'; this.querySelector('.toggle-icon-2').textContent = this.parentElement.querySelector('.recommendation-content-2').style.display === 'none' ? '▼' : '▲';">
+                                        <strong>Optimize Usage Timing</strong>
+                                        <span class="toggle-icon-2" style="font-size: 12px;">▲</span>
+                                    </div>
+                                    <div class="recommendation-content-2"
+                                        style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
+                                        <p style="margin: 0; font-size: 13px; color: #555;">
+                                            ${
+                                                data?.co2_intensity < 100
+                                                    ? `The current carbon intensity is <b>low (${data.co2_intensity} gCO₂eq/kWh)</b>. This is a good time to run energy-intensive devices.`
+                                                    : data?.co2_intensity < 250
+                                                        ? `The current carbon intensity is <b>moderate (${data.co2_intensity} gCO₂eq/kWh)</b>. If possible, shift flexible usage to cleaner hours.`
+                                                        : `The current carbon intensity is <b>high (${data.co2_intensity} gCO₂eq/kWh)</b>. Delaying heavy appliance use could reduce your emissions.`
+                                            }
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <!-- Today's carbon total -->
+                                <div style="border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
+                                    <div class="recommendation-header"
+                                        style="padding: 12px; background-color: ${
+                                            carbonToday === null ? '#f5f5f5' :
+                                            carbonToday > 10 ? '#ffebee' :
+                                            carbonToday > 5 ? '#fff8e1' :
+                                            '#e8f5e9'
+                                        }; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;"
+                                        onclick="this.parentElement.querySelector('.recommendation-content-3').style.display = this.parentElement.querySelector('.recommendation-content-3').style.display === 'none' ? 'block' : 'none'; this.querySelector('.toggle-icon-3').textContent = this.parentElement.querySelector('.recommendation-content-3').style.display === 'none' ? '▼' : '▲';">
+                                        <strong>Today's Carbon Total</strong>
+                                        <span class="toggle-icon-3" style="font-size: 12px;">▲</span>
+                                    </div>
+                                    <div class="recommendation-content-3"
+                                        style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
+                                        <p style="margin: 0; font-size: 13px; color: #555;">
+                                            ${
+                                                carbonToday === null
+                                                    ? `No daily carbon data is available yet.`
+                                                    : carbonToday > 10
+                                                        ? `You have already emitted <b>${carbonToday.toFixed(2)} kgCO₂</b> today. Consider reducing usage for the rest of the day.`
+                                                        : carbonToday > 5
+                                                            ? `You have emitted <b>${carbonToday.toFixed(2)} kgCO₂</b> today. Your usage is moderate so far.`
+                                                            : `You have emitted <b>${carbonToday.toFixed(2)} kgCO₂</b> today. Good control of your footprint so far.`
+                                            }
+                                        </p>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </ha-card>
+                    
                 </div>
             </ha-app-layout>
         `;
