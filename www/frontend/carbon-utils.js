@@ -80,7 +80,7 @@ export class CarbonUtils {
                     <li>
                         <div class="device-info">
                             <div class="device-header">
-                                <h2><b>${device_name}</b></h2><br>
+                                <h2><b>${info.metadata?.display_name || device_id}</b></h2><br>
                                 <div class="device-extended">
                                     Type: ${info.type || 'Unknown'}<br>
                                     Area: ${info.metadata?.area_id || 'N/A'} <br>
@@ -89,6 +89,7 @@ export class CarbonUtils {
                                     Model: ${info.metadata?.model || 'N/A'}<br>
                                     Model ID: ${info.metadata?.model_id || 'N/A'}<br>
                                     Class: ${info.metadata?.device_classes || 'N/A'}<br>
+                                    HA ID: ${device_id || 'UNKNOWN'}<br>
                                     Total Energy Consumed: ${info.metadata?.total_energy || 'N/A'}<br>
                                 </div>
                             </div>

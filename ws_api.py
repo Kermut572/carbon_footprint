@@ -28,7 +28,11 @@ from homeassistant.helpers import (
 from homeassistant.util import dt as dt_util
 
 from .const import BLOCKS_FOOTPRINTS, DOMAIN
-from .utils import utils_get_device_classes, utils_get_device_total_energy_consumption
+from .utils import (
+    utils_get_device_classes,
+    utils_get_device_install_date,
+    utils_get_device_total_energy_consumption,
+)
 
 
 @callback
@@ -48,6 +52,7 @@ def async_register_websocket_handlers(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_carbon_by_type_with_usage)
     websocket_api.async_register_command(hass, ws_llm_detection)
     websocket_api.async_register_command(hass, ws_db_matching)
+    websocket_api.async_register_command(hass, ws_export_json)
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_devices_to_add"})
@@ -58,6 +63,7 @@ def ws_get_devices_to_add(
     msg: dict[str, Any],
 ) -> None:
     """Returns all relevant devices' names (and their related models and manufacturers) the user could track. As of now, all devices with empty classes are removed."""
+    device_ids = []
     device_names = []
     device_manufacturers = []
     device_models = []
@@ -66,13 +72,18 @@ def ws_get_devices_to_add(
     for device in registry.devices.values():
         device_entities = er.async_entries_for_device(entity_reg, device.id)
         device_classes = utils_get_device_classes(hass, device_entities)
-        # if len(device_classes) == 0:
-        #    continue
+
+        # The type of entry. Possible values are None and DeviceEntryType enum members (only service). <- we don't care about services
+        if device.entry_type is not None:
+            continue
 
         device_name = (
             device.name_by_user or device.name
         )  # just in case device.name_by_user is not defined, which can happen quite a lot
 
+        device_id = device.id
+
+        device_ids.append(device_id)
         device_names.append(device_name)
         device_manufacturers.append(device.manufacturer)
         device_models.append(device.model)
@@ -80,6 +91,7 @@ def ws_get_devices_to_add(
     connection.send_result(
         msg["id"],
         {
+            "device_ids": device_ids,
             "device_names": device_names,
             "device_manufacturers": device_manufacturers,
             "device_models": device_models,
@@ -118,7 +130,22 @@ def ws_get_carbon_data(
         return
 
     cf_store = entries[0].runtime_data.cf_store
+    device_reg = dr.async_get(hass)
     devices = cf_store.get_devices_data()
+
+    updated_name = False
+    for device_id, device_info in devices.items():
+        updated_device_name = (
+            device_reg.devices.get(device_id).name_by_user
+            or device_reg.devices.get(device_id).name
+        )
+        curr_device_name = device_info.get("metadata", {}).get("display_name", "")
+        if updated_device_name != curr_device_name:
+            updated_name = True
+            device_info.get("metadata", {})["display_name"] = updated_device_name
+
+    if updated_name:
+        hass.async_create_task(cf_store.async_save_data())
 
     connection.send_result(
         msg["id"],
@@ -138,8 +165,8 @@ def ws_get_carbon_data(
         vol.Optional("metadata", default={}): dict,
     }
 )
-@callback
-def ws_set_device(
+@websocket_api.async_response
+async def ws_set_device(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
@@ -170,12 +197,15 @@ def ws_set_device(
         break
 
     # all metadata we can add: https://developers.home-assistant.io/docs/device_registry_index/
+    device_id = "UNKNOWN"
     if register:
         metadata["area_id"] = register.area_id or "undefined"
         metadata["manufacturer"] = register.manufacturer
         metadata["model"] = register.model
         metadata["model_id"] = register.model_id
         metadata["register_id"] = register.id
+        metadata["display_name"] = device_name
+        device_id = register.id
 
         entity_reg = er.async_get(hass)
         device_entities = er.async_entries_for_device(entity_reg, register.id)
@@ -183,19 +213,24 @@ def ws_set_device(
             hass=hass, device_entities=device_entities
         )
 
-        total_energy = utils_get_device_total_energy_consumption(
-            hass=hass, device_entities=device_entities
+        total_energy, sensor_name = await hass.async_add_executor_job(
+            utils_get_device_total_energy_consumption, hass, device_entities
         )
+
         if total_energy:
             metadata["total_energy"] = total_energy
 
-    # only way to asynchronously call this function
+        if sensor_name:
+            metadata["install_date"] = await hass.async_add_executor_job(
+                utils_get_device_install_date, hass, sensor_name
+            )
+
     hass.async_create_task(
         cf_store.async_set_device_info(
-            device_name,
+            device_id,
             msg["device_type"],
             msg["carbon_footprint"],
-            metadata,  # maybe save previous consumption in metadata?
+            metadata,
         )
     )
 
@@ -271,7 +306,7 @@ def ws_get_all_devices_energy(
 
     for devices in device_reg.devices.values():
         device_entities = er.async_entries_for_device(entity_reg, devices.id)
-        total_energy = utils_get_device_total_energy_consumption(
+        total_energy, _ = utils_get_device_total_energy_consumption(
             hass=hass, device_entities=device_entities
         )
 
@@ -319,7 +354,7 @@ def ws_update_devices_energy(
 
         entity_reg = er.async_get(hass)
         device_entities = er.async_entries_for_device(entity_reg, register_id)
-        total_energy = utils_get_device_total_energy_consumption(
+        total_energy, _ = utils_get_device_total_energy_consumption(
             hass=hass, device_entities=device_entities
         )
 
@@ -507,12 +542,15 @@ def ws_get_carbon_by_room(
     # Group devices by room
     rooms_dict: dict[str, dict] = {}
 
-    for device_name, device_info in devices.items():
+    for device_id, device_info in devices.items():
         # Get carbon footprint for this device
         carbon_value = device_info.get("carbon_footprint", 0)
 
         # Try to find the device in the registry
-        device_id = device_info.get("metadata", {}).get("register_id")
+        device_name = (
+            device_reg.devices.get(device_id).name_by_user
+            or device_reg.devices.get(device_id).name
+        )
         room_name = "Unknown Room"
         room_id = None
 
@@ -527,30 +565,6 @@ def ws_get_carbon_by_room(
                 if area_ent:
                     room_name = area_ent.name
 
-        """
-        # Fallback: Try to extract room name from device name (for test data)
-        # e.g., "Living Room TV" -> "Living Room"
-        if room_name == "Unknown Room":
-            parts = device_name.split()
-            if len(parts) >= 2:
-                # Try to detect room name patterns
-                potential_room = " ".join(parts[:-1])
-                # Check if it looks like a room (contains common room keywords)
-                if any(
-                    keyword in potential_room.lower()
-                    for keyword in [
-                        "room",
-                        "kitchen",
-                        "bathroom",
-                        "garage",
-                        "hallway",
-                        "living",
-                        "bed",
-                        "dining",
-                    ]
-                ):
-                    room_name = potential_room
-        """
         # Initialize room if not seen before
         if room_name not in rooms_dict:
             rooms_dict[room_name] = {
@@ -563,6 +577,7 @@ def ws_get_carbon_by_room(
         # Add device to room
         rooms_dict[room_name]["devices"].append(
             {
+                "id": device_id,
                 "name": device_name,
                 "carbon": carbon_value,
             }
@@ -642,7 +657,7 @@ def ws_get_carbon_by_room_with_usage(
     # Group devices by room
     rooms_dict: dict[str, dict] = {}
 
-    for device_name, device_info in devices.items():
+    for device_id, device_info in devices.items():
         # Get embodied carbon for this device
         embodied_carbon = device_info.get("carbon_footprint", 0)
 
@@ -650,44 +665,29 @@ def ws_get_carbon_by_room_with_usage(
         usage_carbon = 0.0
         metadata = device_info.get("metadata", {})
 
+        device_name = (
+            device_reg.devices.get(device_id).name_by_user
+            or device_reg.devices.get(device_id).name
+        )
+
         total_energy = metadata.get("total_energy", None)
         if total_energy is not None:
             usage_carbon = (total_energy * co2_intensity) / 1000
-        """
-        # Check if there's pre-defined usage carbon in metadata (e.g., from test data)
-        if "usage_carbon_kg" in metadata:
-            try:
-                usage_carbon = float(metadata["usage_carbon_kg"])
-            except ValueError | TypeError:
-                usage_carbon = 0.0
-        else:
-            # Try to estimate from power sensors if no metadata value
-            entity_id = None
-            if "register_id" in metadata:
-                # Try to find the entity
-                device_id = metadata["register_id"]
-                if device_id in device_reg.devices:
-                    device_entry = device_reg.devices[device_id]
-                    # Get entities for this device
-                    device_entities = er.async_entries_for_device(entity_reg, device_id)
-                    # Find power sensor
-                    for ent in device_entities:
-                        if "power" in ent.entity_id.lower():
-                            entity_id = ent.entity_id
-                            break
 
-            # If we found a power sensor, calculate usage carbon (simplified: assuming 1 hour)
-            if entity_id:
-                power_state = hass.states.get(entity_id)
-                if power_state and power_state.state not in ("unknown", "unavailable"):
-                    try:
-                        power_w = float(power_state.state)
-                        # Usage carbon = (power_W * co2_intensity_gCO2/kWh) / 1_000_000
-                        # Simplified: hour of usage at current power
-                        usage_carbon = (power_w * co2_intensity) / 1_000_000
-                    except ValueError | TypeError:
-                        usage_carbon = 0.0
-        """
+        predicted_usage_carbon_value = 0.0
+        install_date = metadata.get("install_date", None)
+        if install_date is not None:
+            install_dt = dt_util.parse_datetime(
+                str(install_date)
+            )  # weirdly, install_date is neither a str neither a datetime??
+            datetime_from_installation = datetime.now().replace(
+                tzinfo=None
+            ) - install_dt.replace(tzinfo=None)
+            days_from_installation = max(datetime_from_installation.days, 1)
+            predicted_usage_carbon_value = (
+                usage_carbon / days_from_installation
+            ) * 1825  # 1825 days for five years
+
         # Try to find the room
         room_name = "Unknown Room"
         room_id = None
@@ -703,28 +703,6 @@ def ws_get_carbon_by_room_with_usage(
                 if area_ent:
                     room_name = area_ent.name
 
-        # Fallback: Try to extract room name from device name
-        """
-        if room_name == "Unknown Room":
-            parts = device_name.split()
-            if len(parts) >= 2:
-                potential_room = " ".join(parts[:-1])
-                if any(
-                    keyword in potential_room.lower()
-                    for keyword in [
-                        "room",
-                        "kitchen",
-                        "bathroom",
-                        "garage",
-                        "hallway",
-                        "living",
-                        "bed",
-                        "dining",
-                    ]
-                ):
-                    room_name = potential_room
-        """
-
         # Initialize room if not seen before
         if room_name not in rooms_dict:
             rooms_dict[room_name] = {
@@ -732,6 +710,7 @@ def ws_get_carbon_by_room_with_usage(
                 "room_id": room_id,
                 "embodied_carbon": 0,
                 "usage_carbon": 0,
+                "predicted_carbon": 0,
                 "total_carbon": 0,
                 "devices": [],
             }
@@ -739,14 +718,17 @@ def ws_get_carbon_by_room_with_usage(
         device_total = embodied_carbon + usage_carbon
         rooms_dict[room_name]["devices"].append(
             {
+                "id": device_id,
                 "name": device_name,
                 "embodied_carbon": round(embodied_carbon, 2),
                 "usage_carbon": round(usage_carbon, 2),
+                "predicted_carbon": round(predicted_usage_carbon_value, 2),
                 "total_carbon": round(device_total, 2),
             }
         )
         rooms_dict[room_name]["embodied_carbon"] += embodied_carbon
         rooms_dict[room_name]["usage_carbon"] += usage_carbon
+        rooms_dict[room_name]["predicted_carbon"] += predicted_usage_carbon_value
         rooms_dict[room_name]["total_carbon"] += device_total
 
     # Convert to list, round values, and sort by total carbon
@@ -754,6 +736,7 @@ def ws_get_carbon_by_room_with_usage(
     for room_data in rooms_dict.values():
         room_data["embodied_carbon"] = round(room_data["embodied_carbon"], 2)
         room_data["usage_carbon"] = round(room_data["usage_carbon"], 2)
+        room_data["predicted_carbon"] = round(room_data["predicted_carbon"], 2)
         room_data["total_carbon"] = round(room_data["total_carbon"], 2)
         rooms_list.append(room_data)
 
@@ -796,12 +779,17 @@ def ws_get_carbon_by_type(
         )
         return
 
+    device_reg = dr.async_get(hass)
     cf_store = entries[0].runtime_data.cf_store
     devices = cf_store.get_devices_data()
 
     type_dict: dict[str, dict] = {}
 
-    for device_name, device_info in devices.items():
+    for device_id, device_info in devices.items():
+        device_name = (
+            device_reg.devices.get(device_id).name_by_user
+            or device_reg.devices.get(device_id).name
+        )
         carbon_value = device_info.get("carbon_footprint", 0)
         device_type = device_info.get("type", "Unknown")
 
@@ -814,6 +802,7 @@ def ws_get_carbon_by_type(
 
         type_dict[device_type]["devices"].append(
             {
+                "id": device_id,
                 "name": device_name,
                 "carbon": carbon_value,
             }
@@ -881,17 +870,34 @@ def ws_get_carbon_by_type_with_usage(
             co2_intensity = 200.0
 
     cf_store = entries[0].runtime_data.cf_store
+    device_reg = dr.async_get(hass)
     devices = cf_store.get_devices_data()
 
     type_dict: dict[str, dict] = {}
 
-    for device_name, device_info in devices.items():
+    for device_id, device_info in devices.items():
         metadata = device_info.get("metadata", {})
+        device_name = (
+            device_reg.devices.get(device_id).name_by_user
+            or device_reg.devices.get(device_id).name
+        )
 
         usage_carbon_value = 0.0
         total_energy = metadata.get("total_energy", None)
         if total_energy is not None:
             usage_carbon_value = (total_energy * co2_intensity) / 1000
+
+        predicted_usage_carbon_value = 0.0
+        install_date = metadata.get("install_date", None)
+        if install_date is not None:
+            install_dt = dt_util.parse_datetime(str(install_date))
+            datetime_from_installation = datetime.now().replace(
+                tzinfo=None
+            ) - install_dt.replace(tzinfo=None)
+            days_from_installation = max(datetime_from_installation.days, 1)
+            predicted_usage_carbon_value = (
+                usage_carbon_value / days_from_installation
+            ) * 1825  # 1825 days for five years
 
         embodied_carbon_value = device_info.get("carbon_footprint", 0)
         device_type = device_info.get("type", "Unknown")
@@ -904,26 +910,31 @@ def ws_get_carbon_by_type_with_usage(
                 "embodied_carbon": 0,
                 "usage_carbon": 0,
                 "total_carbon": 0,
+                "predicted_carbon": 0,
                 "devices": [],
             }
 
         type_dict[device_type]["devices"].append(
             {
+                "id": device_id,
                 "name": device_name,
                 "embodied_carbon": round(embodied_carbon_value, 2),
                 "usage_carbon": round(usage_carbon_value, 2),
                 "total_carbon": round(device_total, 2),
+                "predicted_carbon": round(predicted_usage_carbon_value, 2),
                 "carbon": embodied_carbon_value,
             }
         )
         type_dict[device_type]["embodied_carbon"] += embodied_carbon_value
         type_dict[device_type]["usage_carbon"] += usage_carbon_value
+        type_dict[device_type]["predicted_carbon"] += predicted_usage_carbon_value
         type_dict[device_type]["total_carbon"] += device_total
 
     type_list = []
     for type_data in type_dict.values():
         type_data["embodied_carbon"] = round(type_data["embodied_carbon"], 2)
         type_data["usage_carbon"] = round(type_data["usage_carbon"], 2)
+        type_data["predicted_carbon"] = round(type_data["predicted_carbon"], 2)
         type_data["total_carbon"] = round(type_data["total_carbon"], 2)
         type_list.append(type_data)
 
@@ -1018,7 +1029,7 @@ async def ws_db_matching(
     try:
         async with (
             aiohttp.ClientSession() as session,
-            session.get(db_ip + "/api/devices/approved") as resp,
+            session.get(db_ip.rstrip("/") + "/api/devices/approved") as resp,
         ):
             device_db = await resp.json()
     except Exception as e:
@@ -1029,8 +1040,14 @@ async def ws_db_matching(
         )
         return
 
-    # TODO have a specific dict that contains model_manufacturer as key and cf as value. Lookup in this dict
-    # first and if nothing is found use the types_carbon.
+    devices_carbon = {}
+    for device in device_db:
+        device_id = device.get("id").lower()
+        device_carbon = device.get("carbon_footprint")[0]["mid"]
+        if not device_id or not device_carbon:
+            continue
+
+        devices_carbon[device_id] = device_carbon
 
     types_carbon = {}
     for device in device_db:
@@ -1046,12 +1063,103 @@ async def ws_db_matching(
 
     devices_matched = {}
     device_types: dict = msg["device_types"]
-    for d_name, d_type in device_types.items():
-        d_type = d_type.lower()
-        d_footprint = types_carbon.get(d_type, 0.0)
+    for d_name, values in device_types.items():
+        d_type = values.get("device_type").lower()
+        d_model = values.get("model")
+        d_manufacturer = values.get("manufacturer")
+        d_id = (
+            d_model.lower().strip() + "-" + d_manufacturer.lower().strip()
+            if d_model and d_manufacturer
+            else "none"
+        )
+        d_footprint = (
+            devices_carbon.get(d_id)
+            if d_id in devices_carbon
+            else types_carbon.get(d_type, 0.0)
+        )
         devices_matched[d_name] = {
             "device_type": f"{d_type}",
             "carbon_footprint": d_footprint,
         }
 
     connection.send_result(msg["id"], {"devices_matched": devices_matched})
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/export_json"})
+@websocket_api.async_response
+async def ws_export_json(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Export the added devices to a JSON array to upload them on the interface."""
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        connection.send_error(
+            msg["id"], "config_entry_not_found", "Uh oh, no config entry found :-("
+        )
+        return
+
+    cf_store = entries[0].runtime_data.cf_store
+    devices = cf_store.get_devices_data()
+
+    json_array = []
+    for device in devices.values():
+        device_dict = {}
+
+        metadata = device.get("metadata", {})
+        model = metadata.get("model", "unknown")
+        manufacturer = metadata.get("manufacturer", "unknown")
+
+        carbon_footprint = device.get("carbon_footprint", 0)
+        d_type = device.get("type", "unknown")
+        d_id = (
+            model.lower().strip() + "-" + manufacturer.lower().strip()
+            if model and manufacturer
+            else "demoObj-nullType"
+        )
+
+        device_dict["id"] = d_id
+        device_dict["model"] = model
+        device_dict["manufacturer"] = manufacturer
+        device_dict["type"] = d_type
+        device_dict["carbon_footprint"] = [
+            {"low": carbon_footprint, "mid": carbon_footprint, "high": carbon_footprint}
+        ]
+
+        json_array.append(device_dict)
+
+    cfdb_token = entries[0].options.get("cfdb_token")
+    if not cfdb_token or len(cfdb_token) == 0:
+        # no token defined so we just return the json_array
+        connection.send_result(msg["id"], {"json_array": json_array, "uploaded": "no"})
+        return
+
+    db_ip = entries[0].options.get("db_ip")
+    if not db_ip or len(db_ip) == 0:
+        connection.send_result(msg["id"], {"json_array": json_array, "uploaded": "no"})
+        return
+
+    url = db_ip.rstrip("/") + "/ha/devices"
+    headers = {
+        "Authorization": f"Bearer {cfdb_token}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+
+    try:
+        async with (
+            aiohttp.ClientSession() as session,
+            session.post(url=url, headers=headers, json=json_array) as resp,
+        ):
+            text = await resp.text()
+            if resp.status >= 400:
+                connection.send_result(
+                    msg["id"], {"json_array": json_array, "uploaded": "no"}
+                )
+
+    except Exception as e:
+        connection.send_result(msg["id"], {"json_array": json_array, "uploaded": "no"})
+        return
+
+    connection.send_result(msg["id"], {"json_array": json_array, "uploaded": "yes"})

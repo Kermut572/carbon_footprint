@@ -15,7 +15,7 @@ class CFStore:
     A CFStore object has two fields:
     * store: Store object from HomeAssistant
     * data: dictionary in the following format:
-        * data[entity_id] = entity_data
+        * data[device_id] = entity_data
           * where entity_data is a dict containing the following keys: type, carbon_footprint, metadata
             * metadata is a dict that contains eventual arbitrary information about the device
 
@@ -39,7 +39,7 @@ class CFStore:
         await self.store.async_save(data=self.data)
 
     async def async_set_device_info(
-        self, entity_id: str, type: str, carbon_footprint: float, metadata: dict
+        self, device_id: str, type: str, carbon_footprint: float, metadata: dict
     ) -> None:
         """Add a device to the store, or overwrite its info if it exists."""
         entity_info = {
@@ -47,12 +47,12 @@ class CFStore:
             "carbon_footprint": carbon_footprint,
             "metadata": metadata,
         }
-        self.data[entity_id] = entity_info
+        self.data[device_id] = entity_info
         await self.async_save_data()
 
-    async def async_remove_device_info(self, entity_id: str) -> None:
+    async def async_remove_device_info(self, device_id: str) -> None:
         """Remove a device from the store."""
-        del self.data[entity_id]
+        del self.data[device_id]
         await self.async_save_data()
 
     def get_devices_data(self) -> dict[str, dict]:

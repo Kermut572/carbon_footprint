@@ -159,6 +159,16 @@ class CarbonFootprintPanel extends HTMLElement {
         }
 
         const energyHistogram = await this.getEnergyHistogram();
+        const emissionNowRaw = this._hass.states['sensor.carbon_emission_now']?.state;
+        const carbonTodayRaw = this._hass.states['sensor.carbon_total_today']?.state;
+
+        const emissionNow = emissionNowRaw && emissionNowRaw !== 'unknown' && emissionNowRaw !== 'unavailable'
+            ? parseFloat(emissionNowRaw)
+            : null;
+
+        const carbonToday = carbonTodayRaw && carbonTodayRaw !== 'unknown' && carbonTodayRaw !== 'unavailable'
+            ? parseFloat(carbonTodayRaw)
+            : null;
 
         this.innerHTML = `
             <ha-app-layout>
@@ -263,6 +273,98 @@ class CarbonFootprintPanel extends HTMLElement {
                             </div>
                         </div>
                     </ha-card>
+                    <ha-card header="Recommendations">
+                        <div class="card-content">
+                            <div style="display: flex; flex-direction: column; gap: 8px;">
+
+                                <!-- Current emissions -->
+                                <div style="border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
+                                    <div class="recommendation-header"
+                                        style="padding: 12px; background-color: ${
+                                            emissionNow === null ? '#f5f5f5' :
+                                            emissionNow > 500 ? '#ffebee' :
+                                            emissionNow > 200 ? '#fff8e1' :
+                                            '#e8f5e9'
+                                        }; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;"
+                                        onclick="this.parentElement.querySelector('.recommendation-content-1').style.display = this.parentElement.querySelector('.recommendation-content-1').style.display === 'none' ? 'block' : 'none'; this.querySelector('.toggle-icon-1').textContent = this.parentElement.querySelector('.recommendation-content-1').style.display === 'none' ? '▼' : '▲';">
+                                        <strong>Current Emissions</strong>
+                                        <span class="toggle-icon-1" style="font-size: 12px;">▲</span>
+                                    </div>
+                                    <div class="recommendation-content-1"
+                                        style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
+                                        <p style="margin: 0; font-size: 13px; color: #555;">
+                                            ${
+                                                emissionNow === null
+                                                    ? `No current emission data is available yet.`
+                                                    : emissionNow > 500
+                                                        ? `Your current emissions are <b>high (${emissionNow.toFixed(2)} gCO₂/h)</b>. Consider reducing active devices or delaying heavy usage.`
+                                                        : emissionNow > 200
+                                                            ? `Your current emissions are <b>moderate (${emissionNow.toFixed(2)} gCO₂/h)</b>. You may be able to optimize usage.`
+                                                            : `Your current emissions are <b>low (${emissionNow.toFixed(2)} gCO₂/h)</b>. Your home is currently using energy efficiently.`
+                                            }
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <!-- Carbon intensity usage -->
+                                <div style="border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
+                                    <div class="recommendation-header"
+                                        style="padding: 12px; background-color: ${
+                                            data?.co2_intensity < 100 ? '#e8f5e9' :
+                                            data?.co2_intensity < 250 ? '#fff8e1' :
+                                            '#ffebee'
+                                        }; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;"
+                                        onclick="this.parentElement.querySelector('.recommendation-content-2').style.display = this.parentElement.querySelector('.recommendation-content-2').style.display === 'none' ? 'block' : 'none'; this.querySelector('.toggle-icon-2').textContent = this.parentElement.querySelector('.recommendation-content-2').style.display === 'none' ? '▼' : '▲';">
+                                        <strong>Optimize Usage Timing</strong>
+                                        <span class="toggle-icon-2" style="font-size: 12px;">▲</span>
+                                    </div>
+                                    <div class="recommendation-content-2"
+                                        style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
+                                        <p style="margin: 0; font-size: 13px; color: #555;">
+                                            ${
+                                                data?.co2_intensity < 100
+                                                    ? `The current carbon intensity is <b>low (${data.co2_intensity} gCO₂eq/kWh)</b>. This is a good time to run energy-intensive devices.`
+                                                    : data?.co2_intensity < 250
+                                                        ? `The current carbon intensity is <b>moderate (${data.co2_intensity} gCO₂eq/kWh)</b>. If possible, shift flexible usage to cleaner hours.`
+                                                        : `The current carbon intensity is <b>high (${data.co2_intensity} gCO₂eq/kWh)</b>. Delaying heavy appliance use could reduce your emissions.`
+                                            }
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <!-- Today's carbon total -->
+                                <div style="border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
+                                    <div class="recommendation-header"
+                                        style="padding: 12px; background-color: ${
+                                            carbonToday === null ? '#f5f5f5' :
+                                            carbonToday > 10 ? '#ffebee' :
+                                            carbonToday > 5 ? '#fff8e1' :
+                                            '#e8f5e9'
+                                        }; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;"
+                                        onclick="this.parentElement.querySelector('.recommendation-content-3').style.display = this.parentElement.querySelector('.recommendation-content-3').style.display === 'none' ? 'block' : 'none'; this.querySelector('.toggle-icon-3').textContent = this.parentElement.querySelector('.recommendation-content-3').style.display === 'none' ? '▼' : '▲';">
+                                        <strong>Today's Carbon Total</strong>
+                                        <span class="toggle-icon-3" style="font-size: 12px;">▲</span>
+                                    </div>
+                                    <div class="recommendation-content-3"
+                                        style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
+                                        <p style="margin: 0; font-size: 13px; color: #555;">
+                                            ${
+                                                carbonToday === null
+                                                    ? `No daily carbon data is available yet.`
+                                                    : carbonToday > 10
+                                                        ? `You have already emitted <b>${carbonToday.toFixed(2)} kgCO₂</b> today. Consider reducing usage for the rest of the day.`
+                                                        : carbonToday > 5
+                                                            ? `You have emitted <b>${carbonToday.toFixed(2)} kgCO₂</b> today. Your usage is moderate so far.`
+                                                            : `You have emitted <b>${carbonToday.toFixed(2)} kgCO₂</b> today. Good control of your footprint so far.`
+                                            }
+                                        </p>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </ha-card>
+                    
                 </div>
             </ha-app-layout>
         `;
@@ -355,7 +457,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.9'; // :skull:
+        link.href = '/api/carbon_footprint/style.css?version=1.12'; // :skull:
         this.appendChild(link);
     }
 
@@ -382,7 +484,8 @@ class CarbonFootprintPanel extends HTMLElement {
                 <div class="button-group">
                     <button type="button" id="compute-footprint-btn">Compute Footprint</button>
                     <button type="submit">Add Device</button>
-                    <button type="button" id="detect-devices-btn"><div class="loader" id="loader"></div>Detect Device Types</button>
+                    <button type="button" id="detect-devices-btn"><div class="loader" id="loader"></div>Automatic Setup</button>
+                    <button type="button" id="export-json-btn">Export to JSON</button>
                 </div>
             </form>
         `;
@@ -440,11 +543,11 @@ class CarbonFootprintPanel extends HTMLElement {
                         <div class="card-content device-list-container">
                             ${hasDevices ? `
                                 <ul>
-                                    ${Object.entries(data.devices).map(([device_name, info]) => `
+                                    ${Object.entries(data.devices).map(([device_id, info]) => `
                                         <li>
                                             <div class="device-info">
                                                 <div class="device-header">
-                                                    <h2><b>${device_name}</b></h2><br>
+                                                    <h2><b>${info.metadata?.display_name || device_id}</b></h2><br>
                                                     <div class="device-extended">
                                                         Type: ${info.type || 'Unknown'}<br>
                                                         Area: ${info.metadata?.area_id || 'N/A'} <br>
@@ -453,6 +556,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                                         Model: ${info.metadata?.model || 'N/A'}<br>
                                                         Model ID: ${info.metadata?.model_id || 'N/A'}<br>
                                                         Class: ${info.metadata?.device_classes || 'N/A'}<br>
+                                                        HA ID: ${device_id || 'UNKNOWN'} <br>
                                                         Total Energy Consumed: ${info.metadata?.total_energy || 'N/A'}<br>
                                                     </div>
                                                 </div>
@@ -465,7 +569,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                                 <button
                                                     type="button"
                                                     class="delete-btn"
-                                                    data-entity-id="${device_name}"
+                                                    data-entity-id="${device_id}"
                                                     title="Remove device">
                                                     ✕
                                                 </button>
@@ -509,7 +613,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.15'; // :skull:
+        link.href = '/api/carbon_footprint/style.css?version=1.18'; // :skull:
         this.appendChild(link);
     }
 
@@ -530,8 +634,31 @@ class CarbonFootprintPanel extends HTMLElement {
         }
     }
 
+    showLoadingOverlay(message = 'Loading...') {
+        this.hideLoadingOverlay();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'loading-overlay';
+        overlay.innerHTML = `
+            <div class="loading-content">
+                <div class="spinner"></div>
+                <p>${message}</p>
+            </div>
+        `;
+
+        this.appendChild(overlay);
+    }
+
+    hideLoadingOverlay() {
+        const overlay = this.querySelector('#loading-overlay');
+        if (overlay) {
+            overlay.remove();
+        }
+    }
+
     async detectDevicesType(detectBtn, loaderAnim) {
         const devicesResp = await this._hass.callWS({ type: 'carbon_footprint/get_devices_to_add' });
+        let deviceIds = devicesResp.device_ids || [];
         let deviceNames = devicesResp.device_names || [];
         let deviceModels = devicesResp.device_models || [];
         let deviceManufacturers = devicesResp.device_manufacturers || [];
@@ -545,20 +672,31 @@ class CarbonFootprintPanel extends HTMLElement {
         }
 
         try {
+            this.showLoadingOverlay('Detecting device types...');
             const llmResp = await this._hass.callWS({
                 type: 'carbon_footprint/llm_detection',
                 devices: devicesDict
             });
-
+            let deviceTypes = JSON.parse(llmResp.device_types);
             console.log('Device Types Detection successful, continuing...');
 
-            let deviceTypes = llmResp.device_types
+            let i = 0;
+            for(const key in devicesDict) {
+                devicesDict[key]['device_type'] = deviceTypes[key];
+                devicesDict[key]['device_id'] = deviceIds[i];
+                i++;
+            }
+
+            this.showLoadingOverlay('Matching devices with database...');
+
+            console.log(`Sending ${JSON.stringify(devicesDict)}`)
             const dbMatchingResp = await this._hass.callWS({
                 type: 'carbon_footprint/db_matching',
-                device_types: JSON.parse(deviceTypes),
+                device_types: devicesDict,
             });
             let devicesMatched = dbMatchingResp.devices_matched;
             console.log(`${devicesMatched}`)
+
 
             //flow: Once we got the device types: pull the db and match carbon values, this will automatically setup everything where possible.
             //idea: pass the device_types json as argument for another websocket, which will return another json in the following format:
@@ -570,6 +708,7 @@ class CarbonFootprintPanel extends HTMLElement {
             //}
             //then use this for set_device
 
+            this.showLoadingOverlay('Adding devices to Carbon Footprint Integration...');
             for (const [deviceName, deviceInfo] of Object.entries(devicesMatched)) {
                 console.log(`Processing ${deviceName}: `, deviceInfo)
                 await this._hass.callWS({
@@ -585,8 +724,11 @@ class CarbonFootprintPanel extends HTMLElement {
             alert(`Device type detection failed: ${error.message || error.code}`);
         }
         finally {
+            this.hideLoadingOverlay();
             detectBtn.disabled = false;
             loaderAnim.style.display = 'none';
+            const updatedData = await this.getCarbonData();
+            await this.renderSettingsPage(updatedData);
         }
     }
 
@@ -848,6 +990,7 @@ class CarbonFootprintPanel extends HTMLElement {
             // Stacked bars showing embodied and usage
             const embodiedValues = devices.map(d => d.embodied_carbon);
             const usageValues = devices.map(d => d.usage_carbon);
+            const predictedValues = devices.map(d => d.predicted_carbon);
 
             datasets = [
                 {
@@ -862,6 +1005,13 @@ class CarbonFootprintPanel extends HTMLElement {
                     data: usageValues,
                     backgroundColor: 'rgba(33, 150, 243, 0.7)',  // Blue
                     borderColor: 'rgb(33, 150, 243)',
+                    borderWidth: 1,
+                },
+                {
+                    label: 'Predicted Carbon (5 years)',
+                    data: predictedValues,
+                    backgroundColor: 'rgba(243, 33, 33, 0.7)',
+                    borderColor: 'rgba(243, 33, 33, 1)',
                     borderWidth: 1,
                 }
             ];
@@ -969,6 +1119,23 @@ class CarbonFootprintPanel extends HTMLElement {
                 detectBtn.disabled = true;
                 loaderAnim.style.display = 'inline-block';
             });
+        }
+
+        const exportBtn = this.querySelector('#export-json-btn');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', async () => {
+                let jsonArray = await this._hass.callWS({ type: 'carbon_footprint/export_json' });
+
+                const array = JSON.stringify(jsonArray.json_array);
+                const uploaded = jsonArray.uploaded
+                if (uploaded === 'yes') {
+                    alert("Devices have been uploaded to the db interface!");
+                }
+                else {
+                    navigator.clipboard.writeText(array);
+                    alert("Devices have been copied to the clipboard! If you wanted to upload to the interface, please make sure db_ip and cfdb_token are set.");
+                }
+            })
         }
 
         const computeBtn = this.querySelector('#compute-footprint-btn');
