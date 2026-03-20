@@ -27,4 +27,4 @@ There are three optional settings needed to unlock all features:
 - Use "Export to JSON" to upload local devices to the shared database
 
 ## Troubleshooting
-- `Provider Error` during Automatic Setup: likely an upstream OpenRouter issue — wait and retry
+- `Provider Error` during Automatic Setup: likely an upstream OpenRouter issue, wait a bit and retry
