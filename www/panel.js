@@ -845,6 +845,7 @@ class CarbonFootprintPanel extends HTMLElement {
 
     // turn on/off fake data here
     _useFakeCarbonData = false;
+    _hiddenRoomIndices = new Set();
 
     _getFakeCarbonData() {
         return [
@@ -904,12 +905,12 @@ class CarbonFootprintPanel extends HTMLElement {
         if (!canvas) {
             return;
         }
-        // Fetch room data
+
         let data;
         if (this._useFakeCarbonData) {
             data = this._getFakeCarbonData();
             console.log('Using fake carbon data for room chart:', data);
-        }else if (this._groupBy === 'type') {
+        } else if (this._groupBy === 'type') {
             data = await this.getCarbonByType();
         } else {
             data = await this.getCarbonByRoom();
@@ -944,9 +945,6 @@ class CarbonFootprintPanel extends HTMLElement {
         let chartOptions;
 
         if (this._carbonView === 'total') {
-            // Split each room into two adjacent slices:
-            // embodied = hatched
-            // usage = solid
             const labels = [];
             const values = [];
             const backgroundColors = [];
@@ -958,15 +956,17 @@ class CarbonFootprintPanel extends HTMLElement {
                 const borderColor = solidBorderColors[index % solidBorderColors.length];
                 const hatchPattern = this._createHatchPattern(ctx, baseColor);
 
+                const isHidden = this._hiddenRoomIndices.has(index);
+
                 // embodied slice
                 labels.push(`${label} - Embodied`);
-                values.push(item.embodied_carbon || 0);
+                values.push(isHidden ? 0 : (item.embodied_carbon || 0));
                 backgroundColors.push(hatchPattern);
                 borderColors.push(borderColor);
 
                 // usage slice
                 labels.push(`${label} - Usage`);
-                values.push(item.usage_carbon || 0);
+                values.push(isHidden ? 0 : (item.usage_carbon || 0));
                 backgroundColors.push(baseColor);
                 borderColors.push(borderColor);
             });
@@ -977,8 +977,9 @@ class CarbonFootprintPanel extends HTMLElement {
                     label: 'Total Carbon',
                     data: values,
                     backgroundColor: backgroundColors,
-                    borderColor: borderColors,
                     borderWidth: 0,
+                    hoverBorderWidth: 0,
+                    spacing: 0,
                 }]
             };
 
@@ -991,27 +992,26 @@ class CarbonFootprintPanel extends HTMLElement {
                         labels: {
                             padding: 15,
                             font: { size: 13 },
-                            generateLabels: (chart) => {
-                                // Show one legend item per room color,
-                                // plus two style legend items.
+                            generateLabels: () => {
                                 const roomItems = data.map((item, index) => {
                                     const label = item.room || item.type || 'Unknown';
                                     const color = baseColors[index % baseColors.length];
                                     const borderColor = solidBorderColors[index % solidBorderColors.length];
+                                    const isHidden = this._hiddenRoomIndices.has(index);
 
                                     return {
                                         text: label,
                                         fillStyle: color,
                                         strokeStyle: borderColor,
                                         lineWidth: 2,
-                                        hidden: false,
+                                        hidden: isHidden,
                                         index
                                     };
                                 });
 
                                 roomItems.push({
                                     text: 'Embodied (hatched)',
-                                    fillStyle: this._createHatchPattern(ctx, '#666'),
+                                    fillStyle: this._createHatchPattern(ctx, 'rgba(120, 120, 120, 0.6)'),
                                     strokeStyle: '#666',
                                     lineWidth: 2,
                                     hidden: false,
@@ -1030,7 +1030,22 @@ class CarbonFootprintPanel extends HTMLElement {
                                 return roomItems;
                             }
                         },
-                        onClick: null
+                        onClick: (event, legendItem, legend) => {
+                            const roomIndex = legendItem.index;
+
+                            // Ignore the explanatory style legend items
+                            if (roomIndex >= data.length) {
+                                return;
+                            }
+
+                            if (this._hiddenRoomIndices.has(roomIndex)) {
+                                this._hiddenRoomIndices.delete(roomIndex);
+                            } else {
+                                this._hiddenRoomIndices.add(roomIndex);
+                            }
+
+                            this.renderRoomChart();
+                        }
                     },
                     title: {
                         display: true,
@@ -1061,7 +1076,6 @@ class CarbonFootprintPanel extends HTMLElement {
                 }
             };
         } else {
-            // embodied-only or usage-only stays as solid slices
             const labels = data.map(item => item.room || item.type || 'Unknown');
             let values;
             let datasetLabel;
@@ -1080,8 +1094,9 @@ class CarbonFootprintPanel extends HTMLElement {
                     label: datasetLabel,
                     data: values,
                     backgroundColor: baseColors.slice(0, data.length),
-                    borderColor: solidBorderColors.slice(0, data.length),
                     borderWidth: 0,
+                    hoverBorderWidth: 0,
+                    spacing: 0,
                 }]
             };
 
@@ -1118,7 +1133,6 @@ class CarbonFootprintPanel extends HTMLElement {
         });
 
         this._addRoomChartClickHandler(data, canvas);
-
     }
 
     _addRoomChartClickHandler(rooms, canvas) {
