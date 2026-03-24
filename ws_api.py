@@ -159,7 +159,8 @@ def ws_get_carbon_data(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/set_device",
-        vol.Required("device_name"): str,
+        vol.Optional("device_name"): str,
+        vol.Optional("device_id"): str,
         vol.Required("device_type"): str,
         vol.Required("carbon_footprint"): vol.Coerce(float),
         vol.Optional("metadata", default={}): dict,
@@ -186,25 +187,29 @@ async def ws_set_device(
 
     # config_entries might be an interesting key of register: Config entries that are linked to this device.
     registry = dr.async_get(hass)
-    device_name = msg["device_name"]
-    register = None  # should always be found, but just in case
+    device_name = msg.get("device_name")
+    device_id = msg.get("device_id")
 
-    for device in registry.devices.values():
-        if device_name not in (device.name_by_user, device.name):
-            continue
+    register = None
+    if device_id:
+        register = registry.devices.get(device_id)
 
-        register = device
-        break
+    if not register and device_name:
+        for device in registry.devices.values():
+            if device_name not in (device.name_by_user, device.name):
+                continue
+
+            register = device
+            break
 
     # all metadata we can add: https://developers.home-assistant.io/docs/device_registry_index/
-    device_id = "UNKNOWN"
     if register:
         metadata["area_id"] = register.area_id or "undefined"
         metadata["manufacturer"] = register.manufacturer
         metadata["model"] = register.model
         metadata["model_id"] = register.model_id
         metadata["register_id"] = register.id
-        metadata["display_name"] = device_name
+        metadata["display_name"] = register.name_by_user or register.name
         device_id = register.id
 
         entity_reg = er.async_get(hass)

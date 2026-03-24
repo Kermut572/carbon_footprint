@@ -21,6 +21,7 @@ class CarbonFootprintPanel extends HTMLElement {
         this._currentPage = 'main'; // 'main' or 'settings'
         this._carbonView = 'total'; // 'total', 'embodied', or 'usage'
         this._groupBy = 'room'; // 'room' or 'type'
+        this._currentDevice = null;
 
         this._chartGranularity = {
             HOUR: "hour",
@@ -364,7 +365,7 @@ class CarbonFootprintPanel extends HTMLElement {
                             </div>
                         </div>
                     </ha-card>
-                    
+
                 </div>
             </ha-app-layout>
         `;
@@ -461,17 +462,18 @@ class CarbonFootprintPanel extends HTMLElement {
         this.appendChild(link);
     }
 
+    _valueChanged(ev) {
+        this._currentDevice = ev.detail.value;
+    }
+
     renderForm(devices) {
+
         return `
+
             <form id="add-device-form">
                 <div>
-                    <label for="device_name">Entity</label>
-                    <select id="device_name" name="device_name" required>
-                        <option value="">Select an entity...</option>
-                        ${devices.map(deviceName => `
-                            <option value="${deviceName}">${deviceName}</option>
-                        `).join('')}
-                    </select>
+                    <label for="device_name">Device</label>
+                    <ha-selector id="device_selector"></ha-selector>
                 </div>
                 <div>
                     <label for="device_type">Device Type</label>
@@ -816,7 +818,7 @@ class CarbonFootprintPanel extends HTMLElement {
 
         const pctx = patternCanvas.getContext('2d');
 
-        pctx.fillStyle = color; 
+        pctx.fillStyle = color;
         pctx.fillRect(0, 0, patternCanvas.width, patternCanvas.height);
 
         // diagonal hatch lines
@@ -1301,6 +1303,20 @@ class CarbonFootprintPanel extends HTMLElement {
     }
 
     attachFormHandler() {
+        const selector = this.querySelector('#device_selector');
+        if (selector) {
+            try {
+                selector.hass = this._hass;
+                selector.selector = {
+                    device: {},
+                };
+                selector.value = this._currentDevice ?? '';
+                selector.addEventListener('value-changed', (ev) => this._valueChanged(ev));
+            } catch (err) {
+                console.debug('Failed to init ha-selector', err);
+            }
+        }
+
         const form = this.querySelector('#add-device-form');
         if (form) {
             form.addEventListener('submit', async (e) => {
@@ -1311,12 +1327,13 @@ class CarbonFootprintPanel extends HTMLElement {
                 try {
                     await this._hass.callWS({
                         type: 'carbon_footprint/set_device',
-                        device_name: formData.get('device_name'),
+                        device_id: this._currentDevice,
                         device_type: formData.get('device_type'),
                         carbon_footprint: parseFloat(formData.get('carbon_footprint')),
                         metadata: {}
                     });
 
+                    this._currentDevice = '';
                     const newData = await this.getCarbonData();
                     await this.render(newData);
 

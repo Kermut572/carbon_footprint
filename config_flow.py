@@ -20,8 +20,13 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-# TODO adjust the data schema to the data that you need
-STEP_USER_DATA_SCHEMA = vol.Schema({})
+STEP_USER_DATA_SCHEMA = vol.Schema(
+    {
+        vol.Optional("db_ip"): str,
+        vol.Optional("api_key"): str,
+        vol.Optional("cfdb_token"): str,
+    }
+)
 
 
 class PlaceholderHub:
