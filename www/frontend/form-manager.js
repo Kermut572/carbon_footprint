@@ -84,8 +84,7 @@ export function openFullForm(instance, initialHsl = {}, inferred = null) {
             //console.log('Computing footprint with HSL values:', hsl_values);
             const result = await instance._hass.callWS({ type: 'carbon_footprint/compute_footprint', hsl_values });
 
-            const formInput = instance.querySelector('#carbon_footprint');
-            if (formInput) formInput.value = (result.values?.[1] ?? 0).toFixed(2);
+            instance.setCarbonValue((result.values?.[1] ?? 0).toFixed(2))
 
             dialog.close();
             dialog.remove();

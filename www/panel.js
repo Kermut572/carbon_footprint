@@ -23,6 +23,7 @@ class CarbonFootprintPanel extends HTMLElement {
         this._groupBy = 'room'; // 'room' or 'type'
         this._currentDevice = null;
         this._currentType = null;
+        this._currentCarbonValue = 0.0;
 
         this._chartGranularity = {
             HOUR: "hour",
@@ -467,6 +468,12 @@ class CarbonFootprintPanel extends HTMLElement {
         this._currentDevice = ev.detail.value;
     }
 
+    setCarbonValue(value) {
+        this._currentCarbonValue = value;
+        const carbonSelector = this.querySelector('#device_carbon_footprint');
+        carbonSelector.value = this._currentCarbonValue;
+    }
+
     renderForm(devices) {
 
         return `
@@ -482,7 +489,7 @@ class CarbonFootprintPanel extends HTMLElement {
                 </div>
                 <div>
                     <label for="carbon_footprint">Carbon Footprint (kgCO₂eq)</label>
-                    <input type="number" id="carbon_footprint" name="carbon_footprint" step="0.01" required>
+                    <ha-selector id="device_carbon_footprint"></ha-selector>
                 </div>
                 <div class="button-group">
                     <button type="button" id="compute-footprint-btn">Compute Footprint</button>
@@ -1326,6 +1333,7 @@ class CarbonFootprintPanel extends HTMLElement {
                     device: {},
                 };
                 selector.value = this._currentDevice ?? '';
+                selector.required = true;
                 selector.addEventListener('value-changed', (ev) => this._valueChanged(ev));
             } catch (err) {
                 console.debug('Failed to init ha-selector', err);
@@ -1355,6 +1363,25 @@ class CarbonFootprintPanel extends HTMLElement {
 
         }
 
+        const carbonSelector = this.querySelector('#device_carbon_footprint');
+        if (carbonSelector) {
+            try {
+                carbonSelector.hass = this._hass;
+                carbonSelector.selector = {
+                    number: {
+                        min: 0.00,
+                        step: 0.01
+                    },
+                };
+
+                carbonSelector.required = true;
+                carbonSelector.value = this._currentCarbonValue;
+                carbonSelector.addEventListener('value-changed', (ev) => { this._currentCarbonValue = ev.detail.value; })
+            } catch (err) {
+                console.debug('Failed to init ha-selector-number', err);
+            }
+        }
+
         const form = this.querySelector('#add-device-form');
         if (form) {
             form.addEventListener('submit', async (e) => {
@@ -1368,12 +1395,13 @@ class CarbonFootprintPanel extends HTMLElement {
                         type: 'carbon_footprint/set_device',
                         device_id: this._currentDevice,
                         device_type: this._currentType,
-                        carbon_footprint: parseFloat(formData.get('carbon_footprint')),
+                        carbon_footprint: this._currentCarbonValue,
                         metadata: {}
                     });
 
                     this._currentDevice = '';
                     this._currentType = '';
+                    this._currentCarbonValue = 0.0;
                     const newData = await this.getCarbonData();
                     await this.render(newData);
 
