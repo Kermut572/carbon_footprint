@@ -29,6 +29,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import BLOCKS_FOOTPRINTS, DOMAIN
 from .utils import (
+    utils_fetch_electricity_maps_sensor,
     utils_get_device_classes,
     utils_get_device_install_date,
     utils_get_device_total_energy_consumption,
@@ -112,7 +113,8 @@ def ws_get_carbon_data(
 ) -> None:
     """Handle get carbon data command."""
     # CO_2 intensity in gCO2/kWh
-    co2_intensity_state = hass.states.get("sensor.electricity_maps_co2_intensity")
+    em_sensor = utils_fetch_electricity_maps_sensor(hass)
+    co2_intensity_state = hass.states.get(em_sensor)
 
     co2_intensity = 200.0  # arbitrary
 
@@ -648,7 +650,8 @@ def ws_get_carbon_by_room_with_usage(
     area_reg = ar.async_get(hass)
 
     # Get current CO2 intensity
-    co2_intensity_state = hass.states.get("sensor.electricity_maps_co2_intensity")
+    em_sensor = utils_fetch_electricity_maps_sensor(hass)
+    co2_intensity_state = hass.states.get(em_sensor)
     co2_intensity = 200.0  # default fallback
     if co2_intensity_state and co2_intensity_state.state not in (
         "unknown",
@@ -863,7 +866,8 @@ def ws_get_carbon_by_type_with_usage(
         )
         return
 
-    co2_intensity_state = hass.states.get("sensor.electricity_maps_co2_intensity")
+    em_sensor = utils_fetch_electricity_maps_sensor(hass)
+    co2_intensity_state = hass.states.get(em_sensor)
     co2_intensity = 200.0  # default fallback
     if co2_intensity_state and co2_intensity_state.state not in (
         "unknown",

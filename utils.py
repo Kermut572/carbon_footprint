@@ -90,6 +90,19 @@ def utils_get_device_install_date(hass: HomeAssistant, sensor: str) -> date:
     return dt_util.as_local(dt_util.utc_from_timestamp(start_ts))
 
 
+def utils_fetch_electricity_maps_sensor(hass: HomeAssistant) -> str:
+    """Get the sensor name of the Electricity Maps Integration.
+
+    This value is either sensor.electricity_maps_co2_intensity or sensor.electricity_maps_carbon_intensity.
+    """
+
+    co2_intensity_state = hass.states.get("sensor.electricity_maps_co2_intensity")
+    if not co2_intensity_state or co2_intensity_state in ("unknown", "unavailable"):
+        return "sensor.electricity_maps_carbon_intensity"
+
+    return "sensor.electricity_maps_co2_intensity"
+
+
 async def async_populate_energy_store(
     hass: HomeAssistant, energy_store: EnergyStore, _LOGGER: Logger
 ) -> None:
@@ -98,21 +111,22 @@ async def async_populate_energy_store(
         _LOGGER.info("EnergyStore already has data, skipping")
         return
 
+    em_sensor = utils_fetch_electricity_maps_sensor(hass)
     data_points = await hass.async_add_executor_job(
         statistics_during_period,
         hass,
         dt_util.now() - timedelta(weeks=260),
         None,
-        {"sensor.electricity_maps_co2_intensity"},
+        {em_sensor},
         "hour",
         None,
         {"mean", "state"},
     )
-    if not data_points or "sensor.electricity_maps_co2_intensity" not in data_points:
+    if not data_points or em_sensor not in data_points:
         _LOGGER.warning("No historical CO2 intensity statistics found")
         return
 
-    for data_point in data_points["sensor.electricity_maps_co2_intensity"]:
+    for data_point in data_points[em_sensor]:
         timestamp = dt_util.as_local(dt_util.utc_from_timestamp(data_point["start"]))
         energy_footprint = data_point.get("mean") or data_point.get("state")
 
