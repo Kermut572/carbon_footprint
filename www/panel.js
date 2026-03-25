@@ -5,6 +5,7 @@
 
 import { CarbonUtils } from './frontend/carbon-utils.js';
 import { openFullForm } from './frontend/form-manager.js';
+import { Utils } from './utils.js';
 
 class CarbonFootprintPanel extends HTMLElement {
 
@@ -1391,6 +1392,11 @@ class CarbonFootprintPanel extends HTMLElement {
 
                 try {
 
+                    if (this._currentDevice === null || this._currentDevice === '' || this._currentType === null || this._currentType === '') {
+                        Utils.showToast(this, "Please fill out all the fields.");
+                        return;
+                    }
+
                     await this._hass.callWS({
                         type: 'carbon_footprint/set_device',
                         device_id: this._currentDevice,
@@ -1403,6 +1409,7 @@ class CarbonFootprintPanel extends HTMLElement {
                     this._currentType = '';
                     this._currentCarbonValue = 0.0;
                     const newData = await this.getCarbonData();
+                    Utils.showToast(this, 'Successfully added device!');
                     await this.render(newData);
 
                 } catch (error) {
@@ -1430,11 +1437,11 @@ class CarbonFootprintPanel extends HTMLElement {
                 const array = JSON.stringify(jsonArray.json_array);
                 const uploaded = jsonArray.uploaded
                 if (uploaded === 'yes') {
-                    alert("Devices have been uploaded to the db interface!");
+                    Utils.showToast("Devices have been uploaded to the db interface!");
                 }
                 else {
                     navigator.clipboard.writeText(array);
-                    alert("Devices have been copied to the clipboard! If you wanted to upload to the interface, please make sure db_ip and cfdb_token are set.");
+                    Utils.showToast("Devices have been copied to the clipboard! If you wanted to upload to the interface, please make sure db_ip and cfdb_token are set.");
                 }
             })
         }
@@ -1475,6 +1482,7 @@ class CarbonFootprintPanel extends HTMLElement {
                     });
 
                     const newData = await this.getCarbonData();
+                    Utils.showToast(this, "Successfully untracked device!");
                     await this.render(newData);
 
                 } catch (error) {
