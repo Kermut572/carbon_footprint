@@ -29,6 +29,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import BLOCKS_FOOTPRINTS, DOMAIN
 from .utils import (
+    utils_fetch_electricity_maps_sensor,
     utils_get_device_classes,
     utils_get_device_install_date,
     utils_get_device_total_energy_consumption,
@@ -112,7 +113,8 @@ def ws_get_carbon_data(
 ) -> None:
     """Handle get carbon data command."""
     # CO_2 intensity in gCO2/kWh
-    co2_intensity_state = hass.states.get("sensor.electricity_maps_co2_intensity")
+    em_sensor = utils_fetch_electricity_maps_sensor(hass)
+    co2_intensity_state = hass.states.get(em_sensor)
 
     co2_intensity = 150.0  # arbitrary
     status = "fallback"
@@ -162,7 +164,8 @@ def ws_get_carbon_data(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/set_device",
-        vol.Required("device_name"): str,
+        vol.Optional("device_name"): str,
+        vol.Optional("device_id"): str,
         vol.Required("device_type"): str,
         vol.Required("carbon_footprint"): vol.Coerce(float),
         vol.Optional("metadata", default={}): dict,
@@ -189,25 +192,29 @@ async def ws_set_device(
 
     # config_entries might be an interesting key of register: Config entries that are linked to this device.
     registry = dr.async_get(hass)
-    device_name = msg["device_name"]
-    register = None  # should always be found, but just in case
+    device_name = msg.get("device_name")
+    device_id = msg.get("device_id")
 
-    for device in registry.devices.values():
-        if device_name not in (device.name_by_user, device.name):
-            continue
+    register = None
+    if device_id:
+        register = registry.devices.get(device_id)
 
-        register = device
-        break
+    if not register and device_name:
+        for device in registry.devices.values():
+            if device_name not in (device.name_by_user, device.name):
+                continue
+
+            register = device
+            break
 
     # all metadata we can add: https://developers.home-assistant.io/docs/device_registry_index/
-    device_id = "UNKNOWN"
     if register:
         metadata["area_id"] = register.area_id or "undefined"
         metadata["manufacturer"] = register.manufacturer
         metadata["model"] = register.model
         metadata["model_id"] = register.model_id
         metadata["register_id"] = register.id
-        metadata["display_name"] = device_name
+        metadata["display_name"] = register.name_by_user or register.name
         device_id = register.id
 
         entity_reg = er.async_get(hass)
@@ -646,7 +653,8 @@ def ws_get_carbon_by_room_with_usage(
     area_reg = ar.async_get(hass)
 
     # Get current CO2 intensity
-    co2_intensity_state = hass.states.get("sensor.electricity_maps_co2_intensity")
+    em_sensor = utils_fetch_electricity_maps_sensor(hass)
+    co2_intensity_state = hass.states.get(em_sensor)
     co2_intensity = 200.0  # default fallback
     if co2_intensity_state and co2_intensity_state.state not in (
         "unknown",
@@ -861,7 +869,8 @@ def ws_get_carbon_by_type_with_usage(
         )
         return
 
-    co2_intensity_state = hass.states.get("sensor.electricity_maps_co2_intensity")
+    em_sensor = utils_fetch_electricity_maps_sensor(hass)
+    co2_intensity_state = hass.states.get(em_sensor)
     co2_intensity = 200.0  # default fallback
     if co2_intensity_state and co2_intensity_state.state not in (
         "unknown",

@@ -21,6 +21,9 @@ class CarbonFootprintPanel extends HTMLElement {
         this._currentPage = 'main'; // 'main' or 'settings'
         this._carbonView = 'total'; // 'total', 'embodied', or 'usage'
         this._groupBy = 'room'; // 'room' or 'type'
+        this._currentDevice = null;
+        this._currentType = null;
+        this._currentCarbonValue = 0.0;
 
         this._chartGranularity = {
             HOUR: "hour",
@@ -373,7 +376,7 @@ class CarbonFootprintPanel extends HTMLElement {
                             </div>
                         </div>
                     </ha-card>
-                    
+
                 </div>
             </ha-app-layout>
         `;
@@ -470,25 +473,32 @@ class CarbonFootprintPanel extends HTMLElement {
         this.appendChild(link);
     }
 
+    _valueChanged(ev) {
+        this._currentDevice = ev.detail.value;
+    }
+
+    setCarbonValue(value) {
+        this._currentCarbonValue = value;
+        const carbonSelector = this.querySelector('#device_carbon_footprint');
+        carbonSelector.value = this._currentCarbonValue;
+    }
+
     renderForm(devices) {
+
         return `
+
             <form id="add-device-form">
                 <div>
-                    <label for="device_name">Entity</label>
-                    <select id="device_name" name="device_name" required>
-                        <option value="">Select an entity...</option>
-                        ${devices.map(deviceName => `
-                            <option value="${deviceName}">${deviceName}</option>
-                        `).join('')}
-                    </select>
+                    <label for="device_name">Device</label>
+                    <ha-selector id="device_selector"></ha-selector>
                 </div>
                 <div>
                     <label for="device_type">Device Type</label>
-                    <input type="text" id="device_type" name="device_type" required>
+                    <ha-selector id="device_type_selector"></ha-selector>
                 </div>
                 <div>
                     <label for="carbon_footprint">Carbon Footprint (kgCO₂eq)</label>
-                    <input type="number" id="carbon_footprint" name="carbon_footprint" step="0.01" required>
+                    <ha-selector id="device_carbon_footprint"></ha-selector>
                 </div>
                 <div class="button-group">
                     <button type="button" id="compute-footprint-btn">Compute Footprint</button>
@@ -825,7 +835,7 @@ class CarbonFootprintPanel extends HTMLElement {
 
         const pctx = patternCanvas.getContext('2d');
 
-        pctx.fillStyle = color; 
+        pctx.fillStyle = color;
         pctx.fillRect(0, 0, patternCanvas.width, patternCanvas.height);
 
         // diagonal hatch lines
@@ -1324,6 +1334,63 @@ class CarbonFootprintPanel extends HTMLElement {
     }
 
     attachFormHandler() {
+        const selector = this.querySelector('#device_selector');
+        if (selector) {
+            try {
+                selector.hass = this._hass;
+                selector.selector = {
+                    device: {},
+                };
+                selector.value = this._currentDevice ?? '';
+                selector.required = true;
+                selector.addEventListener('value-changed', (ev) => this._valueChanged(ev));
+            } catch (err) {
+                console.debug('Failed to init ha-selector', err);
+            }
+        }
+
+        const suggestions = ['Air conditioner','Heater','Fridge','Washing machine','TV','Speaker','Light','Computer','Router'];
+        const typeSelector = this.querySelector('#device_type_selector');
+        if (typeSelector) {
+            console.log('Loaded device type selector')
+            try {
+                typeSelector.hass = this._hass;
+                typeSelector.selector = {
+                    select: {
+                        options: suggestions,
+                        custom_value: true,
+                        sort: true,
+                    },
+                };
+
+                typeSelector.value = this._currentType ?? '';
+                typeSelector.label = 'Device Type';
+                typeSelector.addEventListener('value-changed', (ev) => { this._currentType = ev.detail.value; console.log(`Type is now ${this._currentType}`); typeSelector.value = ev.detail.value; });
+            } catch (err) {
+                console.debug('Failed to init ha-selector-select', err);
+            }
+
+        }
+
+        const carbonSelector = this.querySelector('#device_carbon_footprint');
+        if (carbonSelector) {
+            try {
+                carbonSelector.hass = this._hass;
+                carbonSelector.selector = {
+                    number: {
+                        min: 0.00,
+                        step: 0.01
+                    },
+                };
+
+                carbonSelector.required = true;
+                carbonSelector.value = this._currentCarbonValue;
+                carbonSelector.addEventListener('value-changed', (ev) => { this._currentCarbonValue = ev.detail.value; })
+            } catch (err) {
+                console.debug('Failed to init ha-selector-number', err);
+            }
+        }
+
         const form = this.querySelector('#add-device-form');
         if (form) {
             form.addEventListener('submit', async (e) => {
@@ -1332,14 +1399,18 @@ class CarbonFootprintPanel extends HTMLElement {
                 const formData = new FormData(form);
 
                 try {
+
                     await this._hass.callWS({
                         type: 'carbon_footprint/set_device',
-                        device_name: formData.get('device_name'),
-                        device_type: formData.get('device_type'),
-                        carbon_footprint: parseFloat(formData.get('carbon_footprint')),
+                        device_id: this._currentDevice,
+                        device_type: this._currentType,
+                        carbon_footprint: this._currentCarbonValue,
                         metadata: {}
                     });
 
+                    this._currentDevice = '';
+                    this._currentType = '';
+                    this._currentCarbonValue = 0.0;
                     const newData = await this.getCarbonData();
                     await this.render(newData);
 
