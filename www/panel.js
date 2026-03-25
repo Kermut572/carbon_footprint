@@ -22,6 +22,7 @@ class CarbonFootprintPanel extends HTMLElement {
         this._carbonView = 'total'; // 'total', 'embodied', or 'usage'
         this._groupBy = 'room'; // 'room' or 'type'
         this._currentDevice = null;
+        this._currentType = null;
 
         this._chartGranularity = {
             HOUR: "hour",
@@ -477,7 +478,7 @@ class CarbonFootprintPanel extends HTMLElement {
                 </div>
                 <div>
                     <label for="device_type">Device Type</label>
-                    <input type="text" id="device_type" name="device_type" required>
+                    <ha-selector id="device_type_selector"></ha-selector>
                 </div>
                 <div>
                     <label for="carbon_footprint">Carbon Footprint (kgCO₂eq)</label>
@@ -1331,6 +1332,29 @@ class CarbonFootprintPanel extends HTMLElement {
             }
         }
 
+        const suggestions = ['Air conditioner','Heater','Fridge','Washing machine','TV','Speaker','Light','Computer','Router'];
+        const typeSelector = this.querySelector('#device_type_selector');
+        if (typeSelector) {
+            console.log('Loaded device type selector')
+            try {
+                typeSelector.hass = this._hass;
+                typeSelector.selector = {
+                    select: {
+                        options: suggestions,
+                        custom_value: true,
+                        sort: true,
+                    },
+                };
+
+                typeSelector.value = this._currentType ?? '';
+                typeSelector.label = 'Device Type';
+                typeSelector.addEventListener('value-changed', (ev) => { this._currentType = ev.detail.value; console.log(`Type is now ${this._currentType}`); typeSelector.value = ev.detail.value; });
+            } catch (err) {
+                console.debug('Failed to init ha-selector-select', err);
+            }
+
+        }
+
         const form = this.querySelector('#add-device-form');
         if (form) {
             form.addEventListener('submit', async (e) => {
@@ -1339,15 +1363,17 @@ class CarbonFootprintPanel extends HTMLElement {
                 const formData = new FormData(form);
 
                 try {
+
                     await this._hass.callWS({
                         type: 'carbon_footprint/set_device',
                         device_id: this._currentDevice,
-                        device_type: formData.get('device_type'),
+                        device_type: this._currentType,
                         carbon_footprint: parseFloat(formData.get('carbon_footprint')),
                         metadata: {}
                     });
 
                     this._currentDevice = '';
+                    this._currentType = '';
                     const newData = await this.getCarbonData();
                     await this.render(newData);
 
