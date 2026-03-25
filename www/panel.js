@@ -181,10 +181,19 @@ class CarbonFootprintPanel extends HTMLElement {
                     <ha-card header="Energy Footprint">
                         <div class="card-content">
                             <p>Current Energy CO₂ Intensity:
-                            <span class="ci-value"><b>${data?.co2_intensity ?? 'N/A'}</b></span>
-                            gCO₂eq/kWh
-                            <span class="ci-indicator ${CarbonUtils.getCarbonColor(data?.co2_intensity)}"></span>
-                            <span class="ci-label">${CarbonUtils.getCarbonLabel(data?.co2_intensity)}</span></p>
+                                <span class="ci-value">
+                                    <b>${data?.co2_intensity_status === 'fallback'
+                                        ? 'Unknown'
+                                        : (data?.co2_intensity ?? 'N/A')}</b>
+                                </span>
+                                ${data?.co2_intensity_status === 'fallback' ? '' : 'gCO₂eq/kWh'}
+                                <span class="ci-indicator ${CarbonUtils.getCarbonColor(
+                                    data?.co2_intensity_status === 'fallback' ? null : data?.co2_intensity
+                                )}"></span>
+                                <span class="ci-label">${CarbonUtils.getCarbonLabel(
+                                    data?.co2_intensity_status === 'fallback' ? null : data?.co2_intensity
+                                )}</span>
+                            </p>
                             <p style="font-size: 12px; color: #666; margin-top: 8px; margin-bottom: 16px;">
                                 <em>Grid carbon intensity over time (in grams CO₂ equivalent per kilowatt-hour)</em>
                             </p>

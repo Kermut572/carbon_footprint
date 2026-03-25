@@ -114,13 +114,15 @@ def ws_get_carbon_data(
     # CO_2 intensity in gCO2/kWh
     co2_intensity_state = hass.states.get("sensor.electricity_maps_co2_intensity")
 
-    co2_intensity = 200.0  # arbitrary
+    co2_intensity = 150.0  # arbitrary
+    status = "fallback"
 
     if co2_intensity_state and co2_intensity_state.state not in (
         "unknown",
         "unavailable",
     ):
         co2_intensity = float(co2_intensity_state.state)
+        status = "available"
 
     entries = hass.config_entries.async_entries(DOMAIN)
     if not entries:
@@ -152,6 +154,7 @@ def ws_get_carbon_data(
         {
             "devices": devices,
             "co2_intensity": co2_intensity,
+            "co2_intensity_status": status,
         },
     )
 
