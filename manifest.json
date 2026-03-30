@@ -3,7 +3,8 @@
   "name": "Carbon Footprint",
   "codeowners": ["@Kermut572"],
   "config_flow": true,
-  "documentation": "https://www.home-assistant.io/integrations/carbon_footprint",
+  "documentation": "https://github.com/Kermut572/carbon_footprint",
+  "issue_tracker": "https://github.com/Kermut572/carbon_footprint/issues",
   "integration_type": "service",
   "iot_class": "calculated",
   "requirements": [
