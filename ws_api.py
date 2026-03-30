@@ -16,6 +16,7 @@ from typing import Any
 
 import aiohttp
 from openrouter import OpenRouter
+from tenacity import retry, stop_after_attempt, wait_fixed
 import voluptuous as vol
 
 from homeassistant.components import websocket_api
@@ -1001,9 +1002,18 @@ async def ws_llm_detection(
 
         return response.choices[0].message.content
 
-    try:
+    i = 1
+
+    @retry(wait=wait_fixed(30), stop=stop_after_attempt(10))
+    async def _run_job():
         result = await hass.async_add_executor_job(_openrouter_call)
         connection.send_result(msg["id"], {"device_types": result})
+        raise Exception
+
+    try:
+        # print(f"Auto Device Detect: Try {i}/10")
+        await _run_job()
+        i += 1
     except Exception as err:
         connection.send_error(
             msg["id"], "openrouter_call_error", f"Device type detection failed: {err}"

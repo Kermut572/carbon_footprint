@@ -8,7 +8,8 @@
   "integration_type": "service",
   "iot_class": "calculated",
   "requirements": [
-    "openrouter"
+    "openrouter",
+    "tenacity"
   ],
   "dependencies": ["application_credentials"],
   "version": "0.1.0"
