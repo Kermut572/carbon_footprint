@@ -1218,5 +1218,9 @@ def ws_get_yearly_contribution(
         total_energy_consumed += device_stats.get("total_energy", 0.0)
 
     connection.send_result(
-        msg["id"], {"yearly_contribution": total_energy_consumed / yearly_energy}
+        msg["id"],
+        {
+            "yearly_contribution": total_energy_consumed
+            / (yearly_energy if yearly_energy != 0.0 else 1)
+        },
     )
