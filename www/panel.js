@@ -162,6 +162,10 @@ class CarbonFootprintPanel extends HTMLElement {
             return;
         }
 
+        const yearlyConsCall = this._hass.callWS({ type: 'carbon_footprint/get_yearly_contribution' });
+        const yearlyCons = yearlyConsCall.yearly_contribution;
+        console.log(`Found ${yearlyCons}kWh for this year.`)
+
         const energyHistogram = await this.getEnergyHistogram();
         const emissionNowRaw = this._hass.states['sensor.carbon_emission_now']?.state;
         const carbonTodayRaw = this._hass.states['sensor.carbon_total_today']?.state;
@@ -305,7 +309,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                     <div class="recommendation-content-0"
                                         style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
                                         <p style="margin: 0; font-size: 13px; color: #555;">
-                                            Your current IoT energy consumption amounts to ${this._hass.callWS({ type: 'carbon_footprint/get_yearly_contribution' }).yearly_contribution || 0}% of your yearly energy consumption.
+                                            Your current IoT energy consumption amounts to ${yearlyCons || 0}% of your yearly energy consumption.
                                         </p>
                                     </div>
                                 </div>
