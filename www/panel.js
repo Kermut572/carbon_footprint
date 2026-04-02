@@ -162,7 +162,7 @@ class CarbonFootprintPanel extends HTMLElement {
             return;
         }
 
-        const yearlyConsCall = this._hass.callWS({ type: 'carbon_footprint/get_yearly_contribution' });
+        const yearlyConsCall = await this._hass.callWS({ type: 'carbon_footprint/get_yearly_contribution' });
         const yearlyCons = yearlyConsCall.yearly_contribution;
         console.log(`Found ${yearlyCons}kWh for this year.`)
 
