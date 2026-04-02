@@ -1209,7 +1209,9 @@ async def ws_get_yearly_contribution(
     devices = cf_store.get_devices_data()
 
     energy_meter = entries[0].options.get("energy_meter")
-    yearly_energy = await utils_get_yearly_consumption(hass)
+    yearly_energy = await hass.async_add_executor_job(
+        utils_get_yearly_consumption, hass
+    )
 
     total_energy_consumed = 0.0
     for device_id, device_stats in devices.items():
