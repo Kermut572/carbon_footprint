@@ -10,7 +10,6 @@ data.
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime
 from typing import Any
 
@@ -34,6 +33,7 @@ from .utils import (
     utils_get_device_classes,
     utils_get_device_install_date,
     utils_get_device_total_energy_consumption,
+    utils_get_yearly_consumption,
 )
 
 
@@ -55,6 +55,7 @@ def async_register_websocket_handlers(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_llm_detection)
     websocket_api.async_register_command(hass, ws_db_matching)
     websocket_api.async_register_command(hass, ws_export_json)
+    websocket_api.async_register_command(hass, ws_get_yearly_contribution)
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_devices_to_add"})
@@ -1185,3 +1186,37 @@ async def ws_export_json(
         return
 
     connection.send_result(msg["id"], {"json_array": json_array, "uploaded": "yes"})
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/get_yearly_contribution"}
+)
+@callback
+def ws_get_yearly_contribution(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Returns the yearly carbon/energy contribution of HA devices."""
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        connection.send_error(
+            msg["id"], "config_entry_not_found", "Uh oh, no config entry found :-("
+        )
+        return
+
+    cf_store = entries[0].runtime_data.cf_store
+    devices = cf_store.get_devices_data()
+
+    energy_meter = entries[0].options.get("energy_meter")
+    yearly_energy = utils_get_yearly_consumption(hass)
+
+    total_energy_consumed = 0.0
+    for device_id, device_stats in devices.items():
+        if energy_meter and device_id == energy_meter:
+            continue
+        total_energy_consumed += device_stats.get("total_energy", 0.0)
+
+    connection.send_result(
+        msg["id"], {"yearly_contribution": total_energy_consumed / yearly_energy}
+    )

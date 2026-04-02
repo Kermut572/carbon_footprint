@@ -6,9 +6,11 @@ from logging import Logger
 from homeassistant.components.recorder.statistics import statistics_during_period
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_registry import RegistryEntry
 from homeassistant.util import dt as dt_util
 
+from .const import DOMAIN
 from .energy_store import EnergyStore
 
 
@@ -137,3 +139,71 @@ async def async_populate_energy_store(
         await energy_store.async_set_energy_footprint(date_key, float(energy_footprint))
 
     _LOGGER.info("Populated energy store with historical data!")
+
+
+def utils_find_energy_entity_for_device(
+    hass: HomeAssistant, device_id: str
+) -> str | None:
+    """Return the entity_id of the energy sensor for a device_id, or None."""
+    if not device_id or device_id == "":
+        return None
+
+    registry = er.async_get(hass)
+
+    for entry in registry.entities.values():
+        if entry.device_id != device_id:
+            continue
+        state = hass.states.get(entry.entity_id)
+        if not state:
+            continue
+        if (
+            state.attributes.get("device_class") == SensorDeviceClass.ENERGY
+            and state.attributes.get("state_class") == SensorStateClass.TOTAL_INCREASING
+        ):
+            return entry.entity_id
+
+    return None
+
+
+def utils_get_yearly_consumption(hass: HomeAssistant) -> float:
+    """Returns the energy consumption (in kWh) of the last year."""
+
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        return 0.0
+
+    entry = entries[0]
+
+    default_ret_value = entry.options.get("yearly_consumption") or 0.0
+
+    energy_meter = entry.options.get("energy_meter")
+    energy_meter_entity = utils_find_energy_entity_for_device(hass, energy_meter)
+    if not energy_meter_entity:
+        return default_ret_value
+
+    state = hass.states.get(energy_meter_entity)
+    if not state:
+        return default_ret_value
+
+    if not (
+        state.attributes.get("device_class") == SensorDeviceClass.ENERGY
+        and state.attributes.get("state_class") == SensorStateClass.TOTAL_INCREASING
+    ):
+        return default_ret_value
+
+    data = statistics_during_period(
+        hass,
+        dt_util.now() - timedelta(days=365),
+        None,
+        {energy_meter_entity},
+        "day",
+        None,
+        {"sum"},
+    )
+
+    yearly_energy = 0.0
+    for day in data.get(energy_meter_entity, []):
+        daily_nrg = day.get("sum", 0.0)
+        yearly_energy += daily_nrg
+
+    return yearly_energy

@@ -290,6 +290,26 @@ class CarbonFootprintPanel extends HTMLElement {
                         <div class="card-content">
                             <div style="display: flex; flex-direction: column; gap: 8px;">
 
+
+                                <!-- Current yearly cons -->
+                                <div style="border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
+                                    <div class="recommendation-header"
+                                        style="padding: 12px; background-color: ${
+                                            '#e8f5e9'
+                                        }; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;"
+                                        onclick="this.parentElement.querySelector('.recommendation-content-0').style.display = this.parentElement.querySelector('.recommendation-content-0').style.display === 'none' ? 'block' : 'none'; this.querySelector('.toggle-icon-0').textContent = this.parentElement.querySelector('.recommendation-content-0').style.display === 'none' ? '▼' : '▲';">
+                                        <strong>Current Emissions</strong>
+                                        <span class="toggle-icon-0" style="font-size: 12px;">▲</span>
+                                    </div>
+
+                                    <div class="recommendation-content-0"
+                                        style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
+                                        <p style="margin: 0; font-size: 13px; color: #555;">
+                                            Your current IoT energy consumption amounts to ${this._hass.callWS({ type: 'carbon_footprint/get_yearly_contribution' }).yearly_contribution || 0}% of your yearly energy consumption.
+                                        </p>
+                                    </div>
+                                </div>
+
                                 <!-- Current emissions -->
                                 <div style="border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
                                     <div class="recommendation-header"
@@ -303,6 +323,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                         <strong>Current Emissions</strong>
                                         <span class="toggle-icon-1" style="font-size: 12px;">▲</span>
                                     </div>
+
                                     <div class="recommendation-content-1"
                                         style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
                                         <p style="margin: 0; font-size: 13px; color: #555;">
