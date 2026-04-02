@@ -1221,7 +1221,10 @@ def ws_get_yearly_contribution(
     connection.send_result(
         msg["id"],
         {
-            "yearly_contribution": total_energy_consumed
-            / (yearly_energy if yearly_energy != 0.0 else 1)
+            "yearly_contribution": round(
+                (total_energy_consumed / (yearly_energy if yearly_energy != 0.0 else 1))
+                * 100,
+                2,
+            )
         },
     )
