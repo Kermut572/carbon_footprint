@@ -1191,8 +1191,8 @@ async def ws_export_json(
 @websocket_api.websocket_command(
     {vol.Required("type"): f"{DOMAIN}/get_yearly_contribution"}
 )
-@callback
-def ws_get_yearly_contribution(
+@websocket_api.async_response
+async def ws_get_yearly_contribution(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
@@ -1209,7 +1209,7 @@ def ws_get_yearly_contribution(
     devices = cf_store.get_devices_data()
 
     energy_meter = entries[0].options.get("energy_meter")
-    yearly_energy = utils_get_yearly_consumption(hass)
+    yearly_energy = await utils_get_yearly_consumption(hass)
 
     total_energy_consumed = 0.0
     for device_id, device_stats in devices.items():
