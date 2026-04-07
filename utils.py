@@ -1,6 +1,7 @@
 """This file contains general utils functions."""
 
 from datetime import date, datetime, timedelta
+import logging
 from logging import Logger
 
 from homeassistant.components.recorder.statistics import statistics_during_period
@@ -98,11 +99,30 @@ def utils_fetch_electricity_maps_sensor(hass: HomeAssistant) -> str:
     This value is either sensor.electricity_maps_co2_intensity or sensor.electricity_maps_carbon_intensity.
     """
 
-    co2_intensity_state = hass.states.get("sensor.electricity_maps_co2_intensity")
-    if not co2_intensity_state or co2_intensity_state in ("unknown", "unavailable"):
-        return "sensor.electricity_maps_carbon_intensity"
+    probable_entities = [
+        "sensor.electricity_maps_co2_intensity",
+        "sensor.electricity_maps_carbon_intensity",
+        "sensor.co2_intensity",
+    ]
 
-    return "sensor.electricity_maps_co2_intensity"
+    for entity in probable_entities:
+        state = hass.states.get(entity)
+        if state and state.state not in ("unknown", "unavailable"):
+            return entity
+
+    _LOGGER = logging.getLogger(__name__)
+    # search for any possible sensor with the right device class and state class, in case the user renamed it
+    registry = er.async_get(hass)
+    for entry in registry.entities.values():
+        state = hass.states.get(entry.entity_id)
+        if not state:
+            continue
+
+        if state.attributes.get("unit_of_measurement") == "gCO2eq/kWh":
+            _LOGGER.info("Found EM sensor: %s", entry.entity_id)
+            return entry.entity_id
+
+    return "sensor.electricity_maps_co2_intensity"  # it's not this in this case but what else can a man return
 
 
 async def async_populate_energy_store(
