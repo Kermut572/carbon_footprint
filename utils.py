@@ -96,7 +96,7 @@ def utils_get_device_install_date(hass: HomeAssistant, sensor: str) -> date:
 def utils_fetch_electricity_maps_sensor(hass: HomeAssistant) -> str:
     """Get the sensor name of the Electricity Maps Integration.
 
-    This value is either sensor.electricity_maps_co2_intensity or sensor.electricity_maps_carbon_intensity.
+    Three default values are first tested. If they are not an EM sensor, the entity registry is queried.
     """
 
     probable_entities = [
@@ -111,7 +111,7 @@ def utils_fetch_electricity_maps_sensor(hass: HomeAssistant) -> str:
             return entity
 
     _LOGGER = logging.getLogger(__name__)
-    # search for any possible sensor with the right device class and state class, in case the user renamed it
+    # search for any possible sensor with the right unit of measurement, in case the user renamed it
     registry = er.async_get(hass)
     for entry in registry.entities.values():
         state = hass.states.get(entry.entity_id)
@@ -119,9 +119,9 @@ def utils_fetch_electricity_maps_sensor(hass: HomeAssistant) -> str:
             continue
 
         if state.attributes.get("unit_of_measurement") == "gCO2eq/kWh":
-            _LOGGER.info("Found EM sensor: %s", entry.entity_id)
             return entry.entity_id
 
+    _LOGGER.warning("No Electricity Maps sensor found :-(")
     return "sensor.electricity_maps_co2_intensity"  # it's not this in this case but what else can a man return
 
 
