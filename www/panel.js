@@ -1375,7 +1375,24 @@ class CarbonFootprintPanel extends HTMLElement {
             }
         }
 
-        const suggestions = ['Air conditioner','Heater','Fridge','Washing machine','TV','Speaker','Light','Computer','Router'];
+        const suggestions = [
+            "Temperature/humidity sensor",
+            "Motion sensor",
+            "Luminosity sensor",
+            "Air quality sensor",
+            "Smart camera",
+            "Smart speaker",
+            "Smart light bulb",
+            "Smart plug",
+            "Smart lock",
+            "Window/door sensor",
+            "Smart thermostat",
+            "Smart energy monitor",
+            "Smart washing machine",
+            "Smart TV",
+            "Smart refrigerator",
+            "Smart dishwasher",
+        ];
         const typeSelector = this.querySelector('#device_type_selector');
         if (typeSelector) {
             console.log('Loaded device type selector')

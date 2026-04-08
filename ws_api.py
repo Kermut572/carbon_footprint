@@ -986,6 +986,24 @@ async def ws_llm_detection(
         return
 
     devices = msg["devices"]
+    device_types = [
+        "Temperature/humidity sensor",
+        "Motion sensor",
+        "Luminosity sensor",
+        "Air quality sensor",
+        "Smart camera",
+        "Smart speaker",
+        "Smart light bulb",
+        "Smart plug",
+        "Smart lock",
+        "Window/door sensor",
+        "Smart thermostat",
+        "Smart energy monitor",
+        "Smart washing machine",
+        "Smart TV",
+        "Smart refrigerator",
+        "Smart dishwasher",
+    ]
 
     # TODO set a list of device types.
     def _openrouter_call():
@@ -995,7 +1013,7 @@ async def ws_llm_detection(
                 messages=[
                     {
                         "role": "user",
-                        "content": f"You are given a dictionary mapping device names to their model and manufacturer. Return ONLY a valid JSON object (no explanation, no markdown, no code blocks) mapping each device name to its device type category (e.g., 'Smart Plug', 'Temperature Sensor', 'Light', 'Camera'). Input devices: {devices}",
+                        "content": f"You are given a dictionary mapping device names to their model and manufacturer. Return ONLY a valid JSON object (no explanation, no markdown, no code blocks) mapping each device name to its device type category (and limit yourself to these devices types: {device_types}). Input devices: {devices}",
                     }
                 ],
                 response_format={"type": "json_object"},
