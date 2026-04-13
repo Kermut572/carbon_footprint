@@ -29,6 +29,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import BLOCKS_FOOTPRINTS, DOMAIN
 from .utils import (
+    utils_build_cfdb_device,
     utils_fetch_electricity_maps_sensor,
     utils_get_device_classes,
     utils_get_device_install_date,
@@ -1146,27 +1147,7 @@ async def ws_export_json(
 
     json_array = []
     for device in devices.values():
-        device_dict = {}
-
-        metadata = device.get("metadata", {})
-        model = metadata.get("model", "unknown")
-        manufacturer = metadata.get("manufacturer", "unknown")
-
-        carbon_footprint = device.get("carbon_footprint", 0)
-        d_type = device.get("type", "unknown")
-        d_id = (
-            model.lower().strip() + "-" + manufacturer.lower().strip()
-            if model and manufacturer
-            else "demoObj-nullType"
-        )
-
-        device_dict["id"] = d_id
-        device_dict["model"] = model
-        device_dict["manufacturer"] = manufacturer
-        device_dict["type"] = d_type
-        device_dict["carbon_footprint"] = [
-            {"low": carbon_footprint, "mid": carbon_footprint, "high": carbon_footprint}
-        ]
+        device_dict = utils_build_cfdb_device(device)
 
         json_array.append(device_dict)
 

@@ -227,3 +227,30 @@ def utils_get_yearly_consumption(hass: HomeAssistant) -> float:
         yearly_energy += daily_nrg
 
     return yearly_energy
+
+
+def utils_build_cfdb_device(device: dict) -> dict:
+    """Builds the device dictionary following the format for the CFDB interface."""
+    device_dict = {}
+
+    metadata = device.get("metadata", {})
+    model = metadata.get("model", "unknown")
+    manufacturer = metadata.get("manufacturer", "unknown")
+
+    carbon_footprint = device.get("carbon_footprint", 0)
+    d_type = device.get("type", "unknown")
+    d_id = (
+        model.lower().strip() + "-" + manufacturer.lower().strip()
+        if model and manufacturer
+        else "demoObj-nullType"
+    )
+
+    device_dict["id"] = d_id
+    device_dict["model"] = model
+    device_dict["manufacturer"] = manufacturer
+    device_dict["type"] = d_type
+    device_dict["carbon_footprint"] = [
+        {"low": carbon_footprint, "mid": carbon_footprint, "high": carbon_footprint}
+    ]
+
+    return device_dict

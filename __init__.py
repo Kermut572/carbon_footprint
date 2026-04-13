@@ -19,7 +19,7 @@ from homeassistant.helpers.typing import ConfigType
 from . import ws_api
 from .const import DOMAIN, TEST_MODE
 from .energy_store import EnergyStore
-from .periodic import async_update_energy_footprint
+from .periodic import async_export_to_cfdb, async_update_energy_footprint
 from .store import CFStore
 from .utils import async_populate_energy_store
 
@@ -85,12 +85,23 @@ async def async_setup_entry(
             _now=_now, hass=hass, _LOGGER=_LOGGER, energy_store=energy_store
         )
 
+    async def wrapper_async_export_to_cfdb(_now=None) -> None:
+        """Wrapper for async_export_to_cfdb, which makes it periodically callable."""
+        _LOGGER.debug("Running periodic export to CFDB at %s", _now)
+        await async_export_to_cfdb(
+            _now=_now, hass=hass, _LOGGER=_LOGGER, cf_store=cf_store
+        )
+
     entry.async_on_unload(
         async_track_time_interval(
             hass,
             wrapper_async_update_energy_footprint,
             timedelta(hours=1),
         )
+    )
+
+    entry.async_on_unload(
+        async_track_time_interval(hass, wrapper_async_export_to_cfdb, timedelta(days=3))
     )
 
     await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)

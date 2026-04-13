@@ -28,6 +28,7 @@ DATA_SCHEMA = vol.Schema(
         vol.Optional("cfdb_token"): str,
         vol.Optional("energy_meter"): selector.DeviceSelector(),
         vol.Optional("yearly_consumption"): float,
+        vol.Required("share_data"): bool,
     }
 )
 
