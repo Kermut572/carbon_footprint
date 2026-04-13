@@ -10,12 +10,12 @@ data.
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime
 from typing import Any
 
 import aiohttp
 from openrouter import OpenRouter
+from tenacity import retry, stop_after_attempt, wait_fixed
 import voluptuous as vol
 
 from homeassistant.components import websocket_api
@@ -29,9 +29,11 @@ from homeassistant.util import dt as dt_util
 
 from .const import BLOCKS_FOOTPRINTS, DOMAIN
 from .utils import (
+    utils_fetch_electricity_maps_sensor,
     utils_get_device_classes,
     utils_get_device_install_date,
     utils_get_device_total_energy_consumption,
+    utils_get_yearly_consumption,
 )
 
 
@@ -53,6 +55,7 @@ def async_register_websocket_handlers(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_llm_detection)
     websocket_api.async_register_command(hass, ws_db_matching)
     websocket_api.async_register_command(hass, ws_export_json)
+    websocket_api.async_register_command(hass, ws_get_yearly_contribution)
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_devices_to_add"})
@@ -112,15 +115,18 @@ def ws_get_carbon_data(
 ) -> None:
     """Handle get carbon data command."""
     # CO_2 intensity in gCO2/kWh
-    co2_intensity_state = hass.states.get("sensor.electricity_maps_co2_intensity")
+    em_sensor = utils_fetch_electricity_maps_sensor(hass)
+    co2_intensity_state = hass.states.get(em_sensor)
 
-    co2_intensity = 200.0  # arbitrary
+    co2_intensity = 150.0  # arbitrary
+    status = "fallback"
 
     if co2_intensity_state and co2_intensity_state.state not in (
         "unknown",
         "unavailable",
     ):
         co2_intensity = float(co2_intensity_state.state)
+        status = "available"
 
     entries = hass.config_entries.async_entries(DOMAIN)
     if not entries:
@@ -152,6 +158,7 @@ def ws_get_carbon_data(
         {
             "devices": devices,
             "co2_intensity": co2_intensity,
+            "co2_intensity_status": status,
         },
     )
 
@@ -159,7 +166,8 @@ def ws_get_carbon_data(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/set_device",
-        vol.Required("device_name"): str,
+        vol.Optional("device_name"): str,
+        vol.Optional("device_id"): str,
         vol.Required("device_type"): str,
         vol.Required("carbon_footprint"): vol.Coerce(float),
         vol.Optional("metadata", default={}): dict,
@@ -186,25 +194,29 @@ async def ws_set_device(
 
     # config_entries might be an interesting key of register: Config entries that are linked to this device.
     registry = dr.async_get(hass)
-    device_name = msg["device_name"]
-    register = None  # should always be found, but just in case
+    device_name = msg.get("device_name")
+    device_id = msg.get("device_id")
 
-    for device in registry.devices.values():
-        if device_name not in (device.name_by_user, device.name):
-            continue
+    register = None
+    if device_id:
+        register = registry.devices.get(device_id)
 
-        register = device
-        break
+    if not register and device_name:
+        for device in registry.devices.values():
+            if device_name not in (device.name_by_user, device.name):
+                continue
+
+            register = device
+            break
 
     # all metadata we can add: https://developers.home-assistant.io/docs/device_registry_index/
-    device_id = "UNKNOWN"
     if register:
         metadata["area_id"] = register.area_id or "undefined"
         metadata["manufacturer"] = register.manufacturer
         metadata["model"] = register.model
         metadata["model_id"] = register.model_id
         metadata["register_id"] = register.id
-        metadata["display_name"] = device_name
+        metadata["display_name"] = register.name_by_user or register.name
         device_id = register.id
 
         entity_reg = er.async_get(hass)
@@ -643,7 +655,8 @@ def ws_get_carbon_by_room_with_usage(
     area_reg = ar.async_get(hass)
 
     # Get current CO2 intensity
-    co2_intensity_state = hass.states.get("sensor.electricity_maps_co2_intensity")
+    em_sensor = utils_fetch_electricity_maps_sensor(hass)
+    co2_intensity_state = hass.states.get(em_sensor)
     co2_intensity = 200.0  # default fallback
     if co2_intensity_state and co2_intensity_state.state not in (
         "unknown",
@@ -858,7 +871,8 @@ def ws_get_carbon_by_type_with_usage(
         )
         return
 
-    co2_intensity_state = hass.states.get("sensor.electricity_maps_co2_intensity")
+    em_sensor = utils_fetch_electricity_maps_sensor(hass)
+    co2_intensity_state = hass.states.get(em_sensor)
     co2_intensity = 200.0  # default fallback
     if co2_intensity_state and co2_intensity_state.state not in (
         "unknown",
@@ -972,6 +986,24 @@ async def ws_llm_detection(
         return
 
     devices = msg["devices"]
+    device_types = [
+        "Temperature/humidity sensor",
+        "Motion sensor",
+        "Luminosity sensor",
+        "Air quality sensor",
+        "Smart camera",
+        "Smart speaker",
+        "Smart light bulb",
+        "Smart plug",
+        "Smart lock",
+        "Window/door sensor",
+        "Smart thermostat",
+        "Smart energy monitor",
+        "Smart washing machine",
+        "Smart TV",
+        "Smart refrigerator",
+        "Smart dishwasher",
+    ]
 
     # TODO set a list of device types.
     def _openrouter_call():
@@ -981,7 +1013,7 @@ async def ws_llm_detection(
                 messages=[
                     {
                         "role": "user",
-                        "content": f"You are given a dictionary mapping device names to their model and manufacturer. Return ONLY a valid JSON object (no explanation, no markdown, no code blocks) mapping each device name to its device type category (e.g., 'Smart Plug', 'Temperature Sensor', 'Light', 'Camera'). Input devices: {devices}",
+                        "content": f"You are given a dictionary mapping device names to their model and manufacturer. Return ONLY a valid JSON object (no explanation, no markdown, no code blocks) mapping each device name to its device type category (and limit yourself to these devices types: {device_types}). Input devices: {devices}",
                     }
                 ],
                 response_format={"type": "json_object"},
@@ -989,9 +1021,18 @@ async def ws_llm_detection(
 
         return response.choices[0].message.content
 
-    try:
+    i = 1
+
+    @retry(wait=wait_fixed(30), stop=stop_after_attempt(10))
+    async def _run_job():
         result = await hass.async_add_executor_job(_openrouter_call)
         connection.send_result(msg["id"], {"device_types": result})
+        raise Exception
+
+    try:
+        # print(f"Auto Device Detect: Try {i}/10")
+        await _run_job()
+        i += 1
     except Exception as err:
         connection.send_error(
             msg["id"], "openrouter_call_error", f"Device type detection failed: {err}"
@@ -1163,3 +1204,47 @@ async def ws_export_json(
         return
 
     connection.send_result(msg["id"], {"json_array": json_array, "uploaded": "yes"})
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/get_yearly_contribution"}
+)
+@websocket_api.async_response
+async def ws_get_yearly_contribution(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Returns the yearly carbon/energy contribution of HA devices."""
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        connection.send_error(
+            msg["id"], "config_entry_not_found", "Uh oh, no config entry found :-("
+        )
+        return
+
+    cf_store = entries[0].runtime_data.cf_store
+    devices = cf_store.get_devices_data()
+
+    energy_meter = entries[0].options.get("energy_meter")
+    yearly_energy = await hass.async_add_executor_job(
+        utils_get_yearly_consumption, hass
+    )
+
+    total_energy_consumed = 0.0
+    for device_id, device_stats in devices.items():
+        if energy_meter and device_id == energy_meter:
+            continue
+        device_metadata = device_stats.get("metadata", {})
+        total_energy_consumed += device_metadata.get("total_energy", 0.0)
+
+    connection.send_result(
+        msg["id"],
+        {
+            "yearly_contribution": round(
+                (total_energy_consumed / (yearly_energy if yearly_energy != 0.0 else 1))
+                * 100,
+                2,
+            )
+        },
+    )

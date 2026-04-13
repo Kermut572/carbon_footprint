@@ -5,6 +5,7 @@
 
 import { CarbonUtils } from './frontend/carbon-utils.js';
 import { openFullForm } from './frontend/form-manager.js';
+import { Utils } from './utils.js';
 
 class CarbonFootprintPanel extends HTMLElement {
 
@@ -21,6 +22,9 @@ class CarbonFootprintPanel extends HTMLElement {
         this._currentPage = 'main'; // 'main' or 'settings'
         this._carbonView = 'total'; // 'total', 'embodied', or 'usage'
         this._groupBy = 'room'; // 'room' or 'type'
+        this._currentDevice = null;
+        this._currentType = null;
+        this._currentCarbonValue = 0.0;
 
         this._chartGranularity = {
             HOUR: "hour",
@@ -158,6 +162,10 @@ class CarbonFootprintPanel extends HTMLElement {
             return;
         }
 
+        const yearlyConsCall = await this._hass.callWS({ type: 'carbon_footprint/get_yearly_contribution' });
+        const yearlyCons = yearlyConsCall.yearly_contribution;
+        console.log(`Found ${yearlyCons}kWh for this year.`)
+
         const energyHistogram = await this.getEnergyHistogram();
         const emissionNowRaw = this._hass.states['sensor.carbon_emission_now']?.state;
         const carbonTodayRaw = this._hass.states['sensor.carbon_total_today']?.state;
@@ -181,10 +189,19 @@ class CarbonFootprintPanel extends HTMLElement {
                     <ha-card header="Energy Footprint">
                         <div class="card-content">
                             <p>Current Energy CO₂ Intensity:
-                            <span class="ci-value"><b>${data?.co2_intensity ?? 'N/A'}</b></span>
-                            gCO₂eq/kWh
-                            <span class="ci-indicator ${CarbonUtils.getCarbonColor(data?.co2_intensity)}"></span>
-                            <span class="ci-label">${CarbonUtils.getCarbonLabel(data?.co2_intensity)}</span></p>
+                                <span class="ci-value">
+                                    <b>${data?.co2_intensity_status === 'fallback'
+                                        ? 'Unknown'
+                                        : (data?.co2_intensity ?? 'N/A')}</b>
+                                </span>
+                                ${data?.co2_intensity_status === 'fallback' ? '' : 'gCO₂eq/kWh'}
+                                <span class="ci-indicator ${CarbonUtils.getCarbonColor(
+                                    data?.co2_intensity_status === 'fallback' ? null : data?.co2_intensity
+                                )}"></span>
+                                <span class="ci-label">${CarbonUtils.getCarbonLabel(
+                                    data?.co2_intensity_status === 'fallback' ? null : data?.co2_intensity
+                                )}</span>
+                            </p>
                             <p style="font-size: 12px; color: #666; margin-top: 8px; margin-bottom: 16px;">
                                 <em>Grid carbon intensity over time (in grams CO₂ equivalent per kilowatt-hour)</em>
                             </p>
@@ -277,6 +294,26 @@ class CarbonFootprintPanel extends HTMLElement {
                         <div class="card-content">
                             <div style="display: flex; flex-direction: column; gap: 8px;">
 
+
+                                <!-- Current yearly cons -->
+                                <div style="border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
+                                    <div class="recommendation-header"
+                                        style="padding: 12px; background-color: ${
+                                            '#e8f5e9'
+                                        }; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;"
+                                        onclick="this.parentElement.querySelector('.recommendation-content-0').style.display = this.parentElement.querySelector('.recommendation-content-0').style.display === 'none' ? 'block' : 'none'; this.querySelector('.toggle-icon-0').textContent = this.parentElement.querySelector('.recommendation-content-0').style.display === 'none' ? '▼' : '▲';">
+                                        <strong>Current Emissions</strong>
+                                        <span class="toggle-icon-0" style="font-size: 12px;">▲</span>
+                                    </div>
+
+                                    <div class="recommendation-content-0"
+                                        style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
+                                        <p style="margin: 0; font-size: 13px; color: #555;">
+                                            Your current IoT energy consumption amounts to ${yearlyCons || 0}% of your yearly energy consumption.
+                                        </p>
+                                    </div>
+                                </div>
+
                                 <!-- Current emissions -->
                                 <div style="border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
                                     <div class="recommendation-header"
@@ -290,6 +327,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                         <strong>Current Emissions</strong>
                                         <span class="toggle-icon-1" style="font-size: 12px;">▲</span>
                                     </div>
+
                                     <div class="recommendation-content-1"
                                         style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
                                         <p style="margin: 0; font-size: 13px; color: #555;">
@@ -364,7 +402,7 @@ class CarbonFootprintPanel extends HTMLElement {
                             </div>
                         </div>
                     </ha-card>
-                    
+
                 </div>
             </ha-app-layout>
         `;
@@ -461,25 +499,32 @@ class CarbonFootprintPanel extends HTMLElement {
         this.appendChild(link);
     }
 
+    _valueChanged(ev) {
+        this._currentDevice = ev.detail.value;
+    }
+
+    setCarbonValue(value) {
+        this._currentCarbonValue = value;
+        const carbonSelector = this.querySelector('#device_carbon_footprint');
+        carbonSelector.value = this._currentCarbonValue;
+    }
+
     renderForm(devices) {
+
         return `
+
             <form id="add-device-form">
                 <div>
-                    <label for="device_name">Entity</label>
-                    <select id="device_name" name="device_name" required>
-                        <option value="">Select an entity...</option>
-                        ${devices.map(deviceName => `
-                            <option value="${deviceName}">${deviceName}</option>
-                        `).join('')}
-                    </select>
+                    <label for="device_name">Device</label>
+                    <ha-selector id="device_selector"></ha-selector>
                 </div>
                 <div>
                     <label for="device_type">Device Type</label>
-                    <input type="text" id="device_type" name="device_type" required>
+                    <ha-selector id="device_type_selector"></ha-selector>
                 </div>
                 <div>
                     <label for="carbon_footprint">Carbon Footprint (kgCO₂eq)</label>
-                    <input type="number" id="carbon_footprint" name="carbon_footprint" step="0.01" required>
+                    <ha-selector id="device_carbon_footprint"></ha-selector>
                 </div>
                 <div class="button-group">
                     <button type="button" id="compute-footprint-btn">Compute Footprint</button>
@@ -773,7 +818,7 @@ class CarbonFootprintPanel extends HTMLElement {
                     data: values,
                     backgroundColor: 'rgba(3, 169, 244, 0.5)',
                     borderColor: 'rgb(3, 169, 244)',
-                    borderWidth: 2,
+                    borderWidth: 0,
                 }]
             },
             options: {
@@ -809,15 +854,106 @@ class CarbonFootprintPanel extends HTMLElement {
         });
     }
 
+    _createHatchPattern(ctx, color) { // made with the help of chatgpt
+        const patternCanvas = document.createElement('canvas');
+        patternCanvas.width = 16;
+        patternCanvas.height = 16;
+
+        const pctx = patternCanvas.getContext('2d');
+
+        pctx.fillStyle = color;
+        pctx.fillRect(0, 0, patternCanvas.width, patternCanvas.height);
+
+        // diagonal hatch lines
+        pctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+        pctx.lineWidth = 1.5;
+
+        pctx.beginPath();
+        pctx.moveTo(0, 16);
+        pctx.lineTo(16, 0);
+        pctx.stroke();
+
+        pctx.beginPath();
+        pctx.moveTo(-4, 12);
+        pctx.lineTo(4, 4);
+        pctx.stroke();
+
+        pctx.beginPath();
+        pctx.moveTo(12, 20);
+        pctx.lineTo(20, 12);
+        pctx.stroke();
+
+        return ctx.createPattern(patternCanvas, 'repeat');
+    }
+
+    // turn on/off fake data here
+    _useFakeCarbonData = false;
+    _hiddenRoomIndices = new Set();
+
+    _getFakeCarbonData() {
+        return [
+            {
+                room: 'Kitchen',
+                embodied_carbon: 120,
+                usage_carbon: 80,
+                total_carbon: 200,
+                predicted_carbon: 260,
+                devices: [
+                    { name: 'Fridge', embodied_carbon: 50, usage_carbon: 30, total_carbon: 80, predicted_carbon: 100 },
+                    { name: 'Oven', embodied_carbon: 40, usage_carbon: 25, total_carbon: 65, predicted_carbon: 85 },
+                    { name: 'Dishwasher', embodied_carbon: 30, usage_carbon: 25, total_carbon: 55, predicted_carbon: 75 },
+                ]
+            },
+            {
+                room: 'Bedroom',
+                embodied_carbon: 90,
+                usage_carbon: 110,
+                total_carbon: 200,
+                predicted_carbon: 250,
+                devices: [
+                    { name: 'Lamp', embodied_carbon: 10, usage_carbon: 20, total_carbon: 30, predicted_carbon: 35 },
+                    { name: 'Heater', embodied_carbon: 35, usage_carbon: 60, total_carbon: 95, predicted_carbon: 125 },
+                    { name: 'Fan', embodied_carbon: 15, usage_carbon: 10, total_carbon: 25, predicted_carbon: 30 },
+                    { name: 'TV', embodied_carbon: 30, usage_carbon: 20, total_carbon: 50, predicted_carbon: 60 },
+                ]
+            },
+            {
+                room: 'Living Room',
+                embodied_carbon: 70,
+                usage_carbon: 30,
+                total_carbon: 100,
+                predicted_carbon: 140,
+                devices: [
+                    { name: 'TV', embodied_carbon: 25, usage_carbon: 10, total_carbon: 35, predicted_carbon: 45 },
+                    { name: 'Speaker', embodied_carbon: 15, usage_carbon: 5, total_carbon: 20, predicted_carbon: 28 },
+                    { name: 'Game Console', embodied_carbon: 30, usage_carbon: 15, total_carbon: 45, predicted_carbon: 67 },
+                ]
+            },
+            {
+                room: 'Unknown Room',
+                embodied_carbon: 20,
+                usage_carbon: 15,
+                total_carbon: 35,
+                predicted_carbon: 50,
+                devices: [
+                    { name: 'Unknown Device A', embodied_carbon: 10, usage_carbon: 5, total_carbon: 15, predicted_carbon: 20 },
+                    { name: 'Unknown Device B', embodied_carbon: 10, usage_carbon: 10, total_carbon: 20, predicted_carbon: 30 },
+                ]
+            }
+        ];
+    }
+
     async renderRoomChart() {
         const canvas = this.querySelector('#room-pie-chart');
         if (!canvas) {
             return;
         }
 
-        // Fetch room data
         let data;
-        if (this._groupBy === 'type') {
+        if (this._useFakeCarbonData) {
+            data = this._getFakeCarbonData();
+            console.log('Using fake carbon data for room chart:', data);
+        } else if (this._groupBy === 'type') {
             data = await this.getCarbonByType();
         } else {
             data = await this.getCarbonByRoom();
@@ -831,27 +967,9 @@ class CarbonFootprintPanel extends HTMLElement {
             return;
         }
 
-        // Prepare data for pie chart based on selected view
-        const labels = data.map(item => item.room || item.type);
-        let values;
-        let datasetLabel;
+        const ctx = canvas.getContext('2d');
 
-        switch (this._carbonView) {
-            case 'embodied':
-                values = data.map(item => item.embodied_carbon);
-                datasetLabel = 'Embodied Carbon';
-                break;
-            case 'usage':
-                values = data.map(item => item.usage_carbon);
-                datasetLabel = 'Usage Carbon';
-                break;
-            case 'total':
-            default:
-                values = data.map(item => item.total_carbon);
-                datasetLabel = 'Total Carbon';
-        }
-
-        const colors = [
+        const baseColors = [
             'rgba(76, 175, 80, 0.6)',   // Green
             'rgba(33, 150, 243, 0.6)',  // Blue
             'rgba(255, 152, 0, 0.6)',   // Orange
@@ -860,23 +978,172 @@ class CarbonFootprintPanel extends HTMLElement {
             'rgba(0, 150, 136, 0.6)',   // Teal
         ];
 
+        const solidBorderColors = baseColors.map(c => c.replace('0.6', '1'));
+
         if (this._roomChart) {
             this._roomChart.destroy();
         }
 
-        this._roomChart = new Chart(canvas.getContext('2d'), {
-            type: 'doughnut',
-            data: {
-                labels: labels,
+        let chartData;
+        let chartOptions;
+
+        if (this._carbonView === 'total') {
+            const labels = [];
+            const values = [];
+            const backgroundColors = [];
+            const borderColors = [];
+
+            data.forEach((item, index) => {
+                const label = item.room || item.type || 'Unknown';
+                const baseColor = baseColors[index % baseColors.length];
+                const borderColor = solidBorderColors[index % solidBorderColors.length];
+                const hatchPattern = this._createHatchPattern(ctx, baseColor);
+
+                const isHidden = this._hiddenRoomIndices.has(index);
+
+                // embodied slice
+                labels.push(`${label} - Embodied`);
+                values.push(isHidden ? 0 : (item.embodied_carbon || 0));
+                backgroundColors.push(hatchPattern);
+                borderColors.push(borderColor);
+
+                // usage slice
+                labels.push(`${label} - Usage`);
+                values.push(isHidden ? 0 : (item.usage_carbon || 0));
+                backgroundColors.push(baseColor);
+                borderColors.push(borderColor);
+            });
+
+            chartData = {
+                labels,
+                datasets: [{
+                    label: 'Total Carbon',
+                    data: values,
+                    backgroundColor: backgroundColors,
+                    borderWidth: 0,
+                    hoverBorderWidth: 0,
+                    spacing: 0,
+                }]
+            };
+
+            chartOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            padding: 15,
+                            font: { size: 13 },
+                            generateLabels: () => {
+                                const roomItems = data.map((item, index) => {
+                                    const label = item.room || item.type || 'Unknown';
+                                    const color = baseColors[index % baseColors.length];
+                                    const borderColor = solidBorderColors[index % solidBorderColors.length];
+                                    const isHidden = this._hiddenRoomIndices.has(index);
+
+                                    return {
+                                        text: label,
+                                        fillStyle: color,
+                                        strokeStyle: borderColor,
+                                        lineWidth: 2,
+                                        hidden: isHidden,
+                                        index
+                                    };
+                                });
+
+                                roomItems.push({
+                                    text: 'Embodied (hatched)',
+                                    fillStyle: this._createHatchPattern(ctx, 'rgba(120, 120, 120, 0.6)'),
+                                    strokeStyle: '#666',
+                                    lineWidth: 2,
+                                    hidden: false,
+                                    index: data.length
+                                });
+
+                                roomItems.push({
+                                    text: 'Usage (solid)',
+                                    fillStyle: '#999',
+                                    strokeStyle: '#666',
+                                    lineWidth: 2,
+                                    hidden: false,
+                                    index: data.length + 1
+                                });
+
+                                return roomItems;
+                            }
+                        },
+                        onClick: (event, legendItem, legend) => {
+                            const roomIndex = legendItem.index;
+
+                            // Ignore the explanatory style legend items
+                            if (roomIndex >= data.length) {
+                                return;
+                            }
+
+                            if (this._hiddenRoomIndices.has(roomIndex)) {
+                                this._hiddenRoomIndices.delete(roomIndex);
+                            } else {
+                                this._hiddenRoomIndices.add(roomIndex);
+                            }
+
+                            this.renderRoomChart();
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: 'kgCO₂eq',
+                        font: { size: 12, weight: 'normal' },
+                        padding: { bottom: 10 }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => {
+                                const roomIndex = Math.floor(context.dataIndex / 2);
+                                const item = data[roomIndex];
+
+                                const name = item.room || item.type || 'Unknown';
+                                const embodied = item.embodied_carbon || 0;
+                                const usage = item.usage_carbon || 0;
+                                const total = item.total_carbon || (embodied + usage);
+
+                                return [
+                                    `${name}`,
+                                    `Embodied: ${embodied.toFixed(2)} kgCO₂eq`,
+                                    `Usage: ${usage.toFixed(2)} kgCO₂eq`,
+                                    `Total: ${total.toFixed(2)} kgCO₂eq`
+                                ];
+                            }
+                        }
+                    }
+                }
+            };
+        } else {
+            const labels = data.map(item => item.room || item.type || 'Unknown');
+            let values;
+            let datasetLabel;
+
+            if (this._carbonView === 'embodied') {
+                values = data.map(item => item.embodied_carbon || 0);
+                datasetLabel = 'Embodied Carbon';
+            } else {
+                values = data.map(item => item.usage_carbon || 0);
+                datasetLabel = 'Usage Carbon';
+            }
+
+            chartData = {
+                labels,
                 datasets: [{
                     label: datasetLabel,
                     data: values,
-                    backgroundColor: colors.slice(0, data.length),
-                    borderColor: colors.slice(0, data.length).map(c => c.replace('0.6', '1')),
-                    borderWidth: 2,
+                    backgroundColor: baseColors.slice(0, data.length),
+                    borderWidth: 0,
+                    hoverBorderWidth: 0,
+                    spacing: 0,
                 }]
-            },
-            options: {
+            };
+
+            chartOptions = {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
@@ -899,10 +1166,15 @@ class CarbonFootprintPanel extends HTMLElement {
                         }
                     }
                 }
-            }
+            };
+        }
+
+        this._roomChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: chartData,
+            options: chartOptions
         });
 
-        // Add click handler to pie chart
         this._addRoomChartClickHandler(data, canvas);
     }
 
@@ -910,7 +1182,10 @@ class CarbonFootprintPanel extends HTMLElement {
         canvas.onclick = (event) => {
             const points = this._roomChart.getElementsAtEventForMode(event, 'nearest', { intersect: true }, true);
             if (points.length > 0) {
-                const index = points[0].index;
+                let index = points[0].index;
+                if (this._carbonView === 'total') {
+                    index = Math.floor(index / 2);
+                }
                 this._selectedRoom = rooms[index];
                 this.showDeviceDetail();
                 this.renderDeviceChart();
@@ -1005,14 +1280,14 @@ class CarbonFootprintPanel extends HTMLElement {
                     data: usageValues,
                     backgroundColor: 'rgba(33, 150, 243, 0.7)',  // Blue
                     borderColor: 'rgb(33, 150, 243)',
-                    borderWidth: 1,
+                    borderWidth: 0,
                 },
                 {
                     label: 'Predicted Carbon (5 years)',
                     data: predictedValues,
                     backgroundColor: 'rgba(243, 33, 33, 0.7)',
                     borderColor: 'rgba(243, 33, 33, 1)',
-                    borderWidth: 1,
+                    borderWidth: 0,
                 }
             ];
             stacked = true;
@@ -1025,7 +1300,7 @@ class CarbonFootprintPanel extends HTMLElement {
                     data: embodiedValues,
                     backgroundColor: 'rgba(76, 175, 80, 0.7)',  // Green
                     borderColor: 'rgb(76, 175, 80)',
-                    borderWidth: 2,
+                    borderWidth: 0,
                 }
             ];
         } else {
@@ -1037,7 +1312,7 @@ class CarbonFootprintPanel extends HTMLElement {
                     data: usageValues,
                     backgroundColor: 'rgba(33, 150, 243, 0.7)',  // Blue
                     borderColor: 'rgb(33, 150, 243)',
-                    borderWidth: 2,
+                    borderWidth: 0,
                 }
             ];
         }
@@ -1085,6 +1360,80 @@ class CarbonFootprintPanel extends HTMLElement {
     }
 
     attachFormHandler() {
+        const selector = this.querySelector('#device_selector');
+        if (selector) {
+            try {
+                selector.hass = this._hass;
+                selector.selector = {
+                    device: {},
+                };
+                selector.value = this._currentDevice ?? '';
+                selector.required = true;
+                selector.addEventListener('value-changed', (ev) => this._valueChanged(ev));
+            } catch (err) {
+                console.debug('Failed to init ha-selector', err);
+            }
+        }
+
+        const suggestions = [
+            "Temperature/humidity sensor",
+            "Motion sensor",
+            "Luminosity sensor",
+            "Air quality sensor",
+            "Smart camera",
+            "Smart speaker",
+            "Smart light bulb",
+            "Smart plug",
+            "Smart lock",
+            "Window/door sensor",
+            "Smart thermostat",
+            "Smart energy monitor",
+            "Smart washing machine",
+            "Smart TV",
+            "Smart refrigerator",
+            "Smart dishwasher",
+        ];
+        const typeSelector = this.querySelector('#device_type_selector');
+        if (typeSelector) {
+            console.log('Loaded device type selector')
+            try {
+                typeSelector.hass = this._hass;
+                typeSelector.selector = {
+                    select: {
+                        options: suggestions,
+                        custom_value: true,
+                        sort: true,
+                    },
+                };
+
+                typeSelector.value = this._currentType ?? '';
+                typeSelector.label = 'Device Type';
+                typeSelector.addEventListener('value-changed', (ev) => { this._currentType = ev.detail.value; console.log(`Type is now ${this._currentType}`); typeSelector.value = ev.detail.value; });
+            } catch (err) {
+                console.debug('Failed to init ha-selector-select', err);
+            }
+
+        }
+
+        const carbonSelector = this.querySelector('#device_carbon_footprint');
+        if (carbonSelector) {
+            try {
+                carbonSelector.hass = this._hass;
+                carbonSelector.selector = {
+                    number: {
+                        min: 0.00,
+                        step: 0.01
+                    },
+                };
+
+                carbonSelector.required = true;
+                carbonSelector.value = this._currentCarbonValue;
+                carbonSelector.addEventListener('value-changed', (ev) => { this._currentCarbonValue = ev.detail.value; })
+            } catch (err) {
+                console.debug('Failed to init ha-selector-number', err);
+            }
+        }
+
         const form = this.querySelector('#add-device-form');
         if (form) {
             form.addEventListener('submit', async (e) => {
@@ -1093,15 +1442,25 @@ class CarbonFootprintPanel extends HTMLElement {
                 const formData = new FormData(form);
 
                 try {
+
+                    if (this._currentDevice === null || this._currentDevice === '' || this._currentType === null || this._currentType === '') {
+                        Utils.showToast(this, "Please fill out all the fields.");
+                        return;
+                    }
+
                     await this._hass.callWS({
                         type: 'carbon_footprint/set_device',
-                        device_name: formData.get('device_name'),
-                        device_type: formData.get('device_type'),
-                        carbon_footprint: parseFloat(formData.get('carbon_footprint')),
+                        device_id: this._currentDevice,
+                        device_type: this._currentType,
+                        carbon_footprint: this._currentCarbonValue,
                         metadata: {}
                     });
 
+                    this._currentDevice = '';
+                    this._currentType = '';
+                    this._currentCarbonValue = 0.0;
                     const newData = await this.getCarbonData();
+                    Utils.showToast(this, 'Successfully added device!');
                     await this.render(newData);
 
                 } catch (error) {
@@ -1129,11 +1488,11 @@ class CarbonFootprintPanel extends HTMLElement {
                 const array = JSON.stringify(jsonArray.json_array);
                 const uploaded = jsonArray.uploaded
                 if (uploaded === 'yes') {
-                    alert("Devices have been uploaded to the db interface!");
+                    Utils.showToast("Devices have been uploaded to the db interface!");
                 }
                 else {
                     navigator.clipboard.writeText(array);
-                    alert("Devices have been copied to the clipboard! If you wanted to upload to the interface, please make sure db_ip and cfdb_token are set.");
+                    Utils.showToast("Devices have been copied to the clipboard! If you wanted to upload to the interface, please make sure db_ip and cfdb_token are set.");
                 }
             })
         }
@@ -1174,6 +1533,7 @@ class CarbonFootprintPanel extends HTMLElement {
                     });
 
                     const newData = await this.getCarbonData();
+                    Utils.showToast(this, "Successfully untracked device!");
                     await this.render(newData);
 
                 } catch (error) {

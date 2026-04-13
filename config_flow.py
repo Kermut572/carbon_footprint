@@ -15,13 +15,21 @@ from homeassistant.config_entries import (
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import selector
 
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-# TODO adjust the data schema to the data that you need
-STEP_USER_DATA_SCHEMA = vol.Schema({})
+DATA_SCHEMA = vol.Schema(
+    {
+        vol.Optional("db_ip"): str,
+        vol.Optional("api_key"): str,
+        vol.Optional("cfdb_token"): str,
+        vol.Optional("energy_meter"): selector.DeviceSelector(),
+        vol.Optional("yearly_consumption"): float,
+    }
+)
 
 
 class PlaceholderHub:
@@ -42,7 +50,7 @@ class PlaceholderHub:
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input allows us to connect.
 
-    Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
+    Data has the keys from DATA_SCHEMA with values provided by the user.
     """
     # TODO validate the data can be used to set up a connection.
 
@@ -61,15 +69,6 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     return {"title": "Name of the device"}
 
 
-OPTIONS_SCHEMA = vol.Schema(
-    {
-        vol.Optional("db_ip"): str,
-        vol.Optional("api_key"): str,
-        vol.Optional("cfdb_token"): str,
-    }
-)
-
-
 class OptionsFlowHandler(OptionsFlowWithReload):
     """Handle options flow for Carbon Footprint."""
 
@@ -83,7 +82,7 @@ class OptionsFlowHandler(OptionsFlowWithReload):
         return self.async_show_form(
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(
-                OPTIONS_SCHEMA, self.config_entry.options
+                DATA_SCHEMA, self.config_entry.options
             ),
         )
 
@@ -120,7 +119,7 @@ class ConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(title=info["title"], data=user_input)
 
         return self.async_show_form(
-            step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
+            step_id="user", data_schema=DATA_SCHEMA, errors=errors
         )
 
 

@@ -11,7 +11,7 @@ export class CarbonUtils {
     }
 
     static getCarbonLabel(ci) {
-        if (!ci || isNaN(ci)) return 'Unknown';
+        if (!ci || isNaN(ci)) return ' ';
         if (ci < 150) return 'Good';
         if (ci < 300) return 'Moderate';
         return 'High';
