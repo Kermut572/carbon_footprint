@@ -56,7 +56,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         webcomponent_name="carbon-footprint-panel",
         sidebar_title="Carbon Footprint",
         sidebar_icon="mdi:leaf",
-        module_url="/api/carbon_footprint/panel.js?v=2.39",  # change the version if your cache is playing tricks on you :-)
+        module_url="/api/carbon_footprint/panel.js?v=2.40",  # change the version if your cache is playing tricks on you :-)
         embed_iframe=False,
         require_admin=False,
     )
@@ -68,6 +68,9 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: CarbonFootprintConfigEntry
 ) -> bool:
     """Set up Carbon Footprint from a config entry."""
+
+    if not entry.options and entry.data:
+        hass.config_entries.async_update_entry(entry=entry, options=entry.data, data={})
 
     cf_store = CFStore(hass)
     await cf_store.async_load_data()

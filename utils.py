@@ -15,6 +15,10 @@ from .const import DOMAIN
 from .energy_store import EnergyStore
 
 
+class ProviderError(Exception):
+    """Error raised when OpenRouter returns a provider error."""
+
+
 def utils_get_device_classes(
     hass: HomeAssistant, device_entities: list[RegistryEntry]
 ) -> list[str]:

@@ -1488,11 +1488,11 @@ class CarbonFootprintPanel extends HTMLElement {
                 const array = JSON.stringify(jsonArray.json_array);
                 const uploaded = jsonArray.uploaded
                 if (uploaded === 'yes') {
-                    Utils.showToast("Devices have been uploaded to the db interface!");
+                    Utils.showToast(this, "Devices have been uploaded to the db interface!");
                 }
                 else {
                     navigator.clipboard.writeText(array);
-                    Utils.showToast("Devices have been copied to the clipboard! If you wanted to upload to the interface, please make sure db_ip and cfdb_token are set.");
+                    Utils.showToast(this, "Devices have been copied to the clipboard! If you wanted to upload to the interface, please make sure db_ip and cfdb_token are correct and set.");
                 }
             })
         }

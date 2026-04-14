@@ -11,11 +11,12 @@ data.
 from __future__ import annotations
 
 from datetime import datetime
+import logging
 from typing import Any
 
 import aiohttp
 from openrouter import OpenRouter
-from tenacity import retry, stop_after_attempt, wait_fixed
+from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
 import voluptuous as vol
 
 from homeassistant.components import websocket_api
@@ -29,6 +30,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import BLOCKS_FOOTPRINTS, DOMAIN
 from .utils import (
+    ProviderError,
     utils_build_cfdb_device,
     utils_fetch_electricity_maps_sensor,
     utils_get_device_classes,
@@ -36,6 +38,8 @@ from .utils import (
     utils_get_device_total_energy_consumption,
     utils_get_yearly_consumption,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @callback
@@ -131,6 +135,7 @@ def ws_get_carbon_data(
 
     entries = hass.config_entries.async_entries(DOMAIN)
     if not entries:
+        _LOGGER.exception("No config entry found")
         connection.send_error(
             msg["id"], "config_entry_not_found", "Uh oh, no config entry found :-("
         )
@@ -184,6 +189,7 @@ async def ws_set_device(
 
     entries = hass.config_entries.async_entries(DOMAIN)
     if not entries:
+        _LOGGER.exception("No config entry found")
         connection.send_error(
             msg["id"], "config_entry_not_found", "Uh oh, no config entry found :-("
         )
@@ -265,6 +271,7 @@ def ws_remove_device(
     """Remove a device's data."""
     entries = hass.config_entries.async_entries(DOMAIN)
     if not entries:
+        _LOGGER.exception("No config entry found")
         connection.send_error(
             msg["id"], "config_entry_not_found", "Uh oh, no config entry found :-("
         )
@@ -350,6 +357,7 @@ def ws_update_devices_energy(
     """Update the total energy consumed of all registered devices."""
     entries = hass.config_entries.async_entries(DOMAIN)
     if not entries:
+        _LOGGER.exception("No config entry found")
         connection.send_error(
             msg["id"], "config_entry_not_found", "Uh oh, no config entry found :-("
         )
@@ -379,6 +387,7 @@ def ws_update_devices_energy(
         device_updated = True
 
     if device_updated:
+        _LOGGER.debug("Updating cf_store from ws_update_energy call")
         hass.async_create_task(cf_store.async_save_data())
 
     connection.send_result(msg["id"], {"success": True})
@@ -404,20 +413,30 @@ def ws_get_energy_footprint_time_interval(
     end_time = dt_util.parse_datetime(msg["end_time"])
 
     if not start_time or not end_time:
+        _LOGGER.error(
+            "No start_date or date_time set for call to ws_get_energy_footprint_time_interval"
+        )
         connection.send_error(msg["id"], "invalid_format", "Invalid date format")
         return
 
     if end_time < start_time:
+        _LOGGER.error(
+            "Invalid time interval for call to ws_get_energy_footprint_time_interval"
+        )
         connection.send_error(msg["id"], "invalid_interval", "Invalid time interval")
         return
 
     granularity = msg["granularity"]
     if granularity not in ("hour", "day", "month"):
+        _LOGGER.error(
+            "Invalid granularity for call to ws_get_energy_footprint_time_interval"
+        )
         connection.send_error(msg["id"], "invalid_granularity", "Invalid granularity")
         return
 
     entries = hass.config_entries.async_entries(DOMAIN)
     if not entries:
+        _LOGGER.exception("No config entry found")
         connection.send_error(
             msg["id"], "config_entry_not_found", "Uh oh, no config entry found :-("
         )
@@ -539,6 +558,7 @@ def ws_get_carbon_by_room(
     """
     entries = hass.config_entries.async_entries(DOMAIN)
     if not entries:
+        _LOGGER.exception("No config entry found")
         connection.send_error(
             msg["id"], "config_entry_not_found", "No config entry found"
         )
@@ -643,6 +663,7 @@ def ws_get_carbon_by_room_with_usage(
     """
     entries = hass.config_entries.async_entries(DOMAIN)
     if not entries:
+        _LOGGER.exception("No config entry found")
         connection.send_error(
             msg["id"], "config_entry_not_found", "No config entry found"
         )
@@ -658,7 +679,7 @@ def ws_get_carbon_by_room_with_usage(
     # Get current CO2 intensity
     em_sensor = utils_fetch_electricity_maps_sensor(hass)
     co2_intensity_state = hass.states.get(em_sensor)
-    co2_intensity = 200.0  # default fallback
+    co2_intensity = 150.0  # default fallback
     if co2_intensity_state and co2_intensity_state.state not in (
         "unknown",
         "unavailable",
@@ -666,7 +687,8 @@ def ws_get_carbon_by_room_with_usage(
         try:
             co2_intensity = float(co2_intensity_state.state)
         except ValueError | TypeError:
-            co2_intensity = 200.0
+            _LOGGER.warning("No ElectricityMaps sensor found, defaulting to 150gCO2/eq")
+            co2_intensity = 150.0
 
     # Group devices by room
     rooms_dict: dict[str, dict] = {}
@@ -788,6 +810,7 @@ def ws_get_carbon_by_type(
     """
     entries = hass.config_entries.async_entries(DOMAIN)
     if not entries:
+        _LOGGER.exception("No config entry found")
         connection.send_error(
             msg["id"], "config_entry_not_found", "No config entry found"
         )
@@ -867,6 +890,7 @@ def ws_get_carbon_by_type_with_usage(
     """
     entries = hass.config_entries.async_entries(DOMAIN)
     if not entries:
+        _LOGGER.exception("No config entry found")
         connection.send_error(
             msg["id"], "config_entry_not_found", "No config entry found"
         )
@@ -874,7 +898,7 @@ def ws_get_carbon_by_type_with_usage(
 
     em_sensor = utils_fetch_electricity_maps_sensor(hass)
     co2_intensity_state = hass.states.get(em_sensor)
-    co2_intensity = 200.0  # default fallback
+    co2_intensity = 150.0  # default fallback
     if co2_intensity_state and co2_intensity_state.state not in (
         "unknown",
         "unavailable",
@@ -882,7 +906,10 @@ def ws_get_carbon_by_type_with_usage(
         try:
             co2_intensity = float(co2_intensity_state.state)
         except ValueError | TypeError:
-            co2_intensity = 200.0
+            _LOGGER.warning(
+                "No Electricity Maps sensor found, defaulting to 150gCO2/eq"
+            )
+            co2_intensity = 150.0
 
     cf_store = entries[0].runtime_data.cf_store
     device_reg = dr.async_get(hass)
@@ -971,6 +998,7 @@ async def ws_llm_detection(
 
     entries = hass.config_entries.async_entries(DOMAIN)
     if not entries:
+        _LOGGER.exception("No config entry found")
         connection.send_error(
             msg["id"], "config_entry_not_found", "No config entry found"
         )
@@ -979,6 +1007,9 @@ async def ws_llm_detection(
     entry = entries[0]
     api_key = entry.options.get("api_key")
     if not api_key or len(api_key) == 0:
+        _LOGGER.error(
+            "No OpenRouter API Key set. This can be set in the integration settings"
+        )
         connection.send_error(
             msg["id"],
             "api_key_not_set",
@@ -1008,33 +1039,51 @@ async def ws_llm_detection(
 
     # TODO set a list of device types.
     def _openrouter_call():
-        with OpenRouter(api_key=api_key) as client:
-            response = client.chat.send(
-                model="google/gemma-3-12b-it:free",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": f"You are given a dictionary mapping device names to their model and manufacturer. Return ONLY a valid JSON object (no explanation, no markdown, no code blocks) mapping each device name to its device type category (and limit yourself to these devices types: {device_types}). Input devices: {devices}",
-                    }
-                ],
-                response_format={"type": "json_object"},
-            )
+        try:
+            with OpenRouter(api_key=api_key) as client:
+                response = client.chat.send(
+                    model="google/gemma-3-12b-it:free",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": f"You are given a dictionary mapping device names to their model and manufacturer. Return ONLY a valid JSON object (no explanation, no markdown, no code blocks) mapping each device name to its device type category (and limit yourself to these devices types: {device_types}). Input devices: {devices}",
+                        }
+                    ],
+                    response_format={"type": "json_object"},
+                )
+        except Exception as err:
+            msg_err = str(err)
+            if "Provider returned error" in msg_err:
+                raise ProviderError from err
+            raise
 
         return response.choices[0].message.content
 
     i = 1
 
-    @retry(wait=wait_fixed(30), stop=stop_after_attempt(10))
+    @retry(
+        wait=wait_fixed(30),
+        stop=stop_after_attempt(10),
+        retry=retry_if_exception_type(ProviderError),
+        reraise=True,
+    )
     async def _run_job():
         result = await hass.async_add_executor_job(_openrouter_call)
         connection.send_result(msg["id"], {"device_types": result})
-        raise Exception
 
     try:
-        # print(f"Auto Device Detect: Try {i}/10")
+        _LOGGER.debug("Running OpenRouter detection, call %d/10", i + 1)
         await _run_job()
         i += 1
+    except ProviderError as err:
+        _LOGGER.error("OpenRouter provider error after retries: %s", err)
+        connection.send_error(
+            msg["id"],
+            "openrouter_call_error",
+            "Device type detection failed due to a provider error, please try again later.",
+        )
     except Exception as err:
+        _LOGGER.exception("Error occured during OpenRouter detection")
         connection.send_error(
             msg["id"], "openrouter_call_error", f"Device type detection failed: {err}"
         )
@@ -1052,6 +1101,7 @@ async def ws_db_matching(
     """Calls the DB REST API in order to match carbon values."""
     entries = hass.config_entries.async_entries(DOMAIN)
     if not entries:
+        _LOGGER.exception("No config entry found")
         connection.send_error(
             msg["id"], "config_entry_not_found", "No config entry found"
         )
@@ -1060,6 +1110,7 @@ async def ws_db_matching(
     entry = entries[0]
     db_ip = entry.options.get("db_ip")
     if not db_ip or len(db_ip) == 0:
+        _LOGGER.error("No CFDB domain set. You can set it in the integration settings")
         connection.send_error(
             msg["id"],
             "db_ip_not_set",
@@ -1075,10 +1126,11 @@ async def ws_db_matching(
         ):
             device_db = await resp.json()
     except Exception as e:
+        _LOGGER.exception("An error occured while fetching CFDB information")
         connection.send_error(
             msg["id"],
             "db_http_error",
-            f"An error occured while fetching database information: {e}",
+            f"An error occured while fetching CFDB information: {e}",
         )
         return
 
@@ -1137,6 +1189,7 @@ async def ws_export_json(
     """Export the added devices to a JSON array to upload them on the interface."""
     entries = hass.config_entries.async_entries(DOMAIN)
     if not entries:
+        _LOGGER.exception("No config entry found")
         connection.send_error(
             msg["id"], "config_entry_not_found", "Uh oh, no config entry found :-("
         )
@@ -1154,11 +1207,13 @@ async def ws_export_json(
     cfdb_token = entries[0].options.get("cfdb_token")
     if not cfdb_token or len(cfdb_token) == 0:
         # no token defined so we just return the json_array
+        _LOGGER.error("No CFDB token set, check integration settings to set one")
         connection.send_result(msg["id"], {"json_array": json_array, "uploaded": "no"})
         return
 
     db_ip = entries[0].options.get("db_ip")
     if not db_ip or len(db_ip) == 0:
+        _LOGGER.error("No CFDB domain set, check integration settings to set one")
         connection.send_result(msg["id"], {"json_array": json_array, "uploaded": "no"})
         return
 
@@ -1176,14 +1231,17 @@ async def ws_export_json(
         ):
             text = await resp.text()
             if resp.status >= 400:
+                _LOGGER.error("HTTP error %d when uploading devices", resp.status)
                 connection.send_result(
                     msg["id"], {"json_array": json_array, "uploaded": "no"}
                 )
 
     except Exception as e:
+        _LOGGER.exception("Error when uploading devices to CFDB")
         connection.send_result(msg["id"], {"json_array": json_array, "uploaded": "no"})
         return
 
+    _LOGGER.debug("Successfully uploaded devices to CFDB interface")
     connection.send_result(msg["id"], {"json_array": json_array, "uploaded": "yes"})
 
 
@@ -1199,6 +1257,7 @@ async def ws_get_yearly_contribution(
     """Returns the yearly carbon/energy contribution of HA devices."""
     entries = hass.config_entries.async_entries(DOMAIN)
     if not entries:
+        _LOGGER.exception("No config entry found")
         connection.send_error(
             msg["id"], "config_entry_not_found", "Uh oh, no config entry found :-("
         )
