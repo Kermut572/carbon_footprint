@@ -9,12 +9,57 @@
             "unknown": "Unexpected error"
         },
         "step": {
+            "init": {
+                "data": {
+                    "db_ip": "CFDB interface server IP or hostname",
+                    "api_key": "OpenRouter API key",
+                    "cfdb_token": "CFDB token obtained from the CFDB interface",
+                    "energy_meter": "Energy counter entity",
+                    "yearly_consumption": "Yearly consumption in kWh (fallback if no energy_meter is selected)",
+                    "share_data": "Automatically share device information to the CFDB interface"
+                },
+                "title": "Carbon Footprint options",
+                "description": "Configure Carbon Footprint by filling the fields below and submitting"
+            },
             "user": {
                 "data": {
-                    "host": "Host",
-                    "password": "Password",
-                    "username": "Username"
-                }
+                    "db_ip": "CFDB interface server IP or hostname",
+                    "api_key": "OpenRouter API key",
+                    "cfdb_token": "CFDB token obtained from the CFDB interface",
+                    "energy_meter": "Energy counter entity",
+                    "yearly_consumption": "Yearly consumption in kWh (fallback if no energy_meter is selected)",
+                    "share_data": "Automatically share device information to the CFDB interface"
+                },
+                "title": "Carbon Footprint setup",
+                "description": "Configure Carbon Footprint by filling the fields below and submitting"
+            }
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "data": {
+                    "db_ip": "CFDB interface server IP or hostname",
+                    "api_key": "OpenRouter API key",
+                    "cfdb_token": "CFDB token obtained from the CFDB interface",
+                    "energy_meter": "Energy counter entity",
+                    "yearly_consumption": "Yearly consumption in kWh (fallback if no energy_meter is selected)",
+                    "share_data": "Automatically share device information to the CFDB interface"
+                },
+                "title": "Carbon Footprint options",
+                "description": "Configure Carbon Footprint by filling the fields below and submitting"
+            },
+            "user": {
+                "data": {
+                    "db_ip": "CFDB interface server IP or hostname",
+                    "api_key": "OpenRouter API key",
+                    "cfdb_token": "CFDB token obtained from the CFDB interface",
+                    "energy_meter": "Energy counter entity",
+                    "yearly_consumption": "Yearly consumption in kWh (fallback if no energy_meter is selected)",
+                    "share_data": "Automatically share device information to the CFDB interface"
+                },
+                "title": "Carbon Footprint setup",
+                "description": "Configure Carbon Footprint by filling the fields below and submitting"
             }
         }
     }

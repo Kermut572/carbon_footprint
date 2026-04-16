@@ -16,7 +16,7 @@ from typing import Any
 
 import aiohttp
 from openrouter import OpenRouter
-from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 import voluptuous as vol
 
 from homeassistant.components import websocket_api
@@ -1271,12 +1271,12 @@ async def ws_get_yearly_contribution(
         utils_get_yearly_consumption, hass
     )
 
-    total_energy_consumed = 0.0
+    total_energy_consumed = 1.0
     for device_id, device_stats in devices.items():
         if energy_meter and device_id == energy_meter:
             continue
         device_metadata = device_stats.get("metadata", {})
-        total_energy_consumed += device_metadata.get("total_energy", 0.0)
+        total_energy_consumed += device_metadata.get("total_energy", 1.0)
 
     connection.send_result(
         msg["id"],

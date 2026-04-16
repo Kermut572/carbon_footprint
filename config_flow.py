@@ -23,11 +23,16 @@ _LOGGER = logging.getLogger(__name__)
 
 DATA_SCHEMA = vol.Schema(
     {
-        vol.Optional("db_ip"): str,
-        vol.Optional("api_key"): str,
-        vol.Optional("cfdb_token"): str,
-        vol.Optional("energy_meter"): selector.DeviceSelector(),
-        vol.Optional("yearly_consumption"): float,
+        vol.Optional(
+            "db_ip",
+            description={"suggested_value": "https://interface.kermut.org/"},
+        ): str,
+        vol.Optional("api_key", description={"suggested_value": ""}): str,
+        vol.Optional("cfdb_token", description={"suggested_value": ""}): str,
+        vol.Optional("energy_meter"): selector.EntitySelector({"domain": "sensor"}),
+        vol.Optional("yearly_consumption"): selector.NumberSelector(
+            {"min": 0, "step": 0.1}
+        ),
         vol.Required("share_data"): bool,
     }
 )

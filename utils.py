@@ -200,9 +200,8 @@ def utils_get_yearly_consumption(hass: HomeAssistant) -> float:
 
     default_ret_value = entry.options.get("yearly_consumption") or 0.0
 
-    energy_meter = entry.options.get("energy_meter")
-    energy_meter_entity = utils_find_energy_entity_for_device(hass, energy_meter)
-    if not energy_meter_entity or energy_meter == "":
+    energy_meter_entity = entry.options.get("energy_meter")
+    if not energy_meter_entity or energy_meter_entity == "":
         return default_ret_value
 
     state = hass.states.get(energy_meter_entity)
