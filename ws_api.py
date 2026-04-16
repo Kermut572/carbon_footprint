@@ -1062,8 +1062,8 @@ async def ws_llm_detection(
     i = 1
 
     @retry(
-        wait=wait_fixed(30),
-        stop=stop_after_attempt(10),
+        wait=wait_fixed(45),
+        stop=stop_after_attempt(5),
         retry=retry_if_exception_type(ProviderError),
         reraise=True,
     )

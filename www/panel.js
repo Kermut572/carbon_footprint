@@ -688,10 +688,14 @@ class CarbonFootprintPanel extends HTMLElement {
             <div class="loading-content">
                 <div class="spinner"></div>
                 <p>${message}</p>
+                <div class="progress-cont">
+                    <div class="progress-bar"></div>
+                </div>
             </div>
         `;
 
         this.appendChild(overlay);
+
     }
 
     hideLoadingOverlay() {
@@ -708,6 +712,7 @@ class CarbonFootprintPanel extends HTMLElement {
         let deviceModels = devicesResp.device_models || [];
         let deviceManufacturers = devicesResp.device_manufacturers || [];
 
+
         let devicesDict = {};
         for (let i = 0; i < deviceNames.length; i++) {
             let infoDict = {};
@@ -716,21 +721,47 @@ class CarbonFootprintPanel extends HTMLElement {
             devicesDict[deviceNames[i]] = infoDict;
         }
 
+        let nbDevices = deviceNames.length;
+        let chunkSize = Math.round(nbDevices / 10);
+
         try {
             this.showLoadingOverlay('Detecting device types...');
-            const llmResp = await this._hass.callWS({
-                type: 'carbon_footprint/llm_detection',
-                devices: devicesDict
-            });
-            let deviceTypes = JSON.parse(llmResp.device_types);
-            console.log('Device Types Detection successful, continuing...');
+            const progressBar = this.querySelector(".progress-bar");
+            const totalRuns = Math.max(1, Math.ceil(nbDevices / chunkSize));
+            const percentIncrement = Math.round(100 / totalRuns);
 
-            let i = 0;
-            for(const key in devicesDict) {
-                devicesDict[key]['device_type'] = deviceTypes[key];
-                devicesDict[key]['device_id'] = deviceIds[i];
-                i++;
+            progressBar.style.width = '0%';
+            console.log(`Chunked data dictionary into chunks of ${chunkSize} devices`)
+
+            for (let i = 0; i < nbDevices; i += chunkSize) {
+                const chunkDevicesDict = Object.fromEntries(Object.entries(devicesDict).slice(i, i + chunkSize));
+                const chunkDeviceIds = deviceIds.slice(i, i + chunkSize);
+                console.log(`Running device type detection, run ${i/chunkSize}. Sent devices are: ${JSON.stringify(chunkDevicesDict)}`);
+                try {
+                    const llmResp = await this._hass.callWS({
+                        type: 'carbon_footprint/llm_detection',
+                        devices: chunkDevicesDict
+                    });
+                    let deviceTypes = JSON.parse(llmResp.device_types || "{}");
+                    Object.keys(chunkDevicesDict).forEach((key, idx) => {
+                        devicesDict[key].device_type = deviceTypes[key] ?? "unknown";
+                        devicesDict[key].device_id = chunkDeviceIds[idx] ?? null;
+                    });
+                    console.log(`Batch ${i/chunkSize} successfully detected, continuing`);
+                } catch (error) {
+                    console.log(`Failed detection for batch ${i/chunkSize} with error: ${error.message || error.code}`);
+                    let j = 0;
+                    Object.keys(chunkDevicesDict).forEach((key, idx) => {
+                        devicesDict[key].device_type = "error";
+                        devicesDict[key].device_id = chunkDeviceIds[idx] ?? null;
+                    });
+                } finally {
+                    const current = parseFloat(progressBar.style.width) || 0;
+                    progressBar.style.width = `${Math.min(100, current + percentIncrement)}%`;
+                }
             }
+            console.log('Device Types Detection ended, continuing...');
+
 
             this.showLoadingOverlay('Matching devices with database...');
 
@@ -740,7 +771,7 @@ class CarbonFootprintPanel extends HTMLElement {
                 device_types: devicesDict,
             });
             let devicesMatched = dbMatchingResp.devices_matched;
-            console.log(`${devicesMatched}`)
+            console.log(`Matched ${JSON.stringify(devicesMatched)}`)
 
 
             //flow: Once we got the device types: pull the db and match carbon values, this will automatically setup everything where possible.
@@ -753,6 +784,7 @@ class CarbonFootprintPanel extends HTMLElement {
             //}
             //then use this for set_device
 
+            if (progressBar) progressBar.style.width = '100%';
             this.showLoadingOverlay('Adding devices to Carbon Footprint Integration...');
             for (const [deviceName, deviceInfo] of Object.entries(devicesMatched)) {
                 console.log(`Processing ${deviceName}: `, deviceInfo)
