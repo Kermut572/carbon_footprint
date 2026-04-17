@@ -61,7 +61,7 @@ class CarbonFootprintPanel extends HTMLElement {
     }
 
     async getCarbonData() {
-        console.log('Getting carbon data from backend');
+        //console.log('Getting carbon data from backend');
         return await CarbonUtils.getCarbonData(this);
     }
 
@@ -723,12 +723,14 @@ class CarbonFootprintPanel extends HTMLElement {
 
         let nbDevices = deviceNames.length;
         let chunkSize = Math.round(nbDevices / 10);
+        let successfulBatches = 0;
+
+        const totalRuns = Math.max(1, Math.ceil(nbDevices / chunkSize));
+        const percentIncrement = Math.round(100 / totalRuns);
 
         try {
             this.showLoadingOverlay('Detecting device types...');
             const progressBar = this.querySelector(".progress-bar");
-            const totalRuns = Math.max(1, Math.ceil(nbDevices / chunkSize));
-            const percentIncrement = Math.round(100 / totalRuns);
 
             progressBar.style.width = '0%';
             console.log(`Chunked data dictionary into chunks of ${chunkSize} devices`)
@@ -747,9 +749,10 @@ class CarbonFootprintPanel extends HTMLElement {
                         devicesDict[key].device_type = deviceTypes[key] ?? "unknown";
                         devicesDict[key].device_id = chunkDeviceIds[idx] ?? null;
                     });
-                    console.log(`Batch ${i/chunkSize} successfully detected, continuing`);
+                    console.log(`Batch ${i / chunkSize} successfully detected, continuing`);
+                    successfulBatches++;
                 } catch (error) {
-                    console.log(`Failed detection for batch ${i/chunkSize} with error: ${error.message || error.code}`);
+                    console.error(`Failed detection for batch ${i/chunkSize} with error: ${error.message || error.code}`);
                     let j = 0;
                     Object.keys(chunkDevicesDict).forEach((key, idx) => {
                         devicesDict[key].device_type = "error";
@@ -762,13 +765,18 @@ class CarbonFootprintPanel extends HTMLElement {
             }
             console.log('Device Types Detection ended, continuing...');
 
-
+            const devicesToSend = Object.fromEntries(
+                Object.entries(devicesDict).filter(([name, info]) => {
+                    const t = info?.device_type;
+                    return typeof t === 'string' && t.length > 0 && t !== 'error';
+                })
+            );
             this.showLoadingOverlay('Matching devices with database...');
 
-            console.log(`Sending ${JSON.stringify(devicesDict)}`)
+            console.log(`Sending ${JSON.stringify(devicesToSend)}`)
             const dbMatchingResp = await this._hass.callWS({
                 type: 'carbon_footprint/db_matching',
-                device_types: devicesDict,
+                device_types: devicesToSend,
             });
             let devicesMatched = dbMatchingResp.devices_matched;
             console.log(`Matched ${JSON.stringify(devicesMatched)}`)
@@ -806,6 +814,10 @@ class CarbonFootprintPanel extends HTMLElement {
             loaderAnim.style.display = 'none';
             const updatedData = await this.getCarbonData();
             await this.renderSettingsPage(updatedData);
+            if (successfulBatches !== 0)
+                Utils.showToast(this, `Successfully detected ${successfulBatches}/${totalRuns} device batches`)
+            else
+                Utils.showToast(this, `LLM detection failed on every batch. Check console logs for more information`)
         }
     }
 
@@ -1427,7 +1439,7 @@ class CarbonFootprintPanel extends HTMLElement {
         ];
         const typeSelector = this.querySelector('#device_type_selector');
         if (typeSelector) {
-            console.log('Loaded device type selector')
+            //console.log('Loaded device type selector')
             try {
                 typeSelector.hass = this._hass;
                 typeSelector.selector = {
