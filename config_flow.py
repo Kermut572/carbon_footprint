@@ -7,6 +7,7 @@ from typing import Any
 
 import voluptuous as vol
 
+from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow,
@@ -29,7 +30,9 @@ DATA_SCHEMA = vol.Schema(
         ): str,
         vol.Optional("api_key", description={"suggested_value": ""}): str,
         vol.Optional("cfdb_token", description={"suggested_value": ""}): str,
-        vol.Optional("energy_meter"): selector.EntitySelector({"domain": "sensor"}),
+        vol.Optional("energy_meter"): selector.EntitySelector(
+            {"domain": "sensor", "device_class": SensorDeviceClass.ENERGY}
+        ),
         vol.Optional("yearly_consumption"): selector.NumberSelector(
             {"min": 0, "step": 0.1}
         ),
