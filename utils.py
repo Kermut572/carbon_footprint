@@ -216,16 +216,14 @@ async def utils_get_yearly_consumption(hass: HomeAssistant) -> float:
     ):
         return default_ret_value
 
-    data = await hass.async_add_executor_job(
-        statistics_during_period(
-            hass,
-            dt_util.now() - timedelta(days=365),
-            None,
-            {energy_meter_entity},
-            "day",
-            None,
-            {"sum"},
-        )
+    data = statistics_during_period(
+        hass,
+        dt_util.now() - timedelta(days=365),
+        None,
+        {energy_meter_entity},
+        "day",
+        None,
+        {"sum"},
     )
 
     yearly_energy = 0.0
