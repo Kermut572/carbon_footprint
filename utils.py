@@ -319,7 +319,7 @@ def utils_compute_device_consumption_footprint(
     start_time = dt_util.parse_datetime(start_time)
     end_time = dt_util.parse_datetime(end_time)
 
-    energy_store = entries[0].runtime_data.energy_store
+    energy_store = entries[0].runtime_data.energy_store.data
 
     results = {}
     match granularity:
