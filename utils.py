@@ -324,7 +324,7 @@ def utils_compute_device_consumption_footprint(
     results = {}
     match granularity:
         case "hour":
-            for key, value in energy_consumption_map:
+            for key, value in energy_consumption_map.items():
                 data_time = dt_util.as_local(datetime.strptime(key, "%d-%m-%Y-%H"))
                 if data_time > end_time or data_time < start_time:
                     continue
@@ -342,7 +342,7 @@ def utils_compute_device_consumption_footprint(
             cumulated_fp = 0
             days = 0
 
-            for key, value in energy_consumption_map:
+            for key, value in energy_consumption_map.items():
                 data_time = dt_util.as_local(datetime.strptime(key, "%d-%m-%Y-%H"))
                 if data_time > end_time or data_time < start_time:
                     continue
@@ -376,7 +376,7 @@ def utils_compute_device_consumption_footprint(
             cumulated_fp = 0
             days = 0
 
-            for key, value in energy_consumption_map:
+            for key, value in energy_consumption_map.items():
                 data_time = dt_util.as_local(datetime.strptime(key, "%d-%m-%Y-%H"))
                 if data_time > end_time or data_time < start_time:
                     continue
