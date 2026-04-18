@@ -450,8 +450,13 @@ async def ws_get_energy_footprint_time_interval(
     devices = cf_store.get_devices_data()
     tmp = {}
     for device_id in devices:
-        tmp[device_id] = await utils_compute_device_consumption_footprint(
-            hass, device_id, granularity, msg["start_time"], msg["end_time"]
+        tmp[device_id] = await hass.async_add_executor_job(
+            utils_compute_device_consumption_footprint,
+            hass,
+            device_id,
+            granularity,
+            msg["start_time"],
+            msg["end_time"],
         )
 
     _LOGGER.info("PROCESSED DEVICES")

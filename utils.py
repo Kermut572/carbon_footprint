@@ -261,7 +261,7 @@ def utils_build_cfdb_device(device: dict) -> dict:
     return device_dict
 
 
-async def utils_get_device_energy_consumption_map(
+def utils_get_device_energy_consumption_map(
     hass: HomeAssistant, device_id: str, granularity: str
 ) -> dict:
     """Return a dictionary mapping a device's energy consumption by the given time granularity.
@@ -273,16 +273,14 @@ async def utils_get_device_energy_consumption_map(
     if not energy_entity:
         return None
 
-    stats = await hass.async_add_executor_job(
-        statistics_during_period(
-            hass,
-            dt_util.now() - timedelta(days=1825),
-            dt_util.now(),
-            None,
-            granularity,
-            None,
-            {"sum"},
-        )
+    stats = statistics_during_period(
+        hass,
+        dt_util.now() - timedelta(days=1825),
+        dt_util.now(),
+        None,
+        granularity,
+        None,
+        {"sum"},
     )
 
     result = {}
