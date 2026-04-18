@@ -290,7 +290,7 @@ def utils_get_device_energy_consumption_map(
             continue
         dt = dt_util.as_local(dt_util.utc_from_timestamp(start_ts))
         map_key = dt.strftime("%d-%m-%Y-%H")
-        result[map_key] = stat.get("mean", 0)
+        result[map_key] = stat.get("sum", 0)
 
     return result
 
@@ -322,16 +322,15 @@ def utils_compute_device_consumption_footprint(
     energy_store = entries[0].runtime_data.energy_store.data
 
     last_value = None
-    delta = None
     delta_energy_dict = {}
     for key, value in energy_consumption_map.items():
         if last_value:
             delta = value - last_value
             delta_energy_dict[key] = max(delta, 0)
 
-        if delta and delta < 0:
-            last_value = 0
-            continue
+        # if delta and delta < 0:
+        #    last_value = 0
+        #    continue
 
         last_value = value
 
