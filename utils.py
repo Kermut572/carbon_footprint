@@ -191,7 +191,7 @@ def utils_find_energy_entity_for_device(
     return None
 
 
-async def utils_get_yearly_consumption(hass: HomeAssistant) -> float:
+def utils_get_yearly_consumption(hass: HomeAssistant) -> float:
     """Returns the energy consumption (in kWh) of the last year from either the energy meter either the fallback value."""
 
     entries = hass.config_entries.async_entries(DOMAIN)
