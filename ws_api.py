@@ -32,12 +32,12 @@ from .const import BLOCKS_FOOTPRINTS, DOMAIN
 from .utils import (
     ProviderError,
     utils_build_cfdb_device,
+    utils_compute_device_consumption_footprint,
     utils_fetch_electricity_maps_sensor,
     utils_get_device_classes,
     utils_get_device_install_date,
     utils_get_device_total_energy_consumption,
     utils_get_yearly_consumption,
-    utils_compute_device_consumption_footprint,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -402,8 +402,8 @@ def ws_update_devices_energy(
         vol.Required("granularity"): str,
     }
 )
-@callback
-def ws_get_energy_footprint_time_interval(
+@websocket_api.async_response
+async def ws_get_energy_footprint_time_interval(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
@@ -450,7 +450,7 @@ def ws_get_energy_footprint_time_interval(
     devices = cf_store.get_devices_data()
     tmp = {}
     for device_id in devices:
-        tmp[device_id] = utils_compute_device_consumption_footprint(
+        tmp[device_id] = await utils_compute_device_consumption_footprint(
             hass, device_id, granularity, msg["start_time"], msg["end_time"]
         )
 

@@ -191,7 +191,7 @@ def utils_find_energy_entity_for_device(
     return None
 
 
-def utils_get_yearly_consumption(hass: HomeAssistant) -> float:
+async def utils_get_yearly_consumption(hass: HomeAssistant) -> float:
     """Returns the energy consumption (in kWh) of the last year from either the energy meter either the fallback value."""
 
     entries = hass.config_entries.async_entries(DOMAIN)
@@ -216,14 +216,16 @@ def utils_get_yearly_consumption(hass: HomeAssistant) -> float:
     ):
         return default_ret_value
 
-    data = statistics_during_period(
-        hass,
-        dt_util.now() - timedelta(days=365),
-        None,
-        {energy_meter_entity},
-        "day",
-        None,
-        {"sum"},
+    data = await hass.async_add_executor_job(
+        statistics_during_period(
+            hass,
+            dt_util.now() - timedelta(days=365),
+            None,
+            {energy_meter_entity},
+            "day",
+            None,
+            {"sum"},
+        )
     )
 
     yearly_energy = 0.0
@@ -261,7 +263,7 @@ def utils_build_cfdb_device(device: dict) -> dict:
     return device_dict
 
 
-def utils_get_device_energy_consumption_map(
+async def utils_get_device_energy_consumption_map(
     hass: HomeAssistant, device_id: str, granularity: str
 ) -> dict:
     """Return a dictionary mapping a device's energy consumption by the given time granularity.
@@ -273,14 +275,16 @@ def utils_get_device_energy_consumption_map(
     if not energy_entity:
         return None
 
-    stats = statistics_during_period(
-        hass,
-        dt_util.now() - timedelta(days=1825),
-        dt_util.now(),
-        None,
-        granularity,
-        None,
-        {"sum"},
+    stats = await hass.async_add_executor_job(
+        statistics_during_period(
+            hass,
+            dt_util.now() - timedelta(days=1825),
+            dt_util.now(),
+            None,
+            granularity,
+            None,
+            {"sum"},
+        )
     )
 
     result = {}
