@@ -342,15 +342,7 @@ def utils_compute_device_consumption_footprint(
                 if data_time > end_time or data_time < start_time:
                     continue
 
-                consumption_cf = (value * energy_store.get(key, 150.0)) / 1000
-                _LOGGER.debug(
-                    "At %s: energy=%.4f kWh, intensity=%.2f gCO2eq/kWh, footprint=%.4f kgCO2eq",
-                    key,
-                    value,
-                    energy_store.get(key, 150.0),
-                    value * energy_store.get(key, 150.0) / 1000,
-                )
-
+                consumption_cf = value * energy_store.get(key, 150.0)
                 results.append(
                     {
                         "timestamp": data_time.isoformat(),
@@ -367,7 +359,7 @@ def utils_compute_device_consumption_footprint(
                 if data_time > end_time or data_time < start_time:
                     continue
 
-                consumption_cf = value * energy_store.get(key, 150.0) / 1000
+                consumption_cf = value * energy_store.get(key, 150.0)
 
                 if curr_date and curr_date.date() != data_time.date():
                     results.append(
@@ -401,7 +393,7 @@ def utils_compute_device_consumption_footprint(
                 if data_time > end_time or data_time < start_time:
                     continue
 
-                consumption_cf = value * energy_store.get(key, 150.0) / 1000
+                consumption_cf = value * energy_store.get(key, 150.0)
 
                 if curr_date and curr_date.month != data_time.month:
                     results.append(
