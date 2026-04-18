@@ -280,7 +280,7 @@ def utils_get_device_energy_consumption_map(
         {energy_entity},
         granularity,
         None,
-        {"sum"},
+        {"sum", "mean"},
     )
 
     result = {}
@@ -290,7 +290,7 @@ def utils_get_device_energy_consumption_map(
             continue
         dt = dt_util.as_local(dt_util.utc_from_timestamp(start_ts))
         map_key = dt.strftime("%d-%m-%Y-%H")
-        result[map_key] = stat.get("sum", 0)
+        result[map_key] = stat.get("mean", 0)
 
     return result
 
@@ -321,10 +321,23 @@ def utils_compute_device_consumption_footprint(
 
     energy_store = entries[0].runtime_data.energy_store.data
 
+    last_value = None
+    delta_energy_dict = {}
+    for key, value in energy_consumption_map.items():
+        if last_value:
+            delta = value - last_value
+            delta_energy_dict[key] = max(delta, 0)
+
+        if delta < 0:
+            last_value = 0
+            continue
+
+        last_value = value
+
     results = []
     match granularity:
         case "hour":
-            for key, value in energy_consumption_map.items():
+            for key, value in delta_energy_dict.items():
                 data_time = dt_util.as_local(datetime.strptime(key, "%d-%m-%Y-%H"))
                 if data_time > end_time or data_time < start_time:
                     continue
@@ -349,7 +362,7 @@ def utils_compute_device_consumption_footprint(
             cumulated_fp = 0
             days = 0
 
-            for key, value in energy_consumption_map.items():
+            for key, value in delta_energy_dict.items():
                 data_time = dt_util.as_local(datetime.strptime(key, "%d-%m-%Y-%H"))
                 if data_time > end_time or data_time < start_time:
                     continue
@@ -383,7 +396,7 @@ def utils_compute_device_consumption_footprint(
             cumulated_fp = 0
             days = 0
 
-            for key, value in energy_consumption_map.items():
+            for key, value in delta_energy_dict.items():
                 data_time = dt_util.as_local(datetime.strptime(key, "%d-%m-%Y-%H"))
                 if data_time > end_time or data_time < start_time:
                     continue
