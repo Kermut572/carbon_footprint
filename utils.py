@@ -277,7 +277,7 @@ def utils_get_device_energy_consumption_map(
         hass,
         dt_util.now() - timedelta(days=1825),
         dt_util.now(),
-        None,
+        {energy_entity},
         granularity,
         None,
         {"sum"},
