@@ -118,6 +118,8 @@ async def async_setup_entry(
         # Populate with real historical data from Electricity Maps
         await async_populate_energy_store(hass, energy_store, _LOGGER)
 
+
+
     return True
 
 

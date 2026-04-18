@@ -37,6 +37,7 @@ from .utils import (
     utils_get_device_install_date,
     utils_get_device_total_energy_consumption,
     utils_get_yearly_consumption,
+    utils_compute_device_consumption_footprint,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -443,6 +444,18 @@ def ws_get_energy_footprint_time_interval(
         return
 
     energy_store = entries[0].runtime_data.energy_store
+
+    # TODO remove until logger after testing
+    cf_store = entries[0].runtime_data.cf_store
+    devices = cf_store.get_devices_data()
+    tmp = {}
+    for device_id in devices:
+        tmp[device_id] = utils_compute_device_consumption_footprint(
+            hass, device_id, granularity, msg["start_time"], msg["end_time"]
+        )
+
+    _LOGGER.info("PROCESSED DEVICES")
+    _LOGGER.info(tmp)
 
     results = []
 

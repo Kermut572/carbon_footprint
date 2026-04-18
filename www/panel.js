@@ -738,7 +738,7 @@ class CarbonFootprintPanel extends HTMLElement {
             for (let i = 0; i < nbDevices; i += chunkSize) {
                 const chunkDevicesDict = Object.fromEntries(Object.entries(devicesDict).slice(i, i + chunkSize));
                 const chunkDeviceIds = deviceIds.slice(i, i + chunkSize);
-                console.log(`Running device type detection, run ${i/chunkSize}. Sent devices are: ${JSON.stringify(chunkDevicesDict)}`);
+                console.log(`Running device type detection, run ${i/chunkSize}. Sent devices are: ${JSON.stringify(chunkDevicesDict, null, '\t')}`);
                 try {
                     const llmResp = await this._hass.callWS({
                         type: 'carbon_footprint/llm_detection',
@@ -773,13 +773,13 @@ class CarbonFootprintPanel extends HTMLElement {
             );
             this.showLoadingOverlay('Matching devices with database...');
 
-            console.log(`Sending ${JSON.stringify(devicesToSend)}`)
+            console.log(`Sending ${JSON.stringify(devicesToSend, null, '\t')}`)
             const dbMatchingResp = await this._hass.callWS({
                 type: 'carbon_footprint/db_matching',
                 device_types: devicesToSend,
             });
             let devicesMatched = dbMatchingResp.devices_matched;
-            console.log(`Matched ${JSON.stringify(devicesMatched)}`)
+            console.log(`Matched ${JSON.stringify(devicesMatched, null, '\t')}`)
 
 
             //flow: Once we got the device types: pull the db and match carbon values, this will automatically setup everything where possible.
