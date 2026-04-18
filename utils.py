@@ -321,7 +321,7 @@ def utils_compute_device_consumption_footprint(
 
     energy_store = entries[0].runtime_data.energy_store.data
 
-    results = {}
+    results = []
     match granularity:
         case "hour":
             for key, value in energy_consumption_map.items():
