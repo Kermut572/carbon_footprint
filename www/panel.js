@@ -866,14 +866,26 @@ class CarbonFootprintPanel extends HTMLElement {
 
         const allTimestamps = new Set();
         const deviceNames = result.device_name_map;
+        const aggData = {};
 
         for (const deviceId in consumptionData) {
             if (consumptionData[deviceId]) {
-                consumptionData[deviceId].forEach(point => allTimestamps.add(point.timestamp));
+                consumptionData[deviceId].forEach(point => {
+                    const date = new Date(point.timestamp);
+                    const groupKey = Utils.getDateGroupKey(date, this._currentChartGranularity);
+
+                    if (!aggData[groupKey]) {
+                        aggData[groupKey] = {};
+                    }
+                    if (!aggData[groupKey][deviceId]) {
+                        aggData[groupKey][deviceId] = 0;
+                    }
+                    aggData[groupKey][deviceId] += point.consumption_footprint;
+                });
             }
         }
 
-        const sortedTimestamps = Array.from(allTimestamps).sort();
+        const sortedTimestamps = Object.keys(aggData).sort();
 
         const labels = sortedTimestamps.map(ts => {
             const date = new Date(ts);

@@ -11,4 +11,17 @@ export class Utils {
             })
         );
     }
+
+    static getDateGroupKey(date, granularity) {
+        switch (granularity) {
+            case this._chartGranularity.HOUR:
+                return new Date(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours()).toISOString();
+            case this._chartGranularity.DAY:
+                return new Date(date.getFullYear(), date.getMonth(), date.getDate()).toISOString();
+            case this._chartGranularity.MONTH:
+                return new Date(date.getFullYear(), date.getMonth(), 1).toISOString();
+            default:
+                return date.toISOString();
+        }
+    }
 }
