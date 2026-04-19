@@ -189,7 +189,7 @@ class CarbonFootprintPanel extends HTMLElement {
                 </header>
 
                 <div class="content" slot="content">
-                    <ha-card header="Energy Footprint">
+                    <ha-card header="Energy Consumption Footprint">
                         <div class="card-content">
                             <p>Current Energy CO₂ Intensity:
                                 <span class="ci-value">
@@ -206,7 +206,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                 )}</span>
                             </p>
                             <p style="font-size: 12px; color: #666; margin-top: 8px; margin-bottom: 16px;">
-                                <em>Grid carbon intensity over time (in grams CO₂ equivalent per kilowatt-hour)</em>
+                                <em>Devices energy consumption footprint over time (in grams CO₂ equivalent)</em>
                             </p>
                             <div class="histogram-controls">
                                 <label for="granularity-select">Granularity:</label>
@@ -902,14 +902,14 @@ class CarbonFootprintPanel extends HTMLElement {
         });
 
         const baseColors = [
-            'rgba(76, 175, 80, 0.4)',
-            'rgba(33, 150, 243, 0.4)',
-            'rgba(255, 152, 0, 0.4)',
-            'rgba(244, 67, 54, 0.4)',
-            'rgba(156, 39, 176, 0.4)',
-            'rgba(0, 150, 136, 0.4)',
-            'rgba(255, 235, 59, 0.4)',
-            'rgba(121, 85, 72, 0.4)',
+            'rgba(76, 175, 80, 0.6)',
+            'rgba(33, 150, 243, 0.6)',
+            'rgba(255, 152, 0, 0.6)',
+            'rgba(244, 67, 54, 0.6)',
+            'rgba(156, 39, 176, 0.6)',
+            'rgba(0, 150, 136, 0.6)',
+            'rgba(255, 235, 59, 0.6)',
+            'rgba(121, 85, 72, 0.6)',
         ];
 
         const datasets = Object.keys(consumptionData).map((deviceId, index) => {
@@ -949,25 +949,9 @@ class CarbonFootprintPanel extends HTMLElement {
                             this.renderConsumptionHistogram();
                         }
                     },
-                    labels: {
-                        generateLabels: (chart) => {
-                            const datasets = chart.data.datasets;
-                            return datasets.map((dataset, i) => ({
-                                datasetIndex: i,
-                                text: dataset.label,
-                                fillStyle: dataset.backgroundColor,
-                                strokeStyle: dataset.borderColor || dataset.backgroundColor,
-                                lineWidth: dataset.borderWidth || 0,
-                                hidden: this._hiddenDeviceIndices.has(i),
-
-                                fontColor: this._hiddenDeviceIndices.has(i) ? '#999' : chart.options.plugins.legend.labels.color,
-                                strikethrough: this._hiddenDeviceIndices.has(i),
-                            }));
-                        }
-                    },
                     title: {
                         display: true,
-                        text: 'Consumption Footprint (gCO₂eq)',
+                        text: 'Energy Consumption Footprint (gCO₂eq)',
                     },
                     tooltip: {
                         callbacks: {
