@@ -872,7 +872,7 @@ class CarbonFootprintPanel extends HTMLElement {
             if (consumptionData[deviceId]) {
                 consumptionData[deviceId].forEach(point => {
                     const date = new Date(point.timestamp);
-                    const groupKey = Utils.getDateGroupKey(date, this._currentChartGranularity);
+                    const groupKey = Utils.getDateGroupKey(date, this._currentChartGranularity, this._chartGranularity);
 
                     if (!aggData[groupKey]) {
                         aggData[groupKey] = {};
