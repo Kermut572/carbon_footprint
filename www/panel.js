@@ -902,19 +902,17 @@ class CarbonFootprintPanel extends HTMLElement {
         });
 
         const baseColors = [
-            'rgba(76, 175, 80, 0.7)',
-            'rgba(33, 150, 243, 0.7)',
-            'rgba(255, 152, 0, 0.7)',
-            'rgba(244, 67, 54, 0.7)',
-            'rgba(156, 39, 176, 0.7)',
-            'rgba(0, 150, 136, 0.7)',
-            'rgba(255, 235, 59, 0.7)',
-            'rgba(121, 85, 72, 0.7)',
+            'rgba(76, 175, 80, 0.4)',
+            'rgba(33, 150, 243, 0.4)',
+            'rgba(255, 152, 0, 0.4)',
+            'rgba(244, 67, 54, 0.4)',
+            'rgba(156, 39, 176, 0.4)',
+            'rgba(0, 150, 136, 0.4)',
+            'rgba(255, 235, 59, 0.4)',
+            'rgba(121, 85, 72, 0.4)',
         ];
 
         const datasets = Object.keys(consumptionData).map((deviceId, index) => {
-            const deviceData = consumptionData[deviceId] || [];
-            const dataMap = new Map(deviceData.map(p => [p.timestamp, p.consumption_footprint]));
             const data = sortedTimestamps.map(ts => (aggData[ts] && aggData[ts][deviceId]) || 0);
 
             return {
@@ -949,6 +947,22 @@ class CarbonFootprintPanel extends HTMLElement {
                                 this._hiddenDeviceIndices.add(index);
                             }
                             this.renderConsumptionHistogram();
+                        }
+                    },
+                    labels: {
+                        generateLabels: (chart) => {
+                            const datasets = chart.data.datasets;
+                            return datasets.map((dataset, i) => ({
+                                datasetIndex: i,
+                                text: dataset.label,
+                                fillStyle: dataset.backgroundColor,
+                                strokeStyle: dataset.borderColor || dataset.backgroundColor,
+                                lineWidth: dataset.borderWidth || 0,
+                                hidden: this._hiddenDeviceIndices.has(i),
+
+                                fontColor: this._hiddenDeviceIndices.has(i) ? '#999' : chart.options.plugins.legend.labels.color,
+                                strikethrough: this._hiddenDeviceIndices.has(i),
+                            }));
                         }
                     },
                     title: {
