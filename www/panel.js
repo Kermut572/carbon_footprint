@@ -430,7 +430,7 @@ class CarbonFootprintPanel extends HTMLElement {
             granSelect.value = this._currentChartGranularity;
             granSelect.addEventListener('change', async (e) => {
                 this._currentChartGranularity = e.target.value;
-                await this.refreshHistogram();
+                await this.renderConsumptionHistogram();
             });
         }
 
@@ -439,7 +439,7 @@ class CarbonFootprintPanel extends HTMLElement {
             timeFrameSelect.value = this._currentTimeFrame;
             timeFrameSelect.addEventListener('change', async (e) => {
                 this._currentTimeFrame = e.target.value;
-                await this.refreshHistogram();
+                await this.renderConsumptionHistogram();
             });
         }
 
@@ -941,11 +941,11 @@ class CarbonFootprintPanel extends HTMLElement {
                     },
                     title: {
                         display: true,
-                        text: 'Consumption Footprint (kgCO₂eq)',
+                        text: 'Consumption Footprint (gCO₂eq)',
                     },
                     tooltip: {
                         callbacks: {
-                            label: (context) => `${context.dataset.label}: ${context.parsed.y.toFixed(4)} kgCO₂eq`
+                            label: (context) => `${context.dataset.label}: ${context.parsed.y.toFixed(4)} gCO₂eq`
                         }
                     }
                 },
