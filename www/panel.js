@@ -17,6 +17,7 @@ class CarbonFootprintPanel extends HTMLElement {
         this._chart = null;
         this._roomChart = null;
         this._deviceChart = null;
+        this._consumptionChart = null;
         this._roomData = null;
         this._selectedRoom = null;
         this._currentPage = 'main'; // 'main' or 'settings'
@@ -25,6 +26,8 @@ class CarbonFootprintPanel extends HTMLElement {
         this._currentDevice = null;
         this._currentType = null;
         this._currentCarbonValue = 0.0;
+
+        this._hiddenDeviceIndices = new Set();
 
         this._chartGranularity = {
             HOUR: "hour",
@@ -221,8 +224,8 @@ class CarbonFootprintPanel extends HTMLElement {
                                     <option value="last-year">Last Year</option>
                                 </select>
                             </div>
-                            <div id="energy-histogram-container">
-                                ${energyHistogram}
+                            <div style="position: relative; height: 400px; width: 100%;">
+                                <canvas id="consumption-histogram-chart"></canvas>
                             </div>
                         </div>
 
@@ -411,13 +414,15 @@ class CarbonFootprintPanel extends HTMLElement {
             const script = document.createElement('script');
             script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
             script.onload = async () => {
-                this.renderHistogram();
+                //this.renderHistogram();
                 await this.renderRoomChart();
+                await this.renderConsumptionHistogram();
             };
             document.head.appendChild(script);
         } else {
-            this.renderHistogram();
+            //this.renderHistogram();
             await this.renderRoomChart();
+            await this.renderConsumptionHistogram();
         }
 
         const granSelect = this.querySelector('#granularity-select');
@@ -672,10 +677,10 @@ class CarbonFootprintPanel extends HTMLElement {
         if (typeof Chart === 'undefined') {
             const script = document.createElement('script');
             script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
-            script.onload = () => this.renderHistogram();
+            //script.onload = () => this.renderHistogram();
             document.head.appendChild(script);
         } else {
-            this.renderHistogram();
+            //this.renderHistogram();
         }
     }
 
@@ -819,6 +824,140 @@ class CarbonFootprintPanel extends HTMLElement {
             else
                 Utils.showToast(this, `LLM detection failed on every batch. Check console logs for more information`)
         }
+    }
+
+    async renderConsumptionHistogram() {
+        const canvas = this.querySelector('#consumption-histogram-chart');
+        if (!canvas) {
+            return;
+        }
+
+        let pastDays;
+        switch (this._currentTimeFrame) {
+            case this._timeFrame.WEEK:
+                pastDays = 7;
+                break;
+            case this._timeFrame.MONTH:
+                pastDays = 30;
+                break;
+            case this._timeFrame.YEAR:
+                pastDays = 365;
+                break;
+            default:
+                pastDays = 7;
+        }
+
+        const endTime = new Date();
+        const startTime = new Date(endTime);
+        startTime.setDate(endTime.getDate() - pastDays);
+
+        const result = await this._hass.callWS({
+            type: 'carbon_footprint/get_consumption_footprint_time_interval',
+            start_time: startTime.toISOString(),
+            end_time: endTime.toISOString(),
+            granularity: this._currentChartGranularity
+        });
+
+        const consumptionData = result.devices_consumptions;
+        if (!consumptionData || Object.keys(consumptionData).length === 0) {
+            canvas.parentElement.innerHTML = '<p>No consumption data available for the selected period.</p>';
+            return;
+        }
+
+        const allTimestamps = new Set();
+        const deviceNames = result.device_name_map;
+
+        const sortedTimestamps = Array.from(allTimestamps).sort();
+
+        const labels = sortedTimestamps.map(ts => {
+            const date = new Date(ts);
+            switch (this._currentChartGranularity) {
+                case this._chartGranularity.HOUR:
+                    return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit' });
+                case this._chartGranularity.DAY:
+                    return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+                case this._chartGranularity.MONTH:
+                    return date.toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' });
+                default:
+                    return date.toLocaleString();
+            }
+        });
+
+        const baseColors = [
+            'rgba(76, 175, 80, 0.7)',
+            'rgba(33, 150, 243, 0.7)',
+            'rgba(255, 152, 0, 0.7)',
+            'rgba(244, 67, 54, 0.7)',
+            'rgba(156, 39, 176, 0.7)',
+            'rgba(0, 150, 136, 0.7)',
+            'rgba(255, 235, 59, 0.7)',
+            'rgba(121, 85, 72, 0.7)',
+        ];
+
+        const datasets = Object.keys(consumptionData).map((deviceId, index) => {
+            const deviceData = consumptionData[deviceId] || [];
+            const dataMap = new Map(deviceData.map(p => [p.timestamp, p.consumption_footprint]));
+            const data = sortedTimestamps.map(ts => dataMap.get(ts) || 0);
+
+            return {
+                label: deviceNames[deviceId],
+                data: this._hiddenDeviceIndices.has(index) ? data.map(() => 0) : data,
+                backgroundColor: baseColors[index % baseColors.length],
+                deviceIndex: index,
+            };
+        });
+
+        if (this._consumptionChart) {
+            this._consumptionChart.destroy();
+        }
+
+        this._consumptionChart = new Chart(canvas.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: datasets,
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        onClick: (e, legendItem, legend) => {
+                            const index = legendItem.datasetIndex;
+                            if (this._hiddenDeviceIndices.has(index)) {
+                                this._hiddenDeviceIndices.delete(index);
+                            } else {
+                                this._hiddenDeviceIndices.add(index);
+                            }
+                            this.renderConsumptionHistogram();
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: 'Consumption Footprint (kgCO₂eq)',
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => `${context.dataset.label}: ${context.parsed.y.toFixed(4)} kgCO₂eq`
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        stacked: true,
+                    },
+                    y: {
+                        stacked: true,
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'gCO₂eq'
+                        }
+                    }
+                }
+            }
+        });
     }
 
     renderHistogram() {

@@ -54,6 +54,9 @@ def async_register_websocket_handlers(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_all_devices_energy)
     websocket_api.async_register_command(hass, ws_update_devices_energy)
     websocket_api.async_register_command(hass, ws_get_energy_footprint_time_interval)
+    websocket_api.async_register_command(
+        hass, ws_get_consumption_footprint_time_interval
+    )
     websocket_api.async_register_command(hass, ws_get_carbon_by_room)
     websocket_api.async_register_command(hass, ws_get_carbon_by_type)
     websocket_api.async_register_command(hass, ws_get_carbon_by_room_with_usage)
@@ -396,6 +399,90 @@ def ws_update_devices_energy(
 
 @websocket_api.websocket_command(
     {
+        vol.Required("type"): f"{DOMAIN}/get_consumption_footprint_time_interval",
+        vol.Required("start_time"): str,
+        vol.Required("end_time"): str,
+        vol.Required("granularity"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_get_consumption_footprint_time_interval(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Get the history of the consumption footprint for a given time interval."""
+    start_time = dt_util.parse_datetime(msg["start_time"])
+    end_time = dt_util.parse_datetime(msg["end_time"])
+
+    if not start_time or not end_time:
+        _LOGGER.error(
+            "No start_date or date_time set for call to ws_get_energy_footprint_time_interval"
+        )
+        connection.send_error(msg["id"], "invalid_format", "Invalid date format")
+        return
+
+    if end_time < start_time:
+        _LOGGER.error(
+            "Invalid time interval for call to ws_get_energy_footprint_time_interval"
+        )
+        connection.send_error(msg["id"], "invalid_interval", "Invalid time interval")
+        return
+
+    granularity = msg["granularity"]
+    if granularity not in ("hour", "day", "month"):
+        _LOGGER.error(
+            "Invalid granularity for call to ws_get_energy_footprint_time_interval"
+        )
+        connection.send_error(msg["id"], "invalid_granularity", "Invalid granularity")
+        return
+
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        _LOGGER.exception("No config entry found")
+        connection.send_error(
+            msg["id"], "config_entry_not_found", "Uh oh, no config entry found :-("
+        )
+        return
+
+    device_name_map = {}
+    cf_store = entries[0].runtime_data.cf_store
+    devices = cf_store.get_devices_data()
+    devices_consumptions = {}
+    for device_id in devices:
+        consumption_timestamps = await hass.async_add_executor_job(
+            utils_compute_device_consumption_footprint,
+            hass,
+            device_id,
+            granularity,
+            msg["start_time"],
+            msg["end_time"],
+        )
+
+        if (
+            consumption_timestamps is None or len(consumption_timestamps.keys()) == 0
+        ):  # ignore devices that have no consumption
+            continue
+
+        devices_consumptions[device_id] = consumption_timestamps
+        device_name_map[device_id] = (
+            devices.get(device_id, {}).get("metadata", {}).get("display_name", "err")
+        )
+
+    _LOGGER.info("PROCESSED DEVICES")
+
+    # response format: {"device_1": [{"ts_1": cf_1, "ts_2":cf_2,...}], "device_2": [], ...}
+    connection.send_result(
+        msg["id"],
+        {
+            "devices_consumptions": devices_consumptions,
+            "device_name_map": device_name_map,
+        },
+    )
+
+
+@websocket_api.websocket_command(
+    {
         vol.Required("type"): f"{DOMAIN}/get_energy_footprint_time_interval",
         vol.Required("start_time"): str,
         vol.Required("end_time"): str,
@@ -444,23 +531,6 @@ async def ws_get_energy_footprint_time_interval(
         return
 
     energy_store = entries[0].runtime_data.energy_store
-
-    # TODO remove until logger after testing
-    cf_store = entries[0].runtime_data.cf_store
-    devices = cf_store.get_devices_data()
-    tmp = {}
-    for device_id in devices:
-        tmp[device_id] = await hass.async_add_executor_job(
-            utils_compute_device_consumption_footprint,
-            hass,
-            device_id,
-            granularity,
-            msg["start_time"],
-            msg["end_time"],
-        )
-
-    _LOGGER.info("PROCESSED DEVICES")
-    _LOGGER.info(tmp)
 
     results = []
 
@@ -1055,7 +1125,6 @@ async def ws_llm_detection(
         "Smart dishwasher",
     ]
 
-    # TODO set a list of device types.
     def _openrouter_call():
         try:
             with OpenRouter(api_key=api_key) as client:

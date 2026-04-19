@@ -56,7 +56,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         webcomponent_name="carbon-footprint-panel",
         sidebar_title="Carbon Footprint",
         sidebar_icon="mdi:leaf",
-        module_url="/api/carbon_footprint/panel.js?v=2.41",  # change the version if your cache is playing tricks on you :-)
+        module_url="/api/carbon_footprint/panel.js?v=2.42",  # change the version if your cache is playing tricks on you :-)
         embed_iframe=False,
         require_admin=False,
     )
@@ -117,8 +117,6 @@ async def async_setup_entry(
     else:
         # Populate with real historical data from Electricity Maps
         await async_populate_energy_store(hass, energy_store, _LOGGER)
-
-
 
     return True
 
