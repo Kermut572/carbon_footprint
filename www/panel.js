@@ -867,6 +867,12 @@ class CarbonFootprintPanel extends HTMLElement {
         const allTimestamps = new Set();
         const deviceNames = result.device_name_map;
 
+        for (const deviceId in consumptionData) {
+            if (consumptionData[deviceId]) {
+                consumptionData[deviceId].forEach(point => allTimestamps.add(point.timestamp));
+            }
+        }
+
         const sortedTimestamps = Array.from(allTimestamps).sort();
 
         const labels = sortedTimestamps.map(ts => {
