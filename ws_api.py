@@ -460,7 +460,7 @@ async def ws_get_consumption_footprint_time_interval(
         )
 
         if (
-            consumption_timestamps is None or len(consumption_timestamps.keys()) == 0
+            consumption_timestamps is None or len(consumption_timestamps) == 0
         ):  # ignore devices that have no consumption
             continue
 
