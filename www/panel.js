@@ -915,7 +915,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const datasets = Object.keys(consumptionData).map((deviceId, index) => {
             const deviceData = consumptionData[deviceId] || [];
             const dataMap = new Map(deviceData.map(p => [p.timestamp, p.consumption_footprint]));
-            const data = sortedTimestamps.map(ts => dataMap.get(ts) || 0);
+            const data = sortedTimestamps.map(ts => (aggData[ts] && aggData[ts][deviceId]) || 0);
 
             return {
                 label: deviceNames[deviceId],
