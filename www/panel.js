@@ -263,6 +263,88 @@ class CarbonFootprintPanel extends HTMLElement {
                             </div>
                         </div>
                     </ha-card>
+                    <ha-card header="Recommendations">
+                        <div class="card-content">
+                            <div style="display: flex; flex-direction: column; gap: 8px;">
+
+
+                                <!-- Current yearly cons -->
+                                <div style="border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
+                                    <div class="recommendation-header"
+                                        style="padding: 12px; background-color: ${
+                                            '#e8f5e9'
+                                        }; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;"
+                                        onclick="this.parentElement.querySelector('.recommendation-content-0').style.display = this.parentElement.querySelector('.recommendation-content-0').style.display === 'none' ? 'block' : 'none'; this.querySelector('.toggle-icon-0').textContent = this.parentElement.querySelector('.recommendation-content-0').style.display === 'none' ? '▼' : '▲';">
+                                        <strong>Iot share of consumption</strong>
+                                        <span class="toggle-icon-0" style="font-size: 12px;">▲</span>
+                                    </div>
+
+                                    <div class="recommendation-content-0"
+                                        style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
+                                        <p style="margin: 0; font-size: 13px; color: #555;">
+                                            Your current IoT energy consumption amounts to ${yearlyCons || 0}% of your yearly energy consumption.
+                                        </p>
+                                    </div>
+                                </div>
+                                
+                                <!-- Carbon intensity usage -->
+                                <div style="border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
+                                    <div class="recommendation-header"
+                                        style="padding: 12px; background-color: ${
+                                            data?.co2_intensity < 100 ? '#e8f5e9' :
+                                            data?.co2_intensity < 250 ? '#fff8e1' :
+                                            '#ffebee'
+                                        }; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;"
+                                        onclick="this.parentElement.querySelector('.recommendation-content-2').style.display = this.parentElement.querySelector('.recommendation-content-2').style.display === 'none' ? 'block' : 'none'; this.querySelector('.toggle-icon-2').textContent = this.parentElement.querySelector('.recommendation-content-2').style.display === 'none' ? '▼' : '▲';">
+                                        <strong>Optimize Usage Timing</strong>
+                                        <span class="toggle-icon-2" style="font-size: 12px;">▲</span>
+                                    </div>
+                                    <div class="recommendation-content-2"
+                                        style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
+                                        <p style="margin: 0; font-size: 13px; color: #555;">
+                                            ${
+                                                data?.co2_intensity < 100
+                                                    ? `The current carbon intensity is <b>low (${data.co2_intensity} gCO₂eq/kWh)</b>. This is a good time to run energy-intensive devices.`
+                                                    : data?.co2_intensity < 250
+                                                        ? `The current carbon intensity is <b>moderate (${data.co2_intensity} gCO₂eq/kWh)</b>. If possible, shift flexible usage to cleaner hours.`
+                                                        : `The current carbon intensity is <b>high (${data.co2_intensity} gCO₂eq/kWh)</b>. Delaying heavy appliance use could reduce your emissions.`
+                                            }
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <!-- Today's carbon total -->
+                                <div style="border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
+                                    <div class="recommendation-header"
+                                        style="padding: 12px; background-color: ${
+                                            carbonToday === null ? '#f5f5f5' :
+                                            carbonToday > 10 ? '#ffebee' :
+                                            carbonToday > 5 ? '#fff8e1' :
+                                            '#e8f5e9'
+                                        }; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;"
+                                        onclick="this.parentElement.querySelector('.recommendation-content-3').style.display = this.parentElement.querySelector('.recommendation-content-3').style.display === 'none' ? 'block' : 'none'; this.querySelector('.toggle-icon-3').textContent = this.parentElement.querySelector('.recommendation-content-3').style.display === 'none' ? '▼' : '▲';">
+                                        <strong>Today's Carbon Total</strong>
+                                        <span class="toggle-icon-3" style="font-size: 12px;">▲</span>
+                                    </div>
+                                    <div class="recommendation-content-3"
+                                        style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
+                                        <p style="margin: 0; font-size: 13px; color: #555;">
+                                            ${
+                                                carbonToday === null
+                                                    ? `No daily carbon data is available yet.`
+                                                    : carbonToday > 10
+                                                        ? `You have already emitted <b>${carbonToday.toFixed(2)} kgCO₂</b> today. Consider reducing usage for the rest of the day.`
+                                                        : carbonToday > 5
+                                                            ? `You have emitted <b>${carbonToday.toFixed(2)} kgCO₂</b> today. Your usage is moderate so far.`
+                                                            : `You have emitted <b>${carbonToday.toFixed(2)} kgCO₂</b> today. Good control of your footprint so far.`
+                                            }
+                                        </p>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </ha-card>
                 </div>
             </ha-app-layout>
         `;
