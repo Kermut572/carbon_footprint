@@ -5,7 +5,7 @@
 
 import { CarbonUtils } from './frontend/carbon-utils.js';
 import { openFullForm } from './frontend/form-manager.js';
-import { Utils } from './utils.js';
+import { Utils } from './utils.js?v=1.1';
 
 class CarbonFootprintPanel extends HTMLElement {
 
