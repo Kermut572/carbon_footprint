@@ -10,6 +10,7 @@ import {
     getHighImpactAreaRecommendation,
     getCarbonIntensityRecommendation,
     getIoTShareRecommendation,
+    getUsagePatternRecommendation,
 } from './frontend/recommendation-manager.js';
 
 class CarbonFootprintPanel extends HTMLElement {
@@ -199,6 +200,7 @@ class CarbonFootprintPanel extends HTMLElement {
         // Generate carbon intensity recommendation
         const intensityRec = getCarbonIntensityRecommendation(data?.co2_intensity);
         const iotShareRec = getIoTShareRecommendation(yearlyCons);
+        const usagePatternRec = getUsagePatternRecommendation(this._histogramData, data?.intensity_history || []);
 
         this.innerHTML = `
             <ha-app-layout>
@@ -348,6 +350,22 @@ class CarbonFootprintPanel extends HTMLElement {
                                         style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
                                         <p style="margin: 0; font-size: 13px; color: #555;">
                                             ${intensityRec.message}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <!-- Usage Pattern Insight -->
+                                <div style="border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
+                                    <div class="recommendation-header"
+                                        style="padding: 12px; background-color: ${usagePatternRec.color}; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;"
+                                        onclick="this.parentElement.querySelector('.recommendation-content-pattern').style.display = this.parentElement.querySelector('.recommendation-content-pattern').style.display === 'none' ? 'block' : 'none'; this.querySelector('.toggle-icon-pattern').textContent = this.parentElement.querySelector('.recommendation-content-pattern').style.display === 'none' ? '▼' : '▲';">
+                                        <strong>${usagePatternRec.emoji} ${usagePatternRec.title}</strong>
+                                        <span class="toggle-icon-pattern" style="font-size: 12px;">▲</span>
+                                    </div>
+                                    <div class="recommendation-content-pattern"
+                                        style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
+                                        <p style="margin: 0; font-size: 13px; color: #555;">
+                                            ${usagePatternRec.message}
                                         </p>
                                     </div>
                                 </div>
