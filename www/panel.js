@@ -6,6 +6,7 @@
 import { CarbonUtils } from './frontend/carbon-utils.js';
 import { openFullForm } from './frontend/form-manager.js';
 import { Utils } from './utils.js';
+import { getHighImpactAreaRecommendation } from './frontend/recommendation-manager.js';
 
 class CarbonFootprintPanel extends HTMLElement {
 
@@ -177,6 +178,11 @@ class CarbonFootprintPanel extends HTMLElement {
         const carbonToday = carbonTodayRaw && carbonTodayRaw !== 'unknown' && carbonTodayRaw !== 'unavailable'
             ? parseFloat(carbonTodayRaw)
             : null;
+
+        // Fetch room data and generate recommendation
+        console.log('Fetching room data for recommendation...');
+        const roomData = await this.getCarbonByRoom();
+        const recommendation = getHighImpactAreaRecommendation(roomData);
 
         this.innerHTML = `
             <ha-app-layout>
@@ -365,6 +371,22 @@ class CarbonFootprintPanel extends HTMLElement {
                                                             ? `You have emitted <b>${carbonToday.toFixed(2)} kgCO₂</b> today. Your usage is moderate so far.`
                                                             : `You have emitted <b>${carbonToday.toFixed(2)} kgCO₂</b> today. Good control of your footprint so far.`
                                             }
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <!-- High-Impact Area Recommendation -->
+                                <div style="border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
+                                    <div class="recommendation-header"
+                                        style="padding: 12px; background-color: #fff8e1; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;"
+                                        onclick="this.parentElement.querySelector('.recommendation-content-high-impact').style.display = this.parentElement.querySelector('.recommendation-content-high-impact').style.display === 'none' ? 'block' : 'none'; this.querySelector('.toggle-icon-high-impact').textContent = this.parentElement.querySelector('.recommendation-content-high-impact').style.display === 'none' ? '▼' : '▲';">
+                                        <strong>${recommendation.title}</strong>
+                                        <span class="toggle-icon-high-impact" style="font-size: 12px;">▲</span>
+                                    </div>
+                                    <div class="recommendation-content-high-impact"
+                                        style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
+                                        <p style="margin: 0; font-size: 13px; color: #555;">
+                                            ${recommendation.message}
                                         </p>
                                     </div>
                                 </div>
