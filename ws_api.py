@@ -1230,17 +1230,17 @@ async def ws_get_yearly_contribution(
     msg: dict[str, Any],
 ) -> None:
     """Returns the yearly carbon/energy contribution of HA devices."""
-    entry = _get_loaded_entry(hass)
-    if entry is None:
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
         connection.send_error(
-            msg["id"], "config_entry_not_loaded", "Uh oh, no loaded entry found :-("
+            msg["id"], "config_entry_not_found", "Uh oh, no config entry found :-("
         )
         return
 
-    cf_store = entry.runtime_data.cf_store
+    cf_store = entries[0].runtime_data.cf_store
     devices = cf_store.get_devices_data()
 
-    energy_meter = entry.options.get("energy_meter")
+    energy_meter = entries[0].options.get("energy_meter")
     yearly_energy = await hass.async_add_executor_job(
         utils_get_yearly_consumption, hass
     )

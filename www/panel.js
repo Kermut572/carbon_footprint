@@ -890,8 +890,8 @@ class CarbonFootprintPanel extends HTMLElement {
     // ============================================================================
 
     // turn on/off fake data here
-    _useFakeCarbonData = true;
-    _useFakeRoomData = true;  // Toggle for test data (from test_data.py) - doesn't affect real devices
+    _useFakeCarbonData = false;
+    _useFakeRoomData = false;  // Toggle for test data (from test_data.py) - doesn't affect real devices
     _hiddenRoomIndices = new Set();
 
     _getFakeCarbonData() {
