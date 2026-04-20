@@ -19,7 +19,8 @@ from tenacity import retry, stop_after_attempt, wait_fixed
 import voluptuous as vol
 
 from homeassistant.components import websocket_api
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.config_entries import ConfigEntryState
+from homeassistant.core import _LOGGER, HomeAssistant, callback
 from homeassistant.helpers import (
     area_registry as ar,
     device_registry as dr,
@@ -101,6 +102,13 @@ def ws_get_devices_to_add(
         },
     )
 
+def _get_loaded_entry(hass: HomeAssistant):
+    entries = hass.config_entries.async_entries(DOMAIN)
+    return next(
+        (entry for entry in entries if entry.state is ConfigEntryState.LOADED),
+        None,
+    )
+
 
 @websocket_api.websocket_command(
     {
@@ -128,19 +136,24 @@ def ws_get_carbon_data(
         co2_intensity = float(co2_intensity_state.state)
         status = "available"
 
-    entries = hass.config_entries.async_entries(DOMAIN)
-    if not entries:
+    #entries = hass.config_entries.async_entries(DOMAIN)
+    entry = _get_loaded_entry(hass)
+    if entry is None:
         connection.send_error(
-            msg["id"], "config_entry_not_found", "Uh oh, no config entry found :-("
+            msg["id"], "config_entry_not_loaded", "Uh oh, no loaded entry found :-("
         )
         return
 
-    cf_store = entries[0].runtime_data.cf_store
+    cf_store = entry.runtime_data.cf_store
     device_reg = dr.async_get(hass)
     devices = cf_store.get_devices_data()
 
     updated_name = False
     for device_id, device_info in devices.items():
+        device_entry = device_reg.devices.get(device_id)
+        if not device_entry:
+            continue
+        
         updated_device_name = (
             device_reg.devices.get(device_id).name_by_user
             or device_reg.devices.get(device_id).name
@@ -181,14 +194,14 @@ async def ws_set_device(
 ) -> None:
     """Set the device's data."""
 
-    entries = hass.config_entries.async_entries(DOMAIN)
-    if not entries:
+    entry = _get_loaded_entry(hass)
+    if entry is None:
         connection.send_error(
-            msg["id"], "config_entry_not_found", "Uh oh, no config entry found :-("
+            msg["id"], "config_entry_not_loaded", "Uh oh, no loaded entry found :-("
         )
         return
 
-    cf_store = entries[0].runtime_data.cf_store
+    cf_store = entry.runtime_data.cf_store
 
     metadata = msg["metadata"]
 
@@ -262,14 +275,14 @@ def ws_remove_device(
     msg: dict[str, Any],
 ) -> None:
     """Remove a device's data."""
-    entries = hass.config_entries.async_entries(DOMAIN)
-    if not entries:
+    entry = _get_loaded_entry(hass)
+    if entry is None:
         connection.send_error(
-            msg["id"], "config_entry_not_found", "Uh oh, no config entry found :-("
+            msg["id"], "config_entry_not_loaded", "Uh oh, no loaded entry found :-("
         )
         return
 
-    cf_store = entries[0].runtime_data.cf_store
+    cf_store = entry.runtime_data.cf_store
     hass.async_create_task(cf_store.async_remove_device_info(msg["device_name"]))
 
     connection.send_result(msg["id"], {"success": True})
@@ -347,14 +360,14 @@ def ws_update_devices_energy(
     msg: dict[str, Any],
 ) -> None:
     """Update the total energy consumed of all registered devices."""
-    entries = hass.config_entries.async_entries(DOMAIN)
-    if not entries:
+    entry = _get_loaded_entry(hass)
+    if entry is None:
         connection.send_error(
-            msg["id"], "config_entry_not_found", "Uh oh, no config entry found :-("
+            msg["id"], "config_entry_not_loaded", "Uh oh, no loaded entry found :-("
         )
         return
 
-    cf_store = entries[0].runtime_data.cf_store
+    cf_store = entry.runtime_data.cf_store
     devices = cf_store.get_devices_data()
     device_updated = False
     for device_data in devices.values():
@@ -415,14 +428,15 @@ def ws_get_energy_footprint_time_interval(
         connection.send_error(msg["id"], "invalid_granularity", "Invalid granularity")
         return
 
-    entries = hass.config_entries.async_entries(DOMAIN)
-    if not entries:
+    entry = _get_loaded_entry(hass)
+    if entry is None:
         connection.send_error(
-            msg["id"], "config_entry_not_found", "Uh oh, no config entry found :-("
+            msg["id"], "config_entry_not_loaded", "Uh oh, no loaded entry found :-("
         )
         return
 
-    energy_store = entries[0].runtime_data.energy_store
+
+    energy_store = entry.runtime_data.energy_store
 
     results = []
 
@@ -536,14 +550,14 @@ def ws_get_carbon_by_room(
         ]
     }
     """
-    entries = hass.config_entries.async_entries(DOMAIN)
-    if not entries:
+    entry = _get_loaded_entry(hass)
+    if entry is None:
         connection.send_error(
-            msg["id"], "config_entry_not_found", "No config entry found"
+            msg["id"], "config_entry_not_loaded", "Uh oh, no loaded entry found :-("
         )
         return
 
-    cf_store = entries[0].runtime_data.cf_store
+    cf_store = entry.runtime_data.cf_store
     devices = cf_store.get_devices_data()
 
     # Get device and area registries
@@ -640,14 +654,14 @@ def ws_get_carbon_by_room_with_usage(
         ]
     }
     """
-    entries = hass.config_entries.async_entries(DOMAIN)
-    if not entries:
+    entry = _get_loaded_entry(hass)
+    if entry is None:
         connection.send_error(
-            msg["id"], "config_entry_not_found", "No config entry found"
+            msg["id"], "config_entry_not_loaded", "Uh oh, no loaded entry found :-("
         )
         return
 
-    cf_store = entries[0].runtime_data.cf_store
+    cf_store = entry.runtime_data.cf_store
     devices = cf_store.get_devices_data()
 
     # Get device and area registries
@@ -785,15 +799,16 @@ def ws_get_carbon_by_type(
         ]
     }
     """
-    entries = hass.config_entries.async_entries(DOMAIN)
-    if not entries:
+
+    device_reg = dr.async_get(hass)
+    entry = _get_loaded_entry(hass)
+    if entry is None:
         connection.send_error(
-            msg["id"], "config_entry_not_found", "No config entry found"
+            msg["id"], "config_entry_not_loaded", "Uh oh, no loaded entry found :-("
         )
         return
 
-    device_reg = dr.async_get(hass)
-    cf_store = entries[0].runtime_data.cf_store
+    cf_store = entry.runtime_data.cf_store
     devices = cf_store.get_devices_data()
 
     type_dict: dict[str, dict] = {}
@@ -864,12 +879,6 @@ def ws_get_carbon_by_type_with_usage(
         ]
     }
     """
-    entries = hass.config_entries.async_entries(DOMAIN)
-    if not entries:
-        connection.send_error(
-            msg["id"], "config_entry_not_found", "No config entry found"
-        )
-        return
 
     em_sensor = utils_fetch_electricity_maps_sensor(hass)
     co2_intensity_state = hass.states.get(em_sensor)
@@ -883,7 +892,14 @@ def ws_get_carbon_by_type_with_usage(
         except ValueError | TypeError:
             co2_intensity = 200.0
 
-    cf_store = entries[0].runtime_data.cf_store
+    entry = _get_loaded_entry(hass)
+    if entry is None:
+        connection.send_error(
+            msg["id"], "config_entry_not_loaded", "Uh oh, no loaded entry found :-("
+        )
+        return
+
+    cf_store = entry.runtime_data.cf_store
     device_reg = dr.async_get(hass)
     devices = cf_store.get_devices_data()
 
@@ -968,14 +984,13 @@ async def ws_llm_detection(
 ) -> None:
     """Calls an OpenAI model to determine the type of the user's devices."""
 
-    entries = hass.config_entries.async_entries(DOMAIN)
-    if not entries:
+    entry = _get_loaded_entry(hass)
+    if entry is None:
         connection.send_error(
-            msg["id"], "config_entry_not_found", "No config entry found"
+            msg["id"], "config_entry_not_loaded", "Uh oh, no loaded entry found :-("
         )
         return
 
-    entry = entries[0]
     api_key = entry.options.get("api_key")
     if not api_key or len(api_key) == 0:
         connection.send_error(
@@ -1049,14 +1064,13 @@ async def ws_db_matching(
     msg: dict[str, Any],
 ) -> None:
     """Calls the DB REST API in order to match carbon values."""
-    entries = hass.config_entries.async_entries(DOMAIN)
-    if not entries:
+    entry = _get_loaded_entry(hass)
+    if entry is None:
         connection.send_error(
-            msg["id"], "config_entry_not_found", "No config entry found"
+            msg["id"], "config_entry_not_loaded", "Uh oh, no loaded entry found :-("
         )
         return
 
-    entry = entries[0]
     db_ip = entry.options.get("db_ip")
     if not db_ip or len(db_ip) == 0:
         connection.send_error(
@@ -1134,14 +1148,14 @@ async def ws_export_json(
     msg: dict[str, Any],
 ) -> None:
     """Export the added devices to a JSON array to upload them on the interface."""
-    entries = hass.config_entries.async_entries(DOMAIN)
-    if not entries:
+    entry = _get_loaded_entry(hass)
+    if entry is None:
         connection.send_error(
-            msg["id"], "config_entry_not_found", "Uh oh, no config entry found :-("
+            msg["id"], "config_entry_not_loaded", "Uh oh, no loaded entry found :-("
         )
         return
 
-    cf_store = entries[0].runtime_data.cf_store
+    cf_store = entry.runtime_data.cf_store
     devices = cf_store.get_devices_data()
 
     json_array = []
@@ -1170,13 +1184,13 @@ async def ws_export_json(
 
         json_array.append(device_dict)
 
-    cfdb_token = entries[0].options.get("cfdb_token")
+    cfdb_token = entry.options.get("cfdb_token")
     if not cfdb_token or len(cfdb_token) == 0:
         # no token defined so we just return the json_array
         connection.send_result(msg["id"], {"json_array": json_array, "uploaded": "no"})
         return
 
-    db_ip = entries[0].options.get("db_ip")
+    db_ip = entry.options.get("db_ip")
     if not db_ip or len(db_ip) == 0:
         connection.send_result(msg["id"], {"json_array": json_array, "uploaded": "no"})
         return

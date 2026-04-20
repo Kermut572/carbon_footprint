@@ -218,6 +218,27 @@ button {
     vertical-align: middle;
 }
 
+.recommendation-header {
+    padding: 18px 20px !important;
+    font-size: 1.1rem;
+}
+
+.recommendation-header strong {
+    font-size: 1.1rem;
+    line-height: 1.35;
+}
+
+[class*="recommendation-content"] {
+    padding: 20px !important;
+    font-size: 1.05rem;
+    line-height: 1.75;
+    color: var(--primary-text-color);
+}
+
+[class*="recommendation-content"] p {
+    margin: 0;
+}
+
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
