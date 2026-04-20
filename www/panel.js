@@ -6,7 +6,11 @@
 import { CarbonUtils } from './frontend/carbon-utils.js';
 import { openFullForm } from './frontend/form-manager.js';
 import { Utils } from './utils.js';
-import { getHighImpactAreaRecommendation } from './frontend/recommendation-manager.js';
+import {
+    getHighImpactAreaRecommendation,
+    getCarbonIntensityRecommendation,
+    getIoTShareRecommendation,
+} from './frontend/recommendation-manager.js';
 
 class CarbonFootprintPanel extends HTMLElement {
 
@@ -125,6 +129,14 @@ class CarbonFootprintPanel extends HTMLElement {
 
     async getCarbonByRoom() {
         try {
+            // Support test data toggle for recommendations testing
+            if (this._useFakeRoomData) {
+                const fakeData = this._getFakeRoomData();
+                console.log('Using fake room data (test_data.py) for testing:', fakeData);
+                this._roomData = fakeData || [];
+                return this._roomData;
+            }
+
             const result = await this._hass.callWS({
                 type: 'carbon_footprint/get_carbon_by_room_with_usage'
             });
@@ -183,6 +195,10 @@ class CarbonFootprintPanel extends HTMLElement {
         console.log('Fetching room data for recommendation...');
         const roomData = await this.getCarbonByRoom();
         const recommendation = getHighImpactAreaRecommendation(roomData);
+        
+        // Generate carbon intensity recommendation
+        const intensityRec = getCarbonIntensityRecommendation(data?.co2_intensity);
+        const iotShareRec = getIoTShareRecommendation(yearlyCons);
 
         this.innerHTML = `
             <ha-app-layout>
@@ -315,7 +331,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                     <div class="recommendation-content-0"
                                         style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
                                         <p style="margin: 0; font-size: 13px; color: #555;">
-                                            Your current IoT energy consumption amounts to ${yearlyCons || 0}% of your yearly energy consumption.
+                                            ${iotShareRec.message}
                                         </p>
                                     </div>
                                 </div>
@@ -323,54 +339,15 @@ class CarbonFootprintPanel extends HTMLElement {
                                 <!-- Carbon intensity usage -->
                                 <div style="border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
                                     <div class="recommendation-header"
-                                        style="padding: 12px; background-color: ${
-                                            data?.co2_intensity < 100 ? '#e8f5e9' :
-                                            data?.co2_intensity < 250 ? '#fff8e1' :
-                                            '#ffebee'
-                                        }; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;"
+                                        style="padding: 12px; background-color: ${intensityRec.color}; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;"
                                         onclick="this.parentElement.querySelector('.recommendation-content-2').style.display = this.parentElement.querySelector('.recommendation-content-2').style.display === 'none' ? 'block' : 'none'; this.querySelector('.toggle-icon-2').textContent = this.parentElement.querySelector('.recommendation-content-2').style.display === 'none' ? '▼' : '▲';">
-                                        <strong>Optimize Usage Timing</strong>
+                                        <strong>${intensityRec.emoji} Optimize Usage Timing (${intensityRec.label})</strong>
                                         <span class="toggle-icon-2" style="font-size: 12px;">▲</span>
                                     </div>
                                     <div class="recommendation-content-2"
                                         style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
                                         <p style="margin: 0; font-size: 13px; color: #555;">
-                                            ${
-                                                data?.co2_intensity < 100
-                                                    ? `The current carbon intensity is <b>low (${data.co2_intensity} gCO₂eq/kWh)</b>. This is a good time to run energy-intensive devices.`
-                                                    : data?.co2_intensity < 250
-                                                        ? `The current carbon intensity is <b>moderate (${data.co2_intensity} gCO₂eq/kWh)</b>. If possible, shift flexible usage to cleaner hours.`
-                                                        : `The current carbon intensity is <b>high (${data.co2_intensity} gCO₂eq/kWh)</b>. Delaying heavy appliance use could reduce your emissions.`
-                                            }
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <!-- Today's carbon total -->
-                                <div style="border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
-                                    <div class="recommendation-header"
-                                        style="padding: 12px; background-color: ${
-                                            carbonToday === null ? '#f5f5f5' :
-                                            carbonToday > 10 ? '#ffebee' :
-                                            carbonToday > 5 ? '#fff8e1' :
-                                            '#e8f5e9'
-                                        }; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;"
-                                        onclick="this.parentElement.querySelector('.recommendation-content-3').style.display = this.parentElement.querySelector('.recommendation-content-3').style.display === 'none' ? 'block' : 'none'; this.querySelector('.toggle-icon-3').textContent = this.parentElement.querySelector('.recommendation-content-3').style.display === 'none' ? '▼' : '▲';">
-                                        <strong>Today's Carbon Total</strong>
-                                        <span class="toggle-icon-3" style="font-size: 12px;">▲</span>
-                                    </div>
-                                    <div class="recommendation-content-3"
-                                        style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
-                                        <p style="margin: 0; font-size: 13px; color: #555;">
-                                            ${
-                                                carbonToday === null
-                                                    ? `No daily carbon data is available yet.`
-                                                    : carbonToday > 10
-                                                        ? `You have already emitted <b>${carbonToday.toFixed(2)} kgCO₂</b> today. Consider reducing usage for the rest of the day.`
-                                                        : carbonToday > 5
-                                                            ? `You have emitted <b>${carbonToday.toFixed(2)} kgCO₂</b> today. Your usage is moderate so far.`
-                                                            : `You have emitted <b>${carbonToday.toFixed(2)} kgCO₂</b> today. Good control of your footprint so far.`
-                                            }
+                                            ${intensityRec.message}
                                         </p>
                                     </div>
                                 </div>
@@ -380,7 +357,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                     <div class="recommendation-header"
                                         style="padding: 12px; background-color: #fff8e1; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;"
                                         onclick="this.parentElement.querySelector('.recommendation-content-high-impact').style.display = this.parentElement.querySelector('.recommendation-content-high-impact').style.display === 'none' ? 'block' : 'none'; this.querySelector('.toggle-icon-high-impact').textContent = this.parentElement.querySelector('.recommendation-content-high-impact').style.display === 'none' ? '▼' : '▲';">
-                                        <strong>${recommendation.title}</strong>
+                                        <strong> ${recommendation.title}</strong>
                                         <span class="toggle-icon-high-impact" style="font-size: 12px;">▲</span>
                                     </div>
                                     <div class="recommendation-content-high-impact"
@@ -878,8 +855,25 @@ class CarbonFootprintPanel extends HTMLElement {
         return ctx.createPattern(patternCanvas, 'repeat');
     }
 
+    // ============================================================================
+    // TEST DATA TOGGLES
+    // ============================================================================
+    // _useFakeCarbonData: Uses generic fake lab data (Kitchen, Bedroom, etc.)
+    //   - Good for UI/visualization testing
+    //   - Doesn't depend on backend or real devices
+    //
+    // _useFakeRoomData: Uses test data from test_data.py (requires TEST_MODE=True)
+    //   - Good for recommendation system testing
+    //   - Matches real device structure (Living Room, Kitchen, Bedroom)
+    //   - Doesn't interfere with real device data collection
+    //
+    // Set either to true to enable test mode. Example:
+    //   this._useFakeRoomData = true;  // Test recommendations without real devices
+    // ============================================================================
+
     // turn on/off fake data here
-    _useFakeCarbonData = false;
+    _useFakeCarbonData = true;
+    _useFakeRoomData = true;  // Toggle for test data (from test_data.py) - doesn't affect real devices
     _hiddenRoomIndices = new Set();
 
     _getFakeCarbonData() {
@@ -935,6 +929,50 @@ class CarbonFootprintPanel extends HTMLElement {
         ];
     }
 
+    _getFakeRoomData() {
+        // Test data matching test_data.py structure from async_setup_test_data
+        // This provides consistent test data for the recommendation system
+        return [
+            {
+                room: 'Bedroom',
+                room_id: 'fake_bedroom',
+                embodied_carbon: 12.0,
+                usage_carbon: 1.8,
+                predicted_carbon: 2.7,
+                total_carbon: 13.8,
+                devices: [
+                    { id: 'Bedroom AC Unit', name: 'Bedroom AC Unit', embodied_carbon: 12.0, usage_carbon: 1.8, predicted_carbon: 2.7, total_carbon: 13.8 }
+                ]
+            },
+            {
+                room: 'Kitchen',
+                room_id: 'fake_kitchen',
+                embodied_carbon: 58.0,
+                usage_carbon: 3.5,
+                predicted_carbon: 5.25,
+                total_carbon: 61.5,
+                devices: [
+                    { id: 'Kitchen Refrigerator', name: 'Kitchen Refrigerator', embodied_carbon: 35.0, usage_carbon: 2.5, predicted_carbon: 3.75, total_carbon: 37.5 },
+                    { id: 'Kitchen Dishwasher', name: 'Kitchen Dishwasher', embodied_carbon: 18.5, usage_carbon: 0.8, predicted_carbon: 1.2, total_carbon: 19.3 },
+                    { id: 'Kitchen Coffee Maker', name: 'Kitchen Coffee Maker', embodied_carbon: 4.5, usage_carbon: 0.2, predicted_carbon: 0.3, total_carbon: 4.7 }
+                ]
+            },
+            {
+                room: 'Living Room',
+                room_id: 'fake_living_room',
+                embodied_carbon: 45.0,
+                usage_carbon: 3.8,
+                predicted_carbon: 5.7,
+                total_carbon: 48.8,
+                devices: [
+                    { id: 'Living Room TV', name: 'Living Room TV', embodied_carbon: 15.5, usage_carbon: 0.5, predicted_carbon: 0.75, total_carbon: 16.0 },
+                    { id: 'Living Room Heater', name: 'Living Room Heater', embodied_carbon: 22.3, usage_carbon: 3.2, predicted_carbon: 4.8, total_carbon: 25.5 },
+                    { id: 'Living Room Smart Speaker', name: 'Living Room Smart Speaker', embodied_carbon: 7.2, usage_carbon: 0.1, predicted_carbon: 0.15, total_carbon: 7.35 }
+                ]
+            }
+        ];
+    }
+
     async renderRoomChart() {
         const canvas = this.querySelector('#room-pie-chart');
         if (!canvas) {
@@ -945,6 +983,10 @@ class CarbonFootprintPanel extends HTMLElement {
         if (this._useFakeCarbonData) {
             data = this._getFakeCarbonData();
             console.log('Using fake carbon data for room chart:', data);
+        } else if (this._useFakeRoomData) {
+            // Use test data from test_data.py (only for testing recommendation system)
+            data = this._getFakeRoomData();
+            console.log('Using fake room data (test_data.py) for testing:', data);
         } else if (this._groupBy === 'type') {
             data = await this.getCarbonByType();
         } else {
