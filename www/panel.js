@@ -1633,4 +1633,4 @@ class CarbonFootprintPanel extends HTMLElement {
 if (!customElements.get('carbon-footprint-panel')) {
     customElements.define('carbon-footprint-panel', CarbonFootprintPanel);
 }
-console.log('Panel loaded');
+console.log('Panel loaded - latest version');
