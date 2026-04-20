@@ -23,6 +23,7 @@ export function getHighImpactAreaRecommendation(roomData) {
     return {
         title: "High-Impact Area Identified",
         message: `The room with the highest carbon footprint is ${highImpactRoom.room} with a total of ${highImpactRoom.total_carbon.toFixed(2)} kg CO₂.`,
+        emoji: '⚠️',
         severity: "warning",
     };
 }
@@ -37,6 +38,7 @@ export function getCarbonIntensityRecommendation(ci) {
             message: 'Carbon intensity data unavailable.',
             color: '#eeeeee',
             emoji: '❓',
+            severity: 'info',
         };
     }
 
@@ -46,6 +48,7 @@ export function getCarbonIntensityRecommendation(ci) {
             message: `The carbon intensity is <b>low (${safeCi} gCO₂eq/kWh)</b>. This is a good time to run appliances like washing machines and dishwashers.`,
             color: '#e8f5e9',
             emoji: '✅',
+            severity: 'good',
         };
     }
 
@@ -55,6 +58,7 @@ export function getCarbonIntensityRecommendation(ci) {
             message: `The carbon intensity is <b>moderate (${safeCi} gCO₂eq/kWh)</b>. If possible, shift flexible loads to cleaner hours.`,
             color: '#fff8e1',
             emoji: '⚠️',
+            severity: 'warning',
         };
     }
 
@@ -63,6 +67,7 @@ export function getCarbonIntensityRecommendation(ci) {
         message: `The carbon intensity is <b>high (${safeCi} gCO₂eq/kWh)</b>. Avoid heavy appliance use now and delay non-essential loads.`,
         color: '#ffebee',
         emoji: '🔴',
+        severity: 'bad',
     };
 }
 
@@ -71,20 +76,28 @@ export function getIoTShareRecommendation(yearlyCons) {
     if (value === 0) {
         return {
             message: 'No IoT consumption share was detected. Add devices to get a more accurate recommendation.',
+            emoji: 'ℹ️',
+            severity: 'info',
         };
     }
     if (value <= 5) {
         return {
             message: `Your IoT load is low at ${value.toFixed(1)}% of yearly consumption. Keep optimizing with smart scheduling.`,
+            emoji: '✅',
+            severity: 'good',
         };
     }
     if (value <= 20) {
         return {
             message: `Your IoT load is moderate at ${value.toFixed(1)}%. Review the highest-use devices to reduce waste.`,
+            emoji: '⚠️',
+            severity: 'warning',
         };
     }
     return {
         message: `Your IoT load is relatively high at ${value.toFixed(1)}%. Consider a device audit and smarter controls to cut emissions.`,
+        emoji: '🔴',
+        severity: 'bad',
     };
 }
 
