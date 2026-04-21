@@ -14,6 +14,12 @@ from homeassistant.util import dt as dt_util
 from .const import DOMAIN
 from .energy_store import EnergyStore
 
+_LOGGER = logging.getLogger(__name__)
+
+
+class ProviderError(Exception):
+    """Error raised when OpenRouter returns a provider error."""
+
 
 def utils_get_device_classes(
     hass: HomeAssistant, device_entities: list[RegistryEntry]
@@ -186,7 +192,7 @@ def utils_find_energy_entity_for_device(
 
 
 def utils_get_yearly_consumption(hass: HomeAssistant) -> float:
-    """Returns the energy consumption (in kWh) of the last year."""
+    """Returns the energy consumption (in kWh) of the last year from either the energy meter either the fallback value."""
 
     entries = hass.config_entries.async_entries(DOMAIN)
     if not entries:
@@ -196,9 +202,8 @@ def utils_get_yearly_consumption(hass: HomeAssistant) -> float:
 
     default_ret_value = entry.options.get("yearly_consumption") or 0.0
 
-    energy_meter = entry.options.get("energy_meter")
-    energy_meter_entity = utils_find_energy_entity_for_device(hass, energy_meter)
-    if not energy_meter_entity or energy_meter == "":
+    energy_meter_entity = entry.options.get("energy_meter")
+    if not energy_meter_entity or energy_meter_entity == "":
         return default_ret_value
 
     state = hass.states.get(energy_meter_entity)
@@ -227,3 +232,189 @@ def utils_get_yearly_consumption(hass: HomeAssistant) -> float:
         yearly_energy += daily_nrg
 
     return yearly_energy
+
+
+def utils_build_cfdb_device(device: dict) -> dict:
+    """Builds the device dictionary following the format for the CFDB interface."""
+    device_dict = {}
+
+    metadata = device.get("metadata", {})
+    model = metadata.get("model", "unknown")
+    manufacturer = metadata.get("manufacturer", "unknown")
+
+    carbon_footprint = device.get("carbon_footprint", 0)
+    d_type = device.get("type", "unknown")
+    d_id = (
+        model.lower().strip() + "-" + manufacturer.lower().strip()
+        if model and manufacturer
+        else "demoObj-nullType"
+    )
+
+    device_dict["id"] = d_id
+    device_dict["model"] = model
+    device_dict["manufacturer"] = manufacturer
+    device_dict["type"] = d_type
+    device_dict["carbon_footprint"] = [
+        {"low": carbon_footprint, "mid": carbon_footprint, "high": carbon_footprint}
+    ]
+
+    return device_dict
+
+
+def utils_get_device_energy_consumption_map(
+    hass: HomeAssistant, device_id: str, granularity: str
+) -> dict:
+    """Return a dictionary mapping a device's energy consumption by the given time granularity.
+
+    The keys are formatted as "%d-%m-%Y-%H".
+    """
+    energy_entity = utils_find_energy_entity_for_device(hass, device_id)
+    _LOGGER.debug("No energy entity found for device id %s, skipping", device_id)
+    if not energy_entity:
+        return None
+
+    stats = statistics_during_period(
+        hass,
+        dt_util.now() - timedelta(days=1825),
+        dt_util.now(),
+        {energy_entity},
+        granularity,
+        None,
+        {"sum", "mean"},
+    )
+
+    result = {}
+    for stat in stats.get(energy_entity, []):
+        start_ts = stat.get("start")
+        if not start_ts:
+            continue
+        dt = dt_util.as_local(dt_util.utc_from_timestamp(start_ts))
+        map_key = dt.strftime("%d-%m-%Y-%H")
+        result[map_key] = stat.get("sum", 0)
+
+    return result
+
+
+def utils_compute_device_consumption_footprint(
+    hass: HomeAssistant,
+    device_id: str,
+    granularity: str,
+    start_time: str,
+    end_time: str,
+) -> dict:
+    """Return a dictionary mapping a device's energy consumption carbon impact by the given time granularity."""
+    energy_consumption_map = utils_get_device_energy_consumption_map(
+        hass,
+        device_id,
+        "hour",  # use hour here because we aggregate afterwards
+    )
+    if not energy_consumption_map:
+        return None
+
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        _LOGGER.exception("No config entry found")
+        return None
+
+    start_time = dt_util.parse_datetime(start_time)
+    end_time = dt_util.parse_datetime(end_time)
+
+    energy_store = entries[0].runtime_data.energy_store.data
+
+    last_value = None
+    delta_energy_dict = {}
+    for key, value in energy_consumption_map.items():
+        if last_value:
+            delta = value - last_value
+            delta_energy_dict[key] = max(delta, 0)
+
+        # if delta and delta < 0:
+        #    last_value = 0
+        #    continue
+
+        last_value = value
+
+    results = []
+    match granularity:
+        case "hour":
+            for key, value in delta_energy_dict.items():
+                data_time = dt_util.as_local(datetime.strptime(key, "%d-%m-%Y-%H"))
+                if data_time > end_time or data_time < start_time:
+                    continue
+
+                consumption_cf = value * energy_store.get(key, 150.0)
+                results.append(
+                    {
+                        "timestamp": data_time.isoformat(),
+                        "consumption_footprint": consumption_cf,
+                    }
+                )
+        case "day":
+            curr_date = None
+            cumulated_fp = 0
+            days = 0
+
+            for key, value in delta_energy_dict.items():
+                data_time = dt_util.as_local(datetime.strptime(key, "%d-%m-%Y-%H"))
+                if data_time > end_time or data_time < start_time:
+                    continue
+
+                consumption_cf = value * energy_store.get(key, 150.0)
+
+                if curr_date and curr_date.date() != data_time.date():
+                    results.append(
+                        {
+                            "timestamp": curr_date.isoformat(),
+                            "consumption_footprint": cumulated_fp / days,
+                        }
+                    )
+                    days = 0
+                    cumulated_fp = 0
+
+                curr_date = data_time
+                cumulated_fp += consumption_cf
+                days += 1
+
+            if curr_date and days > 0:
+                results.append(
+                    {
+                        "timestamp": curr_date.isoformat(),
+                        "consumption_footprint": cumulated_fp / days,
+                    }
+                )
+
+        case "month":
+            curr_date = None
+            cumulated_fp = 0
+            days = 0
+
+            for key, value in delta_energy_dict.items():
+                data_time = dt_util.as_local(datetime.strptime(key, "%d-%m-%Y-%H"))
+                if data_time > end_time or data_time < start_time:
+                    continue
+
+                consumption_cf = value * energy_store.get(key, 150.0)
+
+                if curr_date and curr_date.month != data_time.month:
+                    results.append(
+                        {
+                            "timestamp": data_time.isoformat(),
+                            "consumption_footprint": cumulated_fp / days,
+                        }
+                    )
+                    days = 0
+                    cumulated_fp = 0
+
+                curr_date = data_time
+                cumulated_fp += consumption_cf
+                days += 1
+
+            if curr_date and days > 0:
+                results.append(
+                    {
+                        "timestamp": curr_date.isoformat(),
+                        "consumption_footprint": cumulated_fp / days,
+                    }
+                )
+
+    return results

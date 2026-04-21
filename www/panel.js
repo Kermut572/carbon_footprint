@@ -23,6 +23,7 @@ class CarbonFootprintPanel extends HTMLElement {
         this._chart = null;
         this._roomChart = null;
         this._deviceChart = null;
+        this._consumptionChart = null;
         this._roomData = null;
         this._selectedRoom = null;
         this._currentPage = 'main'; // 'main' or 'settings'
@@ -31,6 +32,8 @@ class CarbonFootprintPanel extends HTMLElement {
         this._currentDevice = null;
         this._currentType = null;
         this._currentCarbonValue = 0.0;
+
+        this._hiddenDeviceIndices = new Set();
 
         this._chartGranularity = {
             HOUR: "hour",
@@ -67,7 +70,7 @@ class CarbonFootprintPanel extends HTMLElement {
     }
 
     async getCarbonData() {
-        console.log('Getting carbon data from backend');
+        //console.log('Getting carbon data from backend');
         return await CarbonUtils.getCarbonData(this);
     }
 
@@ -210,7 +213,7 @@ class CarbonFootprintPanel extends HTMLElement {
                 </header>
 
                 <div class="content" slot="content">
-                    <ha-card header="Energy Footprint">
+                    <ha-card header="Energy Consumption Footprint">
                         <div class="card-content">
                             <p>Current Energy CO₂ Intensity:
                                 <span class="ci-value">
@@ -227,7 +230,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                 )}</span>
                             </p>
                             <p style="font-size: 12px; color: #666; margin-top: 8px; margin-bottom: 16px;">
-                                <em>Grid carbon intensity over time (in grams CO₂ equivalent per kilowatt-hour)</em>
+                                <em>Devices energy consumption footprint over time (in grams CO₂ equivalent)</em>
                             </p>
                             <div class="histogram-controls">
                                 <label for="granularity-select">Granularity:</label>
@@ -245,8 +248,8 @@ class CarbonFootprintPanel extends HTMLElement {
                                     <option value="last-year">Last Year</option>
                                 </select>
                             </div>
-                            <div id="energy-histogram-container">
-                                ${energyHistogram}
+                            <div style="position: relative; height: 400px; width: 100%;">
+                                <canvas id="consumption-histogram-chart"></canvas>
                             </div>
                         </div>
 
@@ -398,13 +401,15 @@ class CarbonFootprintPanel extends HTMLElement {
             const script = document.createElement('script');
             script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
             script.onload = async () => {
-                this.renderHistogram();
+                //this.renderHistogram();
                 await this.renderRoomChart();
+                await this.renderConsumptionHistogram();
             };
             document.head.appendChild(script);
         } else {
-            this.renderHistogram();
+            //this.renderHistogram();
             await this.renderRoomChart();
+            await this.renderConsumptionHistogram();
         }
 
         const granSelect = this.querySelector('#granularity-select');
@@ -412,7 +417,7 @@ class CarbonFootprintPanel extends HTMLElement {
             granSelect.value = this._currentChartGranularity;
             granSelect.addEventListener('change', async (e) => {
                 this._currentChartGranularity = e.target.value;
-                await this.refreshHistogram();
+                await this.renderConsumptionHistogram();
             });
         }
 
@@ -421,7 +426,7 @@ class CarbonFootprintPanel extends HTMLElement {
             timeFrameSelect.value = this._currentTimeFrame;
             timeFrameSelect.addEventListener('change', async (e) => {
                 this._currentTimeFrame = e.target.value;
-                await this.refreshHistogram();
+                await this.renderConsumptionHistogram();
             });
         }
 
@@ -659,10 +664,10 @@ class CarbonFootprintPanel extends HTMLElement {
         if (typeof Chart === 'undefined') {
             const script = document.createElement('script');
             script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
-            script.onload = () => this.renderHistogram();
+            //script.onload = () => this.renderHistogram();
             document.head.appendChild(script);
         } else {
-            this.renderHistogram();
+            //this.renderHistogram();
         }
     }
 
@@ -675,10 +680,14 @@ class CarbonFootprintPanel extends HTMLElement {
             <div class="loading-content">
                 <div class="spinner"></div>
                 <p>${message}</p>
+                <div class="progress-cont">
+                    <div class="progress-bar"></div>
+                </div>
             </div>
         `;
 
         this.appendChild(overlay);
+
     }
 
     hideLoadingOverlay() {
@@ -695,6 +704,7 @@ class CarbonFootprintPanel extends HTMLElement {
         let deviceModels = devicesResp.device_models || [];
         let deviceManufacturers = devicesResp.device_manufacturers || [];
 
+
         let devicesDict = {};
         for (let i = 0; i < deviceNames.length; i++) {
             let infoDict = {};
@@ -703,31 +713,65 @@ class CarbonFootprintPanel extends HTMLElement {
             devicesDict[deviceNames[i]] = infoDict;
         }
 
+        let nbDevices = deviceNames.length;
+        let chunkSize = Math.round(nbDevices / 10);
+        let successfulBatches = 0;
+
+        const totalRuns = Math.max(1, Math.ceil(nbDevices / chunkSize));
+        const percentIncrement = Math.round(100 / totalRuns);
+
         try {
             this.showLoadingOverlay('Detecting device types...');
-            const llmResp = await this._hass.callWS({
-                type: 'carbon_footprint/llm_detection',
-                devices: devicesDict
-            });
-            let deviceTypes = JSON.parse(llmResp.device_types);
-            console.log('Device Types Detection successful, continuing...');
+            const progressBar = this.querySelector(".progress-bar");
 
-            let i = 0;
-            for(const key in devicesDict) {
-                devicesDict[key]['device_type'] = deviceTypes[key];
-                devicesDict[key]['device_id'] = deviceIds[i];
-                i++;
+            progressBar.style.width = '0%';
+            console.log(`Chunked data dictionary into chunks of ${chunkSize} devices`)
+
+            for (let i = 0; i < nbDevices; i += chunkSize) {
+                const chunkDevicesDict = Object.fromEntries(Object.entries(devicesDict).slice(i, i + chunkSize));
+                const chunkDeviceIds = deviceIds.slice(i, i + chunkSize);
+                console.log(`Running device type detection, run ${i/chunkSize}. Sent devices are: ${JSON.stringify(chunkDevicesDict, null, '\t')}`);
+                try {
+                    const llmResp = await this._hass.callWS({
+                        type: 'carbon_footprint/llm_detection',
+                        devices: chunkDevicesDict
+                    });
+                    let deviceTypes = JSON.parse(llmResp.device_types || "{}");
+                    Object.keys(chunkDevicesDict).forEach((key, idx) => {
+                        devicesDict[key].device_type = deviceTypes[key] ?? "unknown";
+                        devicesDict[key].device_id = chunkDeviceIds[idx] ?? null;
+                    });
+                    console.log(`Batch ${i / chunkSize} successfully detected, continuing`);
+                    successfulBatches++;
+                } catch (error) {
+                    console.error(`Failed detection for batch ${i/chunkSize} with error: ${error.message || error.code}`);
+                    let j = 0;
+                    Object.keys(chunkDevicesDict).forEach((key, idx) => {
+                        devicesDict[key].device_type = "error";
+                        devicesDict[key].device_id = chunkDeviceIds[idx] ?? null;
+                    });
+                } finally {
+                    const current = parseFloat(progressBar.style.width) || 0;
+                    progressBar.style.width = `${Math.min(100, current + percentIncrement)}%`;
+                }
             }
+            console.log('Device Types Detection ended, continuing...');
 
+            const devicesToSend = Object.fromEntries(
+                Object.entries(devicesDict).filter(([name, info]) => {
+                    const t = info?.device_type;
+                    return typeof t === 'string' && t.length > 0 && t !== 'error';
+                })
+            );
             this.showLoadingOverlay('Matching devices with database...');
 
-            console.log(`Sending ${JSON.stringify(devicesDict)}`)
+            console.log(`Sending ${JSON.stringify(devicesToSend, null, '\t')}`)
             const dbMatchingResp = await this._hass.callWS({
                 type: 'carbon_footprint/db_matching',
-                device_types: devicesDict,
+                device_types: devicesToSend,
             });
             let devicesMatched = dbMatchingResp.devices_matched;
-            console.log(`${devicesMatched}`)
+            console.log(`Matched ${JSON.stringify(devicesMatched, null, '\t')}`)
 
 
             //flow: Once we got the device types: pull the db and match carbon values, this will automatically setup everything where possible.
@@ -740,6 +784,7 @@ class CarbonFootprintPanel extends HTMLElement {
             //}
             //then use this for set_device
 
+            if (progressBar) progressBar.style.width = '100%';
             this.showLoadingOverlay('Adding devices to Carbon Footprint Integration...');
             for (const [deviceName, deviceInfo] of Object.entries(devicesMatched)) {
                 console.log(`Processing ${deviceName}: `, deviceInfo)
@@ -761,7 +806,161 @@ class CarbonFootprintPanel extends HTMLElement {
             loaderAnim.style.display = 'none';
             const updatedData = await this.getCarbonData();
             await this.renderSettingsPage(updatedData);
+            if (successfulBatches !== 0)
+                Utils.showToast(this, `Successfully detected ${successfulBatches}/${totalRuns} device batches`)
+            else
+                Utils.showToast(this, `LLM detection failed on every batch. Check console logs for more information`)
         }
+    }
+
+    async renderConsumptionHistogram() {
+        const canvas = this.querySelector('#consumption-histogram-chart');
+        if (!canvas) {
+            return;
+        }
+
+        let pastDays;
+        switch (this._currentTimeFrame) {
+            case this._timeFrame.WEEK:
+                pastDays = 7;
+                break;
+            case this._timeFrame.MONTH:
+                pastDays = 30;
+                break;
+            case this._timeFrame.YEAR:
+                pastDays = 365;
+                break;
+            default:
+                pastDays = 7;
+        }
+
+        const endTime = new Date();
+        const startTime = new Date(endTime);
+        startTime.setDate(endTime.getDate() - pastDays);
+
+        const result = await this._hass.callWS({
+            type: 'carbon_footprint/get_consumption_footprint_time_interval',
+            start_time: startTime.toISOString(),
+            end_time: endTime.toISOString(),
+            granularity: this._currentChartGranularity
+        });
+
+        const consumptionData = result.devices_consumptions;
+        if (!consumptionData || Object.keys(consumptionData).length === 0) {
+            canvas.parentElement.innerHTML = '<p>No consumption data available for the selected period.</p>';
+            return;
+        }
+
+        const allTimestamps = new Set();
+        const deviceNames = result.device_name_map;
+        const aggData = {};
+
+        for (const deviceId in consumptionData) {
+            if (consumptionData[deviceId]) {
+                consumptionData[deviceId].forEach(point => {
+                    const date = new Date(point.timestamp);
+                    const groupKey = Utils.getDateGroupKey(date, this._currentChartGranularity, this._chartGranularity);
+
+                    if (!aggData[groupKey]) {
+                        aggData[groupKey] = {};
+                    }
+                    if (!aggData[groupKey][deviceId]) {
+                        aggData[groupKey][deviceId] = 0;
+                    }
+                    aggData[groupKey][deviceId] += point.consumption_footprint;
+                });
+            }
+        }
+
+        const sortedTimestamps = Object.keys(aggData).sort();
+
+        const labels = sortedTimestamps.map(ts => {
+            const date = new Date(ts);
+            switch (this._currentChartGranularity) {
+                case this._chartGranularity.HOUR:
+                    return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit' });
+                case this._chartGranularity.DAY:
+                    return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+                case this._chartGranularity.MONTH:
+                    return date.toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' });
+                default:
+                    return date.toLocaleString();
+            }
+        });
+
+        const baseColors = [
+            'rgba(76, 175, 80, 0.6)',
+            'rgba(33, 150, 243, 0.6)',
+            'rgba(255, 152, 0, 0.6)',
+            'rgba(244, 67, 54, 0.6)',
+            'rgba(156, 39, 176, 0.6)',
+            'rgba(0, 150, 136, 0.6)',
+            'rgba(255, 235, 59, 0.6)',
+            'rgba(121, 85, 72, 0.6)',
+        ];
+
+        const datasets = Object.keys(consumptionData).map((deviceId, index) => {
+            const data = sortedTimestamps.map(ts => (aggData[ts] && aggData[ts][deviceId]) || 0);
+
+            return {
+                label: deviceNames[deviceId],
+                data: this._hiddenDeviceIndices.has(index) ? data.map(() => 0) : data,
+                backgroundColor: baseColors[index % baseColors.length],
+                deviceIndex: index,
+            };
+        });
+
+        if (this._consumptionChart) {
+            this._consumptionChart.destroy();
+        }
+
+        this._consumptionChart = new Chart(canvas.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: datasets,
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        onClick: (e, legendItem, legend) => {
+                            const index = legendItem.datasetIndex;
+                            if (this._hiddenDeviceIndices.has(index)) {
+                                this._hiddenDeviceIndices.delete(index);
+                            } else {
+                                this._hiddenDeviceIndices.add(index);
+                            }
+                            this.renderConsumptionHistogram();
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: 'Energy Consumption Footprint (gCO₂eq)',
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => `${context.dataset.label}: ${context.parsed.y.toFixed(4)} gCO₂eq`
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        stacked: true,
+                    },
+                    y: {
+                        stacked: true,
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'gCO₂eq'
+                        }
+                    }
+                }
+            }
+        });
     }
 
     renderHistogram() {
@@ -1447,7 +1646,7 @@ class CarbonFootprintPanel extends HTMLElement {
         ];
         const typeSelector = this.querySelector('#device_type_selector');
         if (typeSelector) {
-            console.log('Loaded device type selector')
+            //console.log('Loaded device type selector')
             try {
                 typeSelector.hass = this._hass;
                 typeSelector.selector = {
@@ -1540,11 +1739,11 @@ class CarbonFootprintPanel extends HTMLElement {
                 const array = JSON.stringify(jsonArray.json_array);
                 const uploaded = jsonArray.uploaded
                 if (uploaded === 'yes') {
-                    Utils.showToast("Devices have been uploaded to the db interface!");
+                    Utils.showToast(this, "Devices have been uploaded to the db interface!");
                 }
                 else {
                     navigator.clipboard.writeText(array);
-                    Utils.showToast("Devices have been copied to the clipboard! If you wanted to upload to the interface, please make sure db_ip and cfdb_token are set.");
+                    Utils.showToast(this, "Devices have been copied to the clipboard! If you wanted to upload to the interface, please make sure db_ip and cfdb_token are correct and set.");
                 }
             })
         }

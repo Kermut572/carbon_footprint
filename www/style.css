@@ -467,3 +467,20 @@ button[value="cancel"] {
 
 b { font-weight: 600; }
 
+.progress-cont {
+    width: 100%;
+    color: grey;
+    border-width: 3px;
+    border-radius: 15%;
+    border-color: #333;
+}
+
+.progress-bar {
+    width: 0%;
+    height: 15px;
+    background-color: var(--primary-color, lightskyblue);
+    border-radius: 4px;
+    transition: width 300ms ease;
+    display: block;
+}
+
