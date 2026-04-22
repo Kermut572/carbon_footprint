@@ -15,6 +15,7 @@ import logging
 from typing import Any
 
 import aiohttp
+from dateutil.relativedelta import relativedelta
 from openrouter import OpenRouter
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 import voluptuous as vol
@@ -698,10 +699,8 @@ async def ws_get_embodied_carbon_time_interval(
             _LOGGER.debug("Could not find install date for device %s", device_id)
             continue
 
-        HOURS_IN_YEAR = 8766
-
-        cf_per_hour = (carbon_footprint / lifetime_years) / HOURS_IN_YEAR
-        curr_date = install_date
+        cf_per_hour = (carbon_footprint / lifetime_years) / 8766  # nb hours in a year
+        curr_date = start_time
 
         results = []
         while curr_date < end_time:
@@ -720,9 +719,9 @@ async def ws_get_embodied_carbon_time_interval(
                         - timedelta(days=1)
                     ).day
                     embodied_footprint = cf_per_hour * 24 * days_in_month
-                    next_date += timedelta(days=days_in_month)
+                    next_date += relativedelta(months=1)
 
-            if curr_date >= install_date and curr_date >= start_time:
+            if curr_date >= install_date:
                 results.append(
                     {
                         "timestamp": curr_date.isoformat(),
