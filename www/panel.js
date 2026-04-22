@@ -948,7 +948,7 @@ class CarbonFootprintPanel extends HTMLElement {
             datasets.push({
                 label: `${deviceName} (Embodied)`,
                 data: this._hiddenDeviceIndices.has(index) ? embodiedDataPoints.map(() => 0) : embodiedDataPoints,
-                backgroundColor: this._createHatchPattern(ctx, baseColor),
+                backgroundColor: (this._ecView === 'total') ? this._createHatchPattern(ctx, baseColor) : baseColor,
                 deviceIndex: index,
                 stack: deviceId,
             });
