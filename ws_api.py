@@ -574,7 +574,7 @@ async def ws_get_energy_footprint_time_interval(
                     results.append(
                         {
                             "timestamp": curr_date.isoformat(),
-                            "energy_footprint": cumulated_fp / days,
+                            "energy_footprint": cumulated_fp,
                         }
                     )
                     days = 0
@@ -588,7 +588,7 @@ async def ws_get_energy_footprint_time_interval(
                 results.append(
                     {
                         "timestamp": curr_date.isoformat(),
-                        "energy_footprint": cumulated_fp / days,
+                        "energy_footprint": cumulated_fp,
                     }
                 )
 
@@ -606,7 +606,7 @@ async def ws_get_energy_footprint_time_interval(
                     results.append(
                         {
                             "timestamp": data_time.isoformat(),
-                            "energy_footprint": cumulated_fp / days,
+                            "energy_footprint": cumulated_fp,
                         }
                     )
                     days = 0
@@ -620,7 +620,7 @@ async def ws_get_energy_footprint_time_interval(
                 results.append(
                     {
                         "timestamp": curr_date.isoformat(),
-                        "energy_footprint": cumulated_fp / days,
+                        "energy_footprint": cumulated_fp,
                     }
                 )
 
