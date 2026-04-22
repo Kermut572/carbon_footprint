@@ -859,7 +859,7 @@ class CarbonFootprintPanel extends HTMLElement {
             granularity: this._currentChartGranularity
         });
 
-        embodiedData = embodiedResult.embodied_carbon;
+        const embodiedData = embodiedResult.embodied_carbon;
 
         const deviceNames = result.device_name_map;
         const aggData = {};
