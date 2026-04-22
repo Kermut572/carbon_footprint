@@ -960,7 +960,7 @@ class CarbonFootprintPanel extends HTMLElement {
                             padding: 15,
                             font: { size: 13 },
                             generateLabels: () => {
-                                const deviceLabels = deviceIds.map((deviceId, index) => {
+                                const deviceLabels = Object.keys(consumptionData).map((deviceId, index) => {
                                     const isHidden = this._hiddenDeviceIndices.has(index);
                                     return {
                                         text: deviceNames[deviceId],
