@@ -863,15 +863,15 @@ class CarbonFootprintPanel extends HTMLElement {
         const startTime = new Date(endTime);
         startTime.setDate(endTime.getDate() - pastDays);
 
-        const result = (this._ecView == 'total' || this._ecView == 'usage') ? await this._hass.callWS({
+        const result = await this._hass.callWS({
             type: 'carbon_footprint/get_consumption_footprint_time_interval',
             start_time: startTime.toISOString(),
             end_time: endTime.toISOString(),
             granularity: this._currentChartGranularity
-        }) : {};
+        });
 
 
-        const consumptionData = result.devices_consumptions || {};
+        const consumptionData = (this._ecView == 'total' || this._ecView == 'usage') ? result.devices_consumptions : {};
         //if (!consumptionData || Object.keys(consumptionData).length === 0) {
         //    canvas.parentElement.innerHTML = '<p>No consumption data available for the selected period.</p>';
         //    return;
