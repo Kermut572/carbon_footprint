@@ -703,7 +703,7 @@ async def ws_get_embodied_carbon_time_interval(
         curr_date = start_time
 
         results = []
-        while curr_date < end_time:
+        while curr_date <= end_time:
             embodied_footprint = 0
             next_date = curr_date
             match granularity:

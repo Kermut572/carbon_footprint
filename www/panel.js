@@ -918,6 +918,16 @@ class CarbonFootprintPanel extends HTMLElement {
             const baseColor = baseColors[index % baseColors.length];
             const deviceName = deviceNames[deviceId];
 
+            // embodied
+            const embodiedDataPoints = sortedTimestamps.map(ts => (aggData[ts] && aggData[ts][deviceId]?.embodied) || 0);
+            datasets.push({
+                label: `${deviceName} (Embodied)`,
+                data: this._hiddenDeviceIndices.has(index) ? embodiedDataPoints.map(() => 0) : embodiedDataPoints,
+                backgroundColor: this._createHatchPattern(ctx, baseColor),
+                deviceIndex: index,
+                stack: deviceId,
+            });
+
             // usage data
             const usageData = sortedTimestamps.map(ts => (aggData[ts] && aggData[ts][deviceId]?.consumption) || 0);
             datasets.push({
@@ -928,15 +938,6 @@ class CarbonFootprintPanel extends HTMLElement {
                 stack: deviceId,
             });
 
-            // embodied
-            const embodiedDataPoints = sortedTimestamps.map(ts => (aggData[ts] && aggData[ts][deviceId]?.embodied) || 0);
-            datasets.push({
-                label: `${deviceName} (Embodied)`,
-                data: this._hiddenDeviceIndices.has(index) ? embodiedDataPoints.map(() => 0) : embodiedDataPoints,
-                backgroundColor: this._createHatchPattern(ctx, baseColor),
-                deviceIndex: index,
-                stack: deviceId,
-            });
         });
 
         if (this._consumptionChart) {
