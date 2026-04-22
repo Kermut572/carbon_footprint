@@ -41,6 +41,7 @@ from .utils import (
     utils_get_device_install_date,
     utils_get_device_total_energy_consumption,
     utils_get_yearly_consumption,
+    utils_round_to_day,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -703,7 +704,7 @@ async def ws_get_embodied_carbon_time_interval(
         curr_date = start_time
 
         results = []
-        while curr_date <= end_time:
+        while curr_date < utils_round_to_day(end_time):
             embodied_footprint = 0
             next_date = curr_date
             match granularity:

@@ -418,3 +418,11 @@ def utils_compute_device_consumption_footprint(
                 )
 
     return results
+
+
+def utils_round_to_day(dt: datetime):
+    """Round a date to the next day at midnight.
+
+    Source: https://www.statology.org/how-to-round-dates-to-the-nearest-day-hour-or-minute-in-python/
+    """
+    return dt.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
