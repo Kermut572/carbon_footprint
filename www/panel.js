@@ -199,7 +199,7 @@ class CarbonFootprintPanel extends HTMLElement {
         console.log('Fetching room data for recommendation...');
         const roomData = await this.getCarbonByRoom();
         const recommendation = getHighImpactAreaRecommendation(roomData);
-        
+
         // Generate carbon intensity recommendation
         const intensityRec = getCarbonIntensityRecommendation(data?.co2_intensity);
         const iotShareRec = getIoTShareRecommendation(yearlyCons);
@@ -845,33 +845,45 @@ class CarbonFootprintPanel extends HTMLElement {
             granularity: this._currentChartGranularity
         });
 
+
         const consumptionData = result.devices_consumptions;
         if (!consumptionData || Object.keys(consumptionData).length === 0) {
             canvas.parentElement.innerHTML = '<p>No consumption data available for the selected period.</p>';
             return;
         }
 
-        const allTimestamps = new Set();
+        const embodiedResult = await this._hass.callWS({
+            type: 'carbon_footprint/get_embodied_carbon_time_interval',
+            start_time: startTime.toISOString(),
+            end_time: endTime.toISOString(),
+            granularity: this._currentChartGranularity
+        });
+
+        embodiedData = embodiedResult.embodied_carbon;
+
         const deviceNames = result.device_name_map;
         const aggData = {};
 
-        for (const deviceId in consumptionData) {
-            if (consumptionData[deviceId]) {
-                consumptionData[deviceId].forEach(point => {
-                    const date = new Date(point.timestamp);
-                    const groupKey = Utils.getDateGroupKey(date, this._currentChartGranularity, this._chartGranularity);
+        const procData = (data, type) => {
+            for (const deviceId in data) {
+                if (data[deviceId]) {
+                    data[deviceId].forEach(point => {
+                        const date = new Date(point.timestamp);
+                        const groupKey = Utils.getDateGroupKey(date, this._currentChartGranularity, this._chartGranularity);
 
-                    if (!aggData[groupKey]) {
-                        aggData[groupKey] = {};
-                    }
-                    if (!aggData[groupKey][deviceId]) {
-                        aggData[groupKey][deviceId] = 0;
-                    }
-                    aggData[groupKey][deviceId] += point.consumption_footprint;
-                });
+                        if (!aggData[groupKey]) {
+                            aggData[groupKey] = {};
+                        }
+                        if (!aggData[groupKey][deviceId]) {
+                            aggData[groupKey][deviceId] = { consumption: 0, embodied: 0 };
+                        }
+                        aggData[groupKey][deviceId][type] += point.consumption_footprint || point.embodied_footprint || 0;
+                    });
+                }
             }
-        }
-
+        };
+        procData(consumptionData, `consumption`);
+        procData(embodiedData, `embodied`);
         const sortedTimestamps = Object.keys(aggData).sort();
 
         const labels = sortedTimestamps.map(ts => {
@@ -899,15 +911,32 @@ class CarbonFootprintPanel extends HTMLElement {
             'rgba(121, 85, 72, 0.6)',
         ];
 
-        const datasets = Object.keys(consumptionData).map((deviceId, index) => {
-            const data = sortedTimestamps.map(ts => (aggData[ts] && aggData[ts][deviceId]) || 0);
+        const datasets = [];
+        const ctx = canvas.getContext('2d');
 
-            return {
-                label: deviceNames[deviceId],
-                data: this._hiddenDeviceIndices.has(index) ? data.map(() => 0) : data,
-                backgroundColor: baseColors[index % baseColors.length],
+        Object.keys(consumptionData).forEach((deviceId, index) => {
+            const baseColor = baseColors[index % baseColors.length];
+            const deviceName = deviceNames[deviceId];
+
+            // usage data
+            const usageData = sortedTimestamps.map(ts => (aggData[ts] && aggData[ts][deviceId]?.consumption) || 0);
+            datasets.push({
+                label: `${deviceName} (Usage)`,
+                data: this._hiddenDeviceIndices.has(index) ? usageData.map(() => 0) : usageData,
+                backgroundColor: baseColor,
                 deviceIndex: index,
-            };
+                stack: deviceId,
+            });
+
+            // embodied
+            const embodiedDataPoints = sortedTimestamps.map(ts => (aggData[ts] && aggData[ts][deviceId]?.embodied) || 0);
+            datasets.push({
+                label: `${deviceName} (Embodied)`,
+                data: this._hiddenDeviceIndices.has(index) ? embodiedDataPoints.map(() => 0) : embodiedDataPoints,
+                backgroundColor: this._createHatchPattern(ctx, baseColor),
+                deviceIndex: index,
+                stack: deviceId,
+            });
         });
 
         if (this._consumptionChart) {
@@ -928,13 +957,16 @@ class CarbonFootprintPanel extends HTMLElement {
                         position: 'bottom',
                         onClick: (e, legendItem, legend) => {
                             const index = legendItem.datasetIndex;
-                            if (this._hiddenDeviceIndices.has(index)) {
-                                this._hiddenDeviceIndices.delete(index);
+                            const deviceIndex = legend.chart.data.datasets[index].deviceIndex;
+
+                            if (this._hiddenDeviceIndices.has(deviceIndex)) {
+                                this._hiddenDeviceIndices.delete(deviceIndex);
                             } else {
-                                this._hiddenDeviceIndices.add(index);
+                                this._hiddenDeviceIndices.add(deviceIndex);
                             }
                             this.renderConsumptionHistogram();
-                        }
+                        },
+
                     },
                     title: {
                         display: true,

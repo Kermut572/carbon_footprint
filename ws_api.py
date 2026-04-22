@@ -10,7 +10,7 @@ data.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 from typing import Any
 
@@ -35,6 +35,7 @@ from .utils import (
     utils_build_cfdb_device,
     utils_compute_device_consumption_footprint,
     utils_fetch_electricity_maps_sensor,
+    utils_find_energy_entity_for_device,
     utils_get_device_classes,
     utils_get_device_install_date,
     utils_get_device_total_energy_consumption,
@@ -55,6 +56,7 @@ def async_register_websocket_handlers(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_all_devices_energy)
     websocket_api.async_register_command(hass, ws_update_devices_energy)
     websocket_api.async_register_command(hass, ws_get_energy_footprint_time_interval)
+    websocket_api.async_register_command(hass, ws_get_embodied_carbon_time_interval)
     websocket_api.async_register_command(
         hass, ws_get_consumption_footprint_time_interval
     )
@@ -111,6 +113,7 @@ def ws_get_devices_to_add(
         },
     )
 
+
 def _get_loaded_entry(hass: HomeAssistant):
     entries = hass.config_entries.async_entries(DOMAIN)
     return next(
@@ -145,7 +148,7 @@ def ws_get_carbon_data(
         co2_intensity = float(co2_intensity_state.state)
         status = "available"
 
-    #entries = hass.config_entries.async_entries(DOMAIN)
+    # entries = hass.config_entries.async_entries(DOMAIN)
     entry = _get_loaded_entry(hass)
     if entry is None:
         connection.send_error(
@@ -162,7 +165,7 @@ def ws_get_carbon_data(
         device_entry = device_reg.devices.get(device_id)
         if not device_entry:
             continue
-        
+
         updated_device_name = (
             device_reg.devices.get(device_id).name_by_user
             or device_reg.devices.get(device_id).name
@@ -478,8 +481,8 @@ async def ws_get_consumption_footprint_time_interval(
             devices.get(device_id, {}).get("metadata", {}).get("display_name", "err")
         )
 
-    _LOGGER.info("PROCESSED DEVICES")
-    _LOGGER.info(devices_consumptions)
+    _LOGGER.debug("PROCESSED DEVICES")
+    _LOGGER.debug(devices_consumptions)
 
     # response format: {"device_1": [{"ts_1": cf_1, "ts_2":cf_2,...}], "device_2": [], ...}
     connection.send_result(
@@ -538,7 +541,6 @@ async def ws_get_energy_footprint_time_interval(
             msg["id"], "config_entry_not_loaded", "Uh oh, no loaded entry found :-("
         )
         return
-
 
     energy_store = entry.runtime_data.energy_store
 
@@ -624,6 +626,123 @@ async def ws_get_energy_footprint_time_interval(
     connection.send_result(msg["id"], {"energy_footprints": results})
 
     return
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/get_embodied_carbon_time_interval",
+        vol.Required("start_time"): str,
+        vol.Required("end_time"): str,
+        vol.Required("granularity"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_get_embodied_carbon_time_interval(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Get the repartition of the embodied carbon footprint over a given time interval."""
+
+    start_time = dt_util.parse_datetime(msg["start_time"])
+    end_time = dt_util.parse_datetime(msg["end_time"])
+
+    if not start_time or not end_time:
+        _LOGGER.error(
+            "No start_date or date_time set for call to ws_get_embodied_carbon_time_interval"
+        )
+        connection.send_error(msg["id"], "invalid_format", "Invalid date format")
+        return
+
+    if end_time < start_time:
+        _LOGGER.error(
+            "Invalid time interval for call to ws_get_embodied_carbon_time_interval"
+        )
+        connection.send_error(msg["id"], "invalid_interval", "Invalid time interval")
+        return
+
+    granularity = msg["granularity"]
+    if granularity not in ("hour", "day", "month"):
+        _LOGGER.error(
+            "Invalid granularity for call to ws_get_embodied_carbon_time_interval"
+        )
+        connection.send_error(msg["id"], "invalid_granularity", "Invalid granularity")
+        return
+
+    entry = _get_loaded_entry(hass)
+    if entry is None:
+        connection.send_error(
+            msg["id"], "config_entry_not_loaded", "Uh oh, no loaded entry found :-("
+        )
+        return
+
+    devices = entry.runtime_data.cf_store.get_devices_data()
+    response = {}
+    for device_id, device_info in devices.items():
+        carbon_footprint = (
+            device_info.get("carbon_footprint", 0) * 1000
+        )  # by default it is in kgCO2eq
+        lifetime_years = device_info.get("lifetime_years", 5)
+
+        energy_entity = await hass.async_add_executor_job(
+            utils_find_energy_entity_for_device, hass, device_id
+        )
+        if not energy_entity:
+            continue
+
+        install_date = await hass.async_add_executor_job(
+            utils_get_device_install_date, hass, energy_entity
+        )
+        if not install_date:
+            continue
+
+        HOURS_IN_YEAR = 8766
+        DAYS_IN_YEAR = 365.25
+        MONTHS_IN_YEAR = 12
+
+        cf_per_hour = (carbon_footprint / lifetime_years) / HOURS_IN_YEAR
+        curr_date = install_date
+
+        results = []
+        while curr_date < end_time:
+            embodied_footprint = 0
+            next_date = curr_date
+            match granularity:
+                case "hour":
+                    embodied_footprint = cf_per_hour
+                    next_date += timedelta(hours=1)
+                    break
+                case "day":
+                    embodied_footprint = cf_per_hour * 24
+                    next_date += timedelta(days=1)
+                    break
+                case "month":
+                    days_in_month = (
+                        curr_date.replace(month=curr_date.month % 12 + 1, day=1)
+                        - timedelta(days=1)
+                    ).day
+                    embodied_footprint = cf_per_hour * 24 * days_in_month
+                    next_date += timedelta(days=days_in_month)
+                    break
+
+            if curr_date >= install_date:
+                results.append(
+                    {
+                        "timestamp": curr_date.isoformat(),
+                        "embodied_footprint": embodied_footprint,
+                    }
+                )
+
+            curr_date = next_date
+
+        response[device_id] = results
+
+    connection.send_result(
+        msg["id"],
+        {
+            "embodied_carbon": response,
+        },
+    )
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_carbon_by_room"})
