@@ -711,11 +711,9 @@ async def ws_get_embodied_carbon_time_interval(
                 case "hour":
                     embodied_footprint = cf_per_hour
                     next_date += timedelta(hours=1)
-                    break
                 case "day":
                     embodied_footprint = cf_per_hour * 24
                     next_date += timedelta(days=1)
-                    break
                 case "month":
                     days_in_month = (
                         curr_date.replace(month=curr_date.month % 12 + 1, day=1)
@@ -723,7 +721,6 @@ async def ws_get_embodied_carbon_time_interval(
                     ).day
                     embodied_footprint = cf_per_hour * 24 * days_in_month
                     next_date += timedelta(days=days_in_month)
-                    break
 
             if curr_date >= install_date:
                 results.append(
