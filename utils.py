@@ -365,7 +365,7 @@ def utils_compute_device_consumption_footprint(
                     results.append(
                         {
                             "timestamp": curr_date.isoformat(),
-                            "consumption_footprint": cumulated_fp / days,
+                            "consumption_footprint": cumulated_fp,
                         }
                     )
                     days = 0
@@ -379,7 +379,7 @@ def utils_compute_device_consumption_footprint(
                 results.append(
                     {
                         "timestamp": curr_date.isoformat(),
-                        "consumption_footprint": cumulated_fp / days,
+                        "consumption_footprint": cumulated_fp,
                     }
                 )
 
@@ -399,7 +399,7 @@ def utils_compute_device_consumption_footprint(
                     results.append(
                         {
                             "timestamp": data_time.isoformat(),
-                            "consumption_footprint": cumulated_fp / days,
+                            "consumption_footprint": cumulated_fp,
                         }
                     )
                     days = 0
@@ -413,7 +413,7 @@ def utils_compute_device_consumption_footprint(
                 results.append(
                     {
                         "timestamp": curr_date.isoformat(),
-                        "consumption_footprint": cumulated_fp / days,
+                        "consumption_footprint": cumulated_fp,
                     }
                 )
 
