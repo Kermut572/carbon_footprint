@@ -722,7 +722,7 @@ async def ws_get_embodied_carbon_time_interval(
                     embodied_footprint = cf_per_hour * 24 * days_in_month
                     next_date += timedelta(days=days_in_month)
 
-            if curr_date >= install_date:
+            if curr_date >= install_date and curr_date >= start_time:
                 results.append(
                     {
                         "timestamp": curr_date.isoformat(),
