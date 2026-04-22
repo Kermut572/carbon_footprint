@@ -697,8 +697,6 @@ async def ws_get_embodied_carbon_time_interval(
             continue
 
         HOURS_IN_YEAR = 8766
-        DAYS_IN_YEAR = 365.25
-        MONTHS_IN_YEAR = 12
 
         cf_per_hour = (carbon_footprint / lifetime_years) / HOURS_IN_YEAR
         curr_date = install_date
@@ -736,6 +734,8 @@ async def ws_get_embodied_carbon_time_interval(
             curr_date = next_date
 
         response[device_id] = results
+        _LOGGER.debug("PROCESSED DEVICES EMBODIED CARBON: %s", device_id)
+        _LOGGER.debug(results)
 
     connection.send_result(
         msg["id"],
