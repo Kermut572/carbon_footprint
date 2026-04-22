@@ -40,14 +40,14 @@ class CarbonFootprintPanel extends HTMLElement {
             DAY: "day",
             MONTH: "month"
         };
-        this._currentChartGranularity = this._chartGranularity.HOUR;
+        this._currentChartGranularity = this._chartGranularity.DAY;
 
         this._timeFrame = {
             WEEK: "last-week",
             MONTH: "last-month",
             YEAR: "last-year"
         };
-        this._currentTimeFrame = this._timeFrame.WEEK;
+        this._currentTimeFrame = this._timeFrame.MONTH;
     }
 
 
@@ -975,12 +975,12 @@ class CarbonFootprintPanel extends HTMLElement {
                                 deviceLabels.push({
                                     text: 'Embodied (hatched)',
                                     fillStyle: this._createHatchPattern(ctx, 'rgba(120, 120, 120, 0.6)'),
-                                    deviceIndex: deviceIds.length
+                                    deviceIndex: Object.keys(consumptionData).length
                                 });
                                 deviceLabels.push({
                                     text: 'Usage (solid)',
                                     fillStyle: 'rgba(120, 120, 120, 0.6)',
-                                    deviceIndex: deviceIds.length + 1
+                                    deviceIndex: Object.keys(consumptionData).length + 1
                                 });
 
                                 return deviceLabels;
@@ -989,7 +989,7 @@ class CarbonFootprintPanel extends HTMLElement {
                         onClick: (e, legendItem) => {
                             const deviceIndex = legendItem.deviceIndex;
 
-                            if (deviceIndex === undefined || deviceIndex >= deviceIds.length) {
+                            if (deviceIndex === undefined || deviceIndex >= Object.keys(consumptionData).length) {
                                 return;
                             }
 
