@@ -688,12 +688,14 @@ async def ws_get_embodied_carbon_time_interval(
             utils_find_energy_entity_for_device, hass, device_id
         )
         if not energy_entity:
+            _LOGGER.debug("Could not find energy entity for device %s", device_id)
             continue
 
         install_date = await hass.async_add_executor_job(
             utils_get_device_install_date, hass, energy_entity
         )
         if not install_date:
+            _LOGGER.debug("Could not find install date for device %s", device_id)
             continue
 
         HOURS_IN_YEAR = 8766
