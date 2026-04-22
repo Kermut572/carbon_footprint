@@ -871,7 +871,7 @@ class CarbonFootprintPanel extends HTMLElement {
         });
 
 
-        const consumptionData = (this._ecView == 'total' || this._ecView == 'usage') ? result.devices_consumptions : {};
+        const consumptionData = result.devices_consumptions;
         //if (!consumptionData || Object.keys(consumptionData).length === 0) {
         //    canvas.parentElement.innerHTML = '<p>No consumption data available for the selected period.</p>';
         //    return;
@@ -907,7 +907,7 @@ class CarbonFootprintPanel extends HTMLElement {
                 }
             }
         };
-        procData(consumptionData, `consumption`);
+        if (this._ecView == 'total' || this._ecView == 'usage') procData(consumptionData, `consumption`);
         procData(embodiedData, `embodied`);
         const sortedTimestamps = Object.keys(aggData).sort();
 
@@ -996,17 +996,18 @@ class CarbonFootprintPanel extends HTMLElement {
                                         datasetIndex: index * 2
                                     };
                                 });
-
-                                deviceLabels.push({
-                                    text: 'Embodied (hatched)',
-                                    fillStyle: this._createHatchPattern(ctx, 'rgba(120, 120, 120, 0.6)'),
-                                    deviceIndex: Object.keys(consumptionData).length
-                                });
-                                deviceLabels.push({
-                                    text: 'Usage (solid)',
-                                    fillStyle: 'rgba(120, 120, 120, 0.6)',
-                                    deviceIndex: Object.keys(consumptionData).length + 1
-                                });
+                                if (this._ecView === 'total') {
+                                    deviceLabels.push({
+                                        text: 'Embodied (hatched)',
+                                        fillStyle: this._createHatchPattern(ctx, 'rgba(120, 120, 120, 0.6)'),
+                                        deviceIndex: Object.keys(consumptionData).length
+                                    });
+                                    deviceLabels.push({
+                                        text: 'Usage (solid)',
+                                        fillStyle: 'rgba(120, 120, 120, 0.6)',
+                                        deviceIndex: Object.keys(consumptionData).length + 1
+                                    });
+                                }
 
                                 return deviceLabels;
                             }
