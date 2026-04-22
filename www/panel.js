@@ -957,8 +957,11 @@ class CarbonFootprintPanel extends HTMLElement {
                     legend: {
                         position: 'bottom',
                         onClick: (e, legendItem, legend) => {
-                            const index = legendItem.datasetIndex;
-                            const deviceIndex = legend.chart.data.datasets[index].deviceIndex;
+                            const deviceIndex = legendItem.deviceIndex;
+
+                            if (deviceIndex === undefined || deviceIndex >= deviceIds.length) {
+                                return;
+                            }
 
                             if (this._hiddenDeviceIndices.has(deviceIndex)) {
                                 this._hiddenDeviceIndices.delete(deviceIndex);
@@ -967,7 +970,35 @@ class CarbonFootprintPanel extends HTMLElement {
                             }
                             this.renderConsumptionHistogram();
                         },
+                    },
+                    labels: {
+                        padding: 15,
+                        font: { size: 13 },
+                        generateLabels: (chart) => {
+                            const deviceLabels = deviceIds.map((deviceId, index) => {
+                                const isHidden = this._hiddenDeviceIndices.has(index);
+                                return {
+                                    text: deviceNames[deviceId],
+                                    fillStyle: baseColors[index % baseColors.length],
+                                    hidden: isHidden,
+                                    deviceIndex: index,
+                                    datasetIndex: index * 2
+                                };
+                            });
 
+                            deviceLabels.push({
+                                text: 'Embodied (hatched)',
+                                fillStyle: this._createHatchPattern(ctx, 'rgba(120, 120, 120, 0.6)'),
+                                deviceIndex: deviceIds.length
+                            });
+                            deviceLabels.push({
+                                text: 'Usage (solid)',
+                                fillStyle: 'rgba(120, 120, 120, 0.6)',
+                                deviceIndex: deviceIds.length + 1
+                            });
+
+                            return deviceLabels;
+                        }
                     },
                     title: {
                         display: true,
