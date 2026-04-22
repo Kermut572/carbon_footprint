@@ -112,74 +112,41 @@ export function getUsagePatternRecommendation(histogramData, intensityData) {
         };
     }
 
-    if (!Array.isArray(intensityData) || intensityData.length === 0) {
+    const energies = histogramData
+        .map((point) => Number(point.energy_footprint ?? point.energy ?? NaN))
+        .filter((value) => Number.isFinite(value));
+
+    if (energies.length === 0) {
         return {
             title: 'Usage Pattern Insight',
-            message: 'Unable to evaluate whether usage is concentrated in high-impact periods because historical intensity data is missing. TODO: add backend support for historical intensity time series in the same data payload.',
+            message: 'Usage data is present but could not be interpreted.',
             severity: 'info',
             color: '#e8f5e9',
             emoji: 'ℹ️',
         };
     }
 
-    const parseTimestamp = (point) => {
-        if (!point || !point.timestamp) return null;
-        const date = new Date(point.timestamp);
-        return Number.isNaN(date.getTime()) ? null : date.toISOString();
-    };
+    const avg = energies.reduce((sum, value) => sum + value, 0) / energies.length;
+    const spikeThreshold = avg * 1.5;
+    const spikes = energies.filter((value) => value > spikeThreshold);
+    const recentCount = Math.max(1, Math.min(7, energies.length));
+    const recent = energies.slice(-recentCount);
+    const recentAvg = recent.reduce((sum, value) => sum + value, 0) / recent.length;
 
-    const intensityMap = new Map();
-    intensityData.forEach((point) => {
-        const key = parseTimestamp(point);
-        if (key) {
-            const value = Number(point.co2_intensity ?? point.intensity ?? point.value ?? NaN);
-            if (!Number.isNaN(value)) {
-                intensityMap.set(key, value);
-            }
-        }
-    });
-
-    const matched = histogramData
-        .map((point) => {
-            const key = parseTimestamp(point);
-            const intensity = key ? intensityMap.get(key) : undefined;
-            return {
-                energy: Number(point.energy_footprint ?? point.energy ?? NaN),
-                intensity,
-            };
-        })
-        .filter((entry) => !Number.isNaN(entry.energy) && entry.intensity !== undefined);
-
-    if (matched.length === 0) {
+    if (spikes.length === 0) {
         return {
             title: 'Usage Pattern Insight',
-            message: 'Received historical data, but could not match energy and intensity timestamps. TODO: align backend time series formats for analysis.',
-            severity: 'info',
-            color: '#e8f5e9',
-            emoji: 'ℹ️',
-        };
-    }
-
-    const allIntensityAverage = matched.reduce((sum, point) => sum + point.intensity, 0) / matched.length;
-    const usageAverage = matched.reduce((sum, point) => sum + point.energy, 0) / matched.length;
-    const highUsagePoints = matched.filter((point) => point.energy > usageAverage);
-
-    if (highUsagePoints.length === 0) {
-        return {
-            title: 'Usage Pattern Insight',
-            message: 'Usage appears evenly distributed across available periods; no strong high-impact concentration was detected.',
+            message: 'Your usage is fairly smooth and stable over the selected period.',
             severity: 'success',
             color: '#e8f5e9',
             emoji: '✅',
         };
     }
 
-    const highUsageIntensityAverage = highUsagePoints.reduce((sum, point) => sum + point.intensity, 0) / highUsagePoints.length;
-
-    if (highUsageIntensityAverage > allIntensityAverage * 1.1) {
+    if (recentAvg > avg * 1.1) {
         return {
             title: 'Usage Pattern Insight',
-            message: 'Your higher usage periods tend to happen when carbon intensity is above average. Consider shifting flexible loads to cleaner hours.',
+            message: `Recently you’ve consumed more than usual over the last ${recentCount} entries.`,
             severity: 'warning',
             color: '#fff8e1',
             emoji: '⚠️',
@@ -188,9 +155,9 @@ export function getUsagePatternRecommendation(histogramData, intensityData) {
 
     return {
         title: 'Usage Pattern Insight',
-        message: 'Your higher usage periods are not strongly aligned with higher carbon intensity. Keep monitoring and shift when possible.',
-        severity: 'success',
-        color: '#e8f5e9',
-        emoji: '✅',
+        message: `You’ve had ${spikes.length} high-consumption spikes in this view. Try smoothing usage across the day.`,
+        severity: 'warning',
+        color: '#fff8e1',
+        emoji: '⚠️',
     };
 }
