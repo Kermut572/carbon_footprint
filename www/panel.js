@@ -28,6 +28,7 @@ class CarbonFootprintPanel extends HTMLElement {
         this._selectedRoom = null;
         this._currentPage = 'main'; // 'main' or 'settings'
         this._carbonView = 'total'; // 'total', 'embodied', or 'usage'
+        this._ecView = 'total';
         this._groupBy = 'room'; // 'room' or 'type'
         this._currentDevice = null;
         this._currentType = null;
@@ -183,7 +184,6 @@ class CarbonFootprintPanel extends HTMLElement {
         const yearlyCons = yearlyConsCall.yearly_contribution;
         console.log(`Found ${yearlyCons}kWh for this year.`)
 
-        const energyHistogram = await this.getEnergyHistogram();
         const emissionNowRaw = this._hass.states['sensor.carbon_emission_now']?.state;
         const carbonTodayRaw = this._hass.states['sensor.carbon_total_today']?.state;
 
@@ -247,6 +247,23 @@ class CarbonFootprintPanel extends HTMLElement {
                                     <option value="last-month">Last Month</option>
                                     <option value="last-year">Last Year</option>
                                 </select>
+                            </div>
+
+                            <div style="margin-bottom: 12px;">
+                                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                    <label style="display: flex; align-items: center; cursor: pointer;">
+                                        <input type="radio" name="ec-view" value="total" checked style="margin-right: 6px;">
+                                        <span>Total (Stacked)</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; cursor: pointer;">
+                                        <input type="radio" name="ec-view" value="embodied" style="margin-right: 6px;">
+                                        <span>Embodied Only</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; cursor: pointer;">
+                                        <input type="radio" name="ec-view" value="usage" style="margin-right: 6px;">
+                                        <span>Usage Only</span>
+                                    </label>
+                                </div>
                             </div>
                             <div style="position: relative; height: 400px; width: 100%;">
                                 <canvas id="consumption-histogram-chart"></canvas>
@@ -410,6 +427,14 @@ class CarbonFootprintPanel extends HTMLElement {
             //this.renderHistogram();
             await this.renderRoomChart();
             await this.renderConsumptionHistogram();
+        }
+
+        const energyConsumptionRadios = this.querySelectorAll('input[name="ec-view"]');
+        for (const radio of energyConsumptionRadios) {
+            radio.addEventListener('change', async (e) => {
+                this._ecView = e.target.value;
+                await this.renderConsumptionHistogram();
+            });
         }
 
         const granSelect = this.querySelector('#granularity-select');
@@ -838,28 +863,28 @@ class CarbonFootprintPanel extends HTMLElement {
         const startTime = new Date(endTime);
         startTime.setDate(endTime.getDate() - pastDays);
 
-        const result = await this._hass.callWS({
+        const result = (this._ecView == 'total' || this._ecView == 'usage') ? await this._hass.callWS({
             type: 'carbon_footprint/get_consumption_footprint_time_interval',
             start_time: startTime.toISOString(),
             end_time: endTime.toISOString(),
             granularity: this._currentChartGranularity
-        });
+        }) : {};
 
 
-        const consumptionData = result.devices_consumptions;
-        if (!consumptionData || Object.keys(consumptionData).length === 0) {
-            canvas.parentElement.innerHTML = '<p>No consumption data available for the selected period.</p>';
-            return;
-        }
+        const consumptionData = result.devices_consumptions || {};
+        //if (!consumptionData || Object.keys(consumptionData).length === 0) {
+        //    canvas.parentElement.innerHTML = '<p>No consumption data available for the selected period.</p>';
+        //    return;
+        //}
 
-        const embodiedResult = await this._hass.callWS({
+        const embodiedResult = (this._ecView == 'total' || this._ecView == 'embodied') ? await this._hass.callWS({
             type: 'carbon_footprint/get_embodied_carbon_time_interval',
             start_time: startTime.toISOString(),
             end_time: endTime.toISOString(),
             granularity: this._currentChartGranularity
-        });
+        }) : {};
 
-        const embodiedData = embodiedResult.embodied_carbon;
+        const embodiedData = embodiedResult.embodied_carbon || {};
 
         const deviceNames = result.device_name_map;
         const aggData = {};
