@@ -196,7 +196,7 @@ def utils_find_energy_entity_for_device(
     if not sensors:
         return None
 
-    sensors.sort(key=lambda entry: entry.platform != "powercalc")
+    sensors.sort(key=lambda entry: entry.platform.lower() != "powercalc")
     return sensors[0].entity_id
 
 
