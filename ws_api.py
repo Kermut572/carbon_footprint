@@ -842,8 +842,8 @@ def ws_get_carbon_by_room(
 @websocket_api.websocket_command(
     {vol.Required("type"): f"{DOMAIN}/get_carbon_by_room_with_usage"}
 )
-@callback
-def ws_get_carbon_by_room_with_usage(
+@websocket_api.async_response
+async def ws_get_carbon_by_room_with_usage(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
@@ -912,7 +912,6 @@ def ws_get_carbon_by_room_with_usage(
         embodied_carbon = device_info.get("carbon_footprint", 0)
 
         # Get usage carbon: prefer metadata value (for test data), fall back to power sensor calculation
-        usage_carbon = 0.0
         metadata = device_info.get("metadata", {})
 
         device_name = (
@@ -920,23 +919,28 @@ def ws_get_carbon_by_room_with_usage(
             or device_reg.devices.get(device_id).name
         )
 
-        total_energy = metadata.get("total_energy", None)
-        if total_energy is not None:
-            usage_carbon = (total_energy * co2_intensity) / 1000
+        consumption_timestamps = await hass.async_add_executor_job(
+            utils_compute_device_consumption_footprint,
+            hass,
+            device_id,
+            "day",
+            dt_util.now() - timedelta(days=1825),
+            dt_util.now(),
+        )
 
-        predicted_usage_carbon_value = 0.0
-        install_date = metadata.get("install_date", None)
-        if install_date is not None:
-            install_dt = dt_util.parse_datetime(
-                str(install_date)
-            )  # weirdly, install_date is neither a str neither a datetime??
-            datetime_from_installation = datetime.now().replace(
-                tzinfo=None
-            ) - install_dt.replace(tzinfo=None)
-            days_from_installation = max(datetime_from_installation.days, 1)
-            predicted_usage_carbon_value = (
-                usage_carbon / days_from_installation
-            ) * 1825  # 1825 days for five years
+        if (
+            consumption_timestamps is None or len(consumption_timestamps) == 0
+        ):  # ignore devices that have no consumption
+            continue
+
+        days_from_installation = max(len(consumption_timestamps), 1)
+        usage_carbon_value = sum(
+            ct.get("consumption_footprint", 0.0) for ct in consumption_timestamps
+        )
+
+        predicted_usage_carbon_value = (
+            usage_carbon_value / days_from_installation
+        ) * device_info.get("lifetime_years" * 365, 1825)  # 1825 days for five years
 
         # Try to find the room
         room_name = "Unknown Room"
@@ -965,19 +969,19 @@ def ws_get_carbon_by_room_with_usage(
                 "devices": [],
             }
         # Add device to room
-        device_total = embodied_carbon + usage_carbon
+        device_total = embodied_carbon + usage_carbon_value
         rooms_dict[room_name]["devices"].append(
             {
                 "id": device_id,
                 "name": device_name,
                 "embodied_carbon": round(embodied_carbon, 2),
-                "usage_carbon": round(usage_carbon, 2),
+                "usage_carbon": round(usage_carbon_value, 2),
                 "predicted_carbon": round(predicted_usage_carbon_value, 2),
                 "total_carbon": round(device_total, 2),
             }
         )
         rooms_dict[room_name]["embodied_carbon"] += embodied_carbon
-        rooms_dict[room_name]["usage_carbon"] += usage_carbon
+        rooms_dict[room_name]["usage_carbon"] += usage_carbon_value
         rooms_dict[room_name]["predicted_carbon"] += predicted_usage_carbon_value
         rooms_dict[room_name]["total_carbon"] += device_total
 
@@ -1069,8 +1073,8 @@ def ws_get_carbon_by_type(
 @websocket_api.websocket_command(
     {vol.Required("type"): f"{DOMAIN}/get_carbon_by_type_with_usage"}
 )
-@callback
-def ws_get_carbon_by_type_with_usage(
+@websocket_api.async_response
+async def ws_get_carbon_by_type_with_usage(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
@@ -1138,22 +1142,28 @@ def ws_get_carbon_by_type_with_usage(
             or device_reg.devices.get(device_id).name
         )
 
-        usage_carbon_value = 0.0
-        total_energy = metadata.get("total_energy", None)
-        if total_energy is not None:
-            usage_carbon_value = (total_energy * co2_intensity) / 1000
+        consumption_timestamps = await hass.async_add_executor_job(
+            utils_compute_device_consumption_footprint,
+            hass,
+            device_id,
+            "day",
+            dt_util.now() - timedelta(days=1825),
+            dt_util.now(),
+        )
 
-        predicted_usage_carbon_value = 0.0
-        install_date = metadata.get("install_date", None)
-        if install_date is not None:
-            install_dt = dt_util.parse_datetime(str(install_date))
-            datetime_from_installation = datetime.now().replace(
-                tzinfo=None
-            ) - install_dt.replace(tzinfo=None)
-            days_from_installation = max(datetime_from_installation.days, 1)
-            predicted_usage_carbon_value = (
-                usage_carbon_value / days_from_installation
-            ) * 1825  # 1825 days for five years
+        if (
+            consumption_timestamps is None or len(consumption_timestamps) == 0
+        ):  # ignore devices that have no consumption
+            continue
+
+        days_from_installation = max(len(consumption_timestamps), 1)
+        usage_carbon_value = sum(
+            ct.get("consumption_footprint", 0.0) for ct in consumption_timestamps
+        )
+
+        predicted_usage_carbon_value = (
+            usage_carbon_value / days_from_installation
+        ) * device_info.get("lifetime_years" * 365, 1825)  # 1825 days for five years
 
         embodied_carbon_value = device_info.get("carbon_footprint", 0)
         device_type = device_info.get("type", "Unknown")
