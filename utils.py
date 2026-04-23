@@ -21,112 +21,112 @@ _LOGGER = logging.getLogger(__name__)
 REGEX_MATCHER = [
     (
         re.compile(
-            r"(temp(erature)?|humid(ity)?|water|h2o|thermometer|wet)",
+            r"\b(temp(erature)?|humid(ity)?|water|h2o|thermometer|wet|climate|weather)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
         "Temperature/humidity sensor",
     ),
     (
         re.compile(
-            r"(motion|movement|wildlife)",
+            r"\b(motion|movement|wildlife|occupancy|radar|presence)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
         "Motion sensor",
     ),
     (
         re.compile(
-            r"(luminosity|sun)",
+            r"\b(luminosity|sun)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
         "Luminosity sensor",
     ),
     (
         re.compile(
-            r"(air|smoke|carbon dioxide|carbon monoxide|oxygen)",
+            r"\b(air|smoke|carbon dioxide|carbon monoxide|oxygen)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
         "Air quality sensor",
     ),
     (
         re.compile(
-            r"(camera|video|doorbell)",
+            r"\b(camera|video|doorbell|webcam|cctv)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
         "camera",
     ),
     (
         re.compile(
-            r"(speaker|alexa|(home\s)?cinema|music|audio)",
+            r"\b(speaker|alexa|(home\s)?cinema|music|audio)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
         "speaker",
     ),
     (
         re.compile(
-            r"(light((\s)?bulb)?|lamp|bulb)",
+            r"\b(light((\s)?bulb)?|lamp|bulb|led|rgb)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
         "light bulb",
     ),
     (
         re.compile(
-            r"((smart\s)?plug|outlet|socket)",
+            r"\b((smart\s)?plug|outlet|socket)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
         "Smart plug",
     ),
     (
         re.compile(
-            r"(lock|(dead)?bolt)",
+            r"\b(lock|(dead)?bolt)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
         "Smart lock",
     ),
     (
         re.compile(
-            r"(window(\ssensor)?|door(\ssensor)?)",
+            r"\b(window(\ssensor)?|door(\ssensor)?)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
         "Window/door sensor",
     ),
     (
         re.compile(
-            r"(thermostat|temp(erature)?\scontrol)",
+            r"\b(thermostat|temp(erature)?\scontrol)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
         "thermostat",
     ),
     (
         re.compile(
-            r"(energy(\smonitor|\scontrol)?)",
+            r"\b(energy(\smonitor|\scontrol)?)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
         "energy monitor",
     ),
     (
         re.compile(
-            r"(wash(ing)?\smachine|cloth(es)?)",
+            r"\b(wash(ing)?\smachine|cloth(es)?)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
         "washing machine",
     ),
     (
         re.compile(
-            r"(tele(vision)?|tv)",
+            r"\b(tele(vision)?|tv)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
         "TV",
     ),
     (
         re.compile(
-            r"(refrigerator)",
+            r"\b(refrigerator)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
         "refrigerator",
     ),
     (
         re.compile(
-            r"(dish(washer)?|dish(es)?)",
+            r"\b(dish(washer)?|dish(es)?)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
         "dishwasher",
