@@ -51,6 +51,7 @@ _LOGGER = logging.getLogger(__name__)
 def async_register_websocket_handlers(hass: HomeAssistant) -> None:
     """Register WebSocket handlers."""
     websocket_api.async_register_command(hass, ws_get_carbon_data)
+    websocket_api.async_register_command(hass, ws_get_type_embodied_footprint)
     websocket_api.async_register_command(hass, ws_set_device)
     websocket_api.async_register_command(hass, ws_remove_device)
     websocket_api.async_register_command(hass, ws_compute_footprint)
@@ -122,6 +123,41 @@ def _get_loaded_entry(hass: HomeAssistant):
         (entry for entry in entries if entry.state is ConfigEntryState.LOADED),
         None,
     )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/get_type_embodied_footprint",
+        vol.Required("device_type"): str,
+    }
+)
+@callback
+def ws_get_type_embodied_footprint(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Returns the embodied footprint for a given device type."""
+    entry = _get_loaded_entry(hass)
+    if entry is None:
+        connection.send_error(
+            msg["id"], "config_entry_not_loaded", "Uh oh, no loaded entry found :-("
+        )
+        return
+
+    req_device_type = msg["device_type"]
+    devices = entry.runtime_data.cf_store.get_devices_data()
+    for device_info in devices.values():
+        if device_info.get("type", "") != req_device_type:
+            continue
+
+        cf = device_info.get("carbon_footprint", 0.0)
+
+        if cf != 0.0:
+            connection.send_result(msg["id"], {"carbon_footprint": cf})
+            return
+
+    connection.send_result(msg["id"], {"carbon_footprint": 0.0})
 
 
 @websocket_api.websocket_command(

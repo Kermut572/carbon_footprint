@@ -1750,7 +1750,12 @@ class CarbonFootprintPanel extends HTMLElement {
 
                 typeSelector.value = this._currentType ?? '';
                 typeSelector.label = 'Device Type';
-                typeSelector.addEventListener('value-changed', (ev) => { this._currentType = ev.detail.value; console.log(`Type is now ${this._currentType}`); typeSelector.value = ev.detail.value; });
+                typeSelector.addEventListener('value-changed', async (ev) => {
+                    this._currentType = ev.detail.value; console.log(`Type is now ${this._currentType}`); typeSelector.value = ev.detail.value;
+                    const embodiedTypeResp = await this._hass.callWS({ type: 'carbon_footprint/get_type_embodied_footprint' });
+                    const embodiedVal = embodiedTypeResp.carbon_footprint;
+                    this._currentCarbonValue = embodiedVal;
+                });
             } catch (err) {
                 console.debug('Failed to init ha-selector-select', err);
             }
