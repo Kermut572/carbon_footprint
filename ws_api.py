@@ -145,10 +145,10 @@ def ws_get_type_embodied_footprint(
         )
         return
 
-    req_device_type = msg["device_type"]
+    req_device_type = msg["device_type"].lower()
     devices = entry.runtime_data.cf_store.get_devices_data()
     for device_info in devices.values():
-        if device_info.get("type", "") != req_device_type:
+        if device_info.get("type", "").lower() != req_device_type:
             continue
 
         cf = device_info.get("carbon_footprint", 0.0)
