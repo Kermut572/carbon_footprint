@@ -11,6 +11,7 @@ data.
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+import json
 import logging
 from typing import Any
 
@@ -41,6 +42,7 @@ from .utils import (
     utils_get_device_install_date,
     utils_get_device_total_energy_consumption,
     utils_get_yearly_consumption,
+    utils_local_type_matching,
     utils_round_to_day,
 )
 
@@ -1265,37 +1267,43 @@ async def ws_llm_detection(
         )
         return
 
-    api_key = entry.options.get("api_key")
-    if not api_key or len(api_key) == 0:
-        _LOGGER.error(
-            "No OpenRouter API Key set. This can be set in the integration settings"
-        )
-        connection.send_error(
-            msg["id"],
-            "api_key_not_set",
-            "No API key was set. You can set it in the integration's settings.",
-        )
-        return
-
     devices = msg["devices"]
     device_types = [
         "Temperature/humidity sensor",
         "Motion sensor",
         "Luminosity sensor",
         "Air quality sensor",
-        "Smart camera",
-        "Smart speaker",
-        "Smart light bulb",
+        "Camera",
+        "Speaker",
+        "Light bulb",
         "Smart plug",
         "Smart lock",
         "Window/door sensor",
-        "Smart thermostat",
-        "Smart energy monitor",
-        "Smart washing machine",
-        "Smart TV",
-        "Smart refrigerator",
-        "Smart dishwasher",
+        "Thermostat",
+        "Energy monitor",
+        "Washing machine",
+        "TV",
+        "Refrigerator",
+        "Dishwasher",
     ]
+
+    matched_device_types, devices_to_match = utils_local_type_matching(devices)
+    if len(devices_to_match.keys()) == 0:
+        _LOGGER.debug("All devices could be matched locally, returning early")
+        connection.send_result(
+            msg["id"], {"device_types": json.dumps(matched_device_types)}
+        )
+        return
+
+    api_key = entry.options.get("api_key")
+    if not api_key or len(api_key) == 0:
+        _LOGGER.warning(
+            "No OpenRouter API Key set. This can be set in the integration settings. Defaulting to local regex matching (might not infer types for all devices)"
+        )
+        connection.send_result(
+            msg["id"], {"device_types": json.dumps(matched_device_types)}
+        )
+        return
 
     def _openrouter_call():
         try:
@@ -1305,7 +1313,7 @@ async def ws_llm_detection(
                     messages=[
                         {
                             "role": "user",
-                            "content": f"You are given a dictionary mapping device names to their model and manufacturer. Return ONLY a valid JSON object (no explanation, no markdown, no code blocks) mapping each device name to its device type category (and limit yourself to these devices types: {device_types}). Input devices: {devices}",
+                            "content": f"You are given a dictionary mapping device names to their model and manufacturer. Return ONLY a valid JSON object (no explanation, no markdown, no code blocks) mapping each device name to its device type category (and limit yourself to these devices types: {device_types}). Input devices: {devices_to_match}",
                         }
                     ],
                     response_format={"type": "json_object"},
@@ -1328,24 +1336,26 @@ async def ws_llm_detection(
     )
     async def _run_job():
         result = await hass.async_add_executor_job(_openrouter_call)
-        connection.send_result(msg["id"], {"device_types": result})
+        connection.send_result(
+            msg["id"],
+            {"device_types": json.dumps(json.loads(result) | matched_device_types)},
+        )
 
     try:
         _LOGGER.debug("Running OpenRouter detection, call %d/10", i + 1)
         await _run_job()
         i += 1
     except ProviderError as err:
-        _LOGGER.error("OpenRouter provider error after retries: %s", err)
-        connection.send_error(
-            msg["id"],
-            "openrouter_call_error",
-            "Device type detection failed due to a provider error, please try again later.",
+        _LOGGER.error(
+            "OpenRouter provider error after retries: %s\nDefaulting to local regex matching (might not infer types for all devices)",
+            err,
         )
+        connection.send_result(msg["id"], {"device_types": matched_device_types})
     except Exception as err:
-        _LOGGER.exception("Error occured during OpenRouter detection")
-        connection.send_error(
-            msg["id"], "openrouter_call_error", f"Device type detection failed: {err}"
+        _LOGGER.exception(
+            "Error occured during OpenRouter detection. Defaulting to local regex matching (might not infer types for all devices)"
         )
+        connection.send_result(msg["id"], {"device_types": matched_device_types})
 
 
 @websocket_api.websocket_command(

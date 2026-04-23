@@ -3,6 +3,7 @@
 from datetime import date, datetime, timedelta
 import logging
 from logging import Logger
+import re
 
 from homeassistant.components.recorder.statistics import statistics_during_period
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
@@ -15,6 +16,122 @@ from .const import DOMAIN
 from .energy_store import EnergyStore
 
 _LOGGER = logging.getLogger(__name__)
+
+# https://regex101.com/codegen?language=python
+REGEX_MATCHER = [
+    (
+        re.compile(
+            r"(temp(erature)?|humid(ity)?|water|h2o|thermometer|wet)",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "Temperature/humidity sensor",
+    ),
+    (
+        re.compile(
+            r"(motion|movement|wildlife)",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "Motion sensor",
+    ),
+    (
+        re.compile(
+            r"(luminosity|sun)",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "Luminosity sensor",
+    ),
+    (
+        re.compile(
+            r"(air|smoke|carbon dioxide|carbon monoxide|oxygen)",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "Air quality sensor",
+    ),
+    (
+        re.compile(
+            r"(camera|video|doorbell)",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "camera",
+    ),
+    (
+        re.compile(
+            r"(speaker|alexa|(home\s)?cinema|music|audio)",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "speaker",
+    ),
+    (
+        re.compile(
+            r"(light((\s)?bulb)?|lamp|bulb)",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "light bulb",
+    ),
+    (
+        re.compile(
+            r"((smart\s)?plug|outlet|socket)",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "Smart plug",
+    ),
+    (
+        re.compile(
+            r"(lock|(dead)?bolt)",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "Smart lock",
+    ),
+    (
+        re.compile(
+            r"(window(\ssensor)?|door(\ssensor)?)",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "Window/door sensor",
+    ),
+    (
+        re.compile(
+            r"(thermostat|temp(erature)?\scontrol)",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "thermostat",
+    ),
+    (
+        re.compile(
+            r"(energy(\smonitor|\scontrol)?)",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "energy monitor",
+    ),
+    (
+        re.compile(
+            r"(wash(ing)?\smachine|cloth(es)?)",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "washing machine",
+    ),
+    (
+        re.compile(
+            r"(tele(vision)?|tv)",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "TV",
+    ),
+    (
+        re.compile(
+            r"(refrigerator)",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "refrigerator",
+    ),
+    (
+        re.compile(
+            r"(dish(washer)?|dish(es)?)",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "dishwasher",
+    ),
+]
 
 
 class ProviderError(Exception):
@@ -435,3 +552,49 @@ def utils_round_to_day(dt: datetime):
     Source: https://www.statology.org/how-to-round-dates-to-the-nearest-day-hour-or-minute-in-python/
     """
     return dt.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+
+
+def utils_local_type_matching(devices: dict) -> tuple[dict, dict]:
+    """Try to infer device type using regular expressions.
+
+    `devices`: dictionary containing device info in the following format
+        {
+            `device_name`: {
+                    `model`: "x",
+                    `manufacturer`: "y"
+            },
+            ...
+        }
+
+    Outputs a tuple of two dictionaries: the first containing matched devices, and the second devices for which no match was found.
+    """
+
+    matched_devices = {}
+    no_match_devices = {}
+    for device_name, device_meta in devices.items():
+        device_model = device_meta.get("model", "")
+        device_manufacturer = device_meta.get("manufacturer", "")
+        if device_model and device_manufacturer:
+            device_model = device_model.lower()
+            device_manufacturer = device_manufacturer.lower()
+
+        device_str = f"{device_name} {device_model} {device_manufacturer}"
+
+        matched = False
+        match_type = ""
+        for regex, device_type in REGEX_MATCHER:
+            if not regex.search(device_str):
+                continue
+
+            matched = True
+            match_type = device_type
+            break
+
+        if not matched:
+            no_match_devices[device_name] = device_meta
+            continue
+
+        _LOGGER.debug("Device %s could be matched to type %s", device_name, match_type)
+        matched_devices[device_name] = match_type
+
+    return (matched_devices, no_match_devices)
