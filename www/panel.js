@@ -1735,6 +1735,26 @@ class CarbonFootprintPanel extends HTMLElement {
             "Smart refrigerator",
             "Smart dishwasher",
         ];
+
+        const carbonSelector = this.querySelector('#device_carbon_footprint');
+        if (carbonSelector) {
+            try {
+                carbonSelector.hass = this._hass;
+                carbonSelector.selector = {
+                    number: {
+                        min: 0.00,
+                        step: 0.01
+                    },
+                };
+
+                carbonSelector.required = true;
+                carbonSelector.value = this._currentCarbonValue;
+                carbonSelector.addEventListener('value-changed', (ev) => { this._currentCarbonValue = ev.detail.value; })
+            } catch (err) {
+                console.debug('Failed to init ha-selector-number', err);
+            }
+        }
+
         const typeSelector = this.querySelector('#device_type_selector');
         if (typeSelector) {
             //console.log('Loaded device type selector')
@@ -1755,6 +1775,7 @@ class CarbonFootprintPanel extends HTMLElement {
                     const embodiedTypeResp = await this._hass.callWS({ type: 'carbon_footprint/get_type_embodied_footprint', device_type: this._currentType });
                     const embodiedVal = embodiedTypeResp.carbon_footprint;
                     this._currentCarbonValue = embodiedVal;
+                    carbonSelector.value = this._currentCarbonValue;
                 });
             } catch (err) {
                 console.debug('Failed to init ha-selector-select', err);
@@ -1762,24 +1783,6 @@ class CarbonFootprintPanel extends HTMLElement {
 
         }
 
-        const carbonSelector = this.querySelector('#device_carbon_footprint');
-        if (carbonSelector) {
-            try {
-                carbonSelector.hass = this._hass;
-                carbonSelector.selector = {
-                    number: {
-                        min: 0.00,
-                        step: 0.01
-                    },
-                };
-
-                carbonSelector.required = true;
-                carbonSelector.value = this._currentCarbonValue;
-                carbonSelector.addEventListener('value-changed', (ev) => { this._currentCarbonValue = ev.detail.value; })
-            } catch (err) {
-                console.debug('Failed to init ha-selector-number', err);
-            }
-        }
 
         const form = this.querySelector('#add-device-form');
         if (form) {
