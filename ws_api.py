@@ -966,15 +966,24 @@ async def ws_get_carbon_by_room_with_usage(
             dt_util.now().isoformat(),
         )
 
-        days_from_installation = max(len(consumption_timestamps), 1)
-        usage_carbon_value = (
-            sum(ct.get("consumption_footprint", 0.0) for ct in consumption_timestamps)
-            / 1000
-        )
+        usage_carbon_value = 0.0
+        predicted_usage_carbon_value = 0.0
 
-        predicted_usage_carbon_value = (
-            usage_carbon_value / days_from_installation
-        ) * device_info.get("lifetime_years" * 365, 1825)  # 1825 days for five years
+        if consumption_timestamps:
+            days_from_installation = max(len(consumption_timestamps), 1)
+            usage_carbon_value = (
+                sum(
+                    ct.get("consumption_footprint", 0.0)
+                    for ct in consumption_timestamps
+                )
+                / 1000
+            )
+
+            predicted_usage_carbon_value = (
+                usage_carbon_value / days_from_installation
+            ) * device_info.get(
+                "lifetime_years" * 365, 1825
+            )  # 1825 days for five years
 
         # Try to find the room
         room_name = "Unknown Room"
@@ -1185,15 +1194,21 @@ async def ws_get_carbon_by_type_with_usage(
             dt_util.now().isoformat(),
         )
 
-        days_from_installation = max(len(consumption_timestamps), 1)
-        usage_carbon_value = sum(
-            ct.get("consumption_footprint", 0.0) for ct in consumption_timestamps
-        )
-        usage_carbon_value /= 1000
+        usage_carbon_value = 0.0
+        predicted_usage_carbon_value = 0.0
 
-        predicted_usage_carbon_value = (
-            usage_carbon_value / days_from_installation
-        ) * device_info.get("lifetime_years" * 365, 1825)  # 1825 days for five years
+        if consumption_timestamps:
+            days_from_installation = max(len(consumption_timestamps), 1)
+            usage_carbon_value = sum(
+                ct.get("consumption_footprint", 0.0) for ct in consumption_timestamps
+            )
+            usage_carbon_value /= 1000
+
+            predicted_usage_carbon_value = (
+                usage_carbon_value / days_from_installation
+            ) * device_info.get(
+                "lifetime_years" * 365, 1825
+            )  # 1825 days for five years
 
         embodied_carbon_value = device_info.get("carbon_footprint", 0)
         device_type = device_info.get("type", "Unknown")
