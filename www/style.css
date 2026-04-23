@@ -218,6 +218,27 @@ button {
     vertical-align: middle;
 }
 
+.recommendation-header {
+    padding: 18px 20px !important;
+    font-size: 1.1rem;
+}
+
+.recommendation-header strong {
+    font-size: 1.1rem;
+    line-height: 1.35;
+}
+
+[class*="recommendation-content"] {
+    padding: 20px !important;
+    font-size: 1.05rem;
+    line-height: 1.75;
+    color: var(--primary-text-color);
+}
+
+[class*="recommendation-content"] p {
+    margin: 0;
+}
+
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
@@ -445,4 +466,21 @@ button[value="cancel"] {
 .radio-option input[type="radio"] { margin-right: 5px; }
 
 b { font-weight: 600; }
+
+.progress-cont {
+    width: 100%;
+    color: grey;
+    border-width: 3px;
+    border-radius: 15%;
+    border-color: #333;
+}
+
+.progress-bar {
+    width: 0%;
+    height: 15px;
+    background-color: var(--primary-color, lightskyblue);
+    border-radius: 4px;
+    transition: width 300ms ease;
+    display: block;
+}
 

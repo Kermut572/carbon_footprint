@@ -126,22 +126,12 @@ async def _create_fake_power_sensors(hass: HomeAssistant) -> None:
     )
 
 
-async def _create_fake_devices(hass: HomeAssistant, cf_store: Any) -> None:
-    """Create fake devices organized by room for testing room grouping.
+def _get_fake_devices_data() -> list[dict]:
+    """Get the fake devices dataset.
     
-    Creates 7 devices across 3 rooms:
-    - Living Room: TV, Heater, Smart Speaker (3 devices)
-    - Kitchen: Refrigerator, Dishwasher, Coffee Maker (3 devices)
-    - Bedroom: AC Unit (1 device)
-    
-    Note: For testing purposes, devices are stored with room names in metadata
-    since we're using fake data. In production, devices would be linked via
-    the Home Assistant device registry.
+    Returns list of device definitions with room, type, and carbon values.
     """
-    
-    # Define fake devices with room assignments and carbon footprint (embodied)
-    # Usage carbon simulates annual CO2 from energy consumption
-    fake_devices = [
+    return [
         # Living Room (3 devices) - embodied ~45 kgCO2eq, usage ~3.8 kgCO2eq/year
         {"name": "Living Room TV", "room": "Living Room", "type": "Entertainment", "embodied": 15.5, "usage": 0.5},
         {"name": "Living Room Heater", "room": "Living Room", "type": "Climate", "embodied": 22.3, "usage": 3.2},
@@ -155,12 +145,60 @@ async def _create_fake_devices(hass: HomeAssistant, cf_store: Any) -> None:
         # Bedroom (1 device) - embodied ~12 kgCO2eq, usage ~1.8 kgCO2eq/year
         {"name": "Bedroom AC Unit", "room": "Bedroom", "type": "Climate", "embodied": 12.0, "usage": 1.8},
     ]
+
+
+def get_fake_room_carbon_data() -> list[dict]:
+    """Get fake room-level carbon data for testing recommendation system.
+    
+    Returns array of room objects with structure:
+    [
+        {"room": "Living Room", "total_carbon": 48.8, "embodied": 45.0, "usage": 3.8},
+        {"room": "Kitchen", "total_carbon": 61.5, "embodied": 58.0, "usage": 3.5},
+        {"room": "Bedroom", "total_carbon": 13.8, "embodied": 12.0, "usage": 1.8},
+    ]
+    
+    This format matches what getHighImpactAreaRecommendation() expects.
+    """
+    fake_devices = _get_fake_devices_data()
+    
+    # Aggregate by room
+    rooms = {}
+    for device in fake_devices:
+        room_name = device["room"]
+        if room_name not in rooms:
+            rooms[room_name] = {"room": room_name, "embodied": 0.0, "usage": 0.0}
+        rooms[room_name]["embodied"] += device["embodied"]
+        rooms[room_name]["usage"] += device["usage"]
+    
+    # Convert to list and calculate total_carbon
+    room_data = []
+    for room_info in rooms.values():
+        room_info["total_carbon"] = room_info["embodied"] + room_info["usage"]
+        # Sort by room name for consistency in testing
+        room_data.append(room_info)
+    
+    return sorted(room_data, key=lambda x: x["room"])
+
+
+async def _create_fake_devices(hass: HomeAssistant, cf_store: Any) -> None:
+    """Create fake devices organized by room for testing room grouping.
+    
+    Creates 7 devices across 3 rooms:
+    - Living Room: TV, Heater, Smart Speaker (3 devices)
+    - Kitchen: Refrigerator, Dishwasher, Coffee Maker (3 devices)
+    - Bedroom: AC Unit (1 device)
+    
+    Note: For testing purposes, devices are stored with room names in metadata
+    since we're using fake data. In production, devices would be linked via
+    the Home Assistant device registry.
+    """
+    fake_devices = _get_fake_devices_data()
     
     # Add devices to cf_store
     for device_info in fake_devices:
         device_name = device_info["name"]
         await cf_store.async_set_device_info(
-            entity_id=device_name,
+            device_id=device_name,
             type=device_info["type"],
             carbon_footprint=device_info["embodied"],
             metadata={
@@ -172,18 +210,22 @@ async def _create_fake_devices(hass: HomeAssistant, cf_store: Any) -> None:
             },
         )
     
-    embodied_total = sum(d["embodied"] for d in fake_devices)
-    usage_total = sum(d["usage"] for d in fake_devices)
+    # Log aggregated room data
+    room_data = get_fake_room_carbon_data()
+    embodied_total = sum(d["embodied"] for d in room_data)
+    usage_total = sum(d["usage"] for d in room_data)
     total_carbon = embodied_total + usage_total
+    
     _LOGGER.info(
         f"✓ Created 7 fake devices across 3 rooms"
         f"\n  Embodied: {embodied_total:.1f} kgCO2eq | Usage: {usage_total:.1f} kgCO2eq | Total: {total_carbon:.1f} kgCO2eq"
     )
-    _LOGGER.info(
-        f"  Living Room: 3 devices (45.0 kgCO2eq) | "
-        f"Kitchen: 3 devices (58.0 kgCO2eq) | "
-        f"Bedroom: 1 device (12.0 kgCO2eq)"
+    
+    # Log room breakdown for recommendation testing
+    room_breakdown = " | ".join(
+        f"{r['room']}: {r['total_carbon']:.1f} kgCO2eq" for r in room_data
     )
+    _LOGGER.info(f"  Room breakdown: {room_breakdown}")
 
 
 async def async_simulate_hourly_update(hass: HomeAssistant, energy_store: Any) -> None:
