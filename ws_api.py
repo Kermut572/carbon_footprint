@@ -924,8 +924,8 @@ async def ws_get_carbon_by_room_with_usage(
             hass,
             device_id,
             "day",
-            dt_util.now() - timedelta(days=1825),
-            dt_util.now(),
+            (dt_util.now() - timedelta(days=1825)).strftime("%d-%m-%Y-%H"),
+            dt_util.now().strftime("%d-%m-%Y-%H"),
         )
 
         if (
