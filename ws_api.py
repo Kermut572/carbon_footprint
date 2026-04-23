@@ -966,11 +966,6 @@ async def ws_get_carbon_by_room_with_usage(
             dt_util.now().isoformat(),
         )
 
-        if (
-            consumption_timestamps is None or len(consumption_timestamps) == 0
-        ):  # ignore devices that have no consumption
-            continue
-
         days_from_installation = max(len(consumption_timestamps), 1)
         usage_carbon_value = (
             sum(ct.get("consumption_footprint", 0.0) for ct in consumption_timestamps)
@@ -1189,11 +1184,6 @@ async def ws_get_carbon_by_type_with_usage(
             (dt_util.now() - timedelta(days=1825)).isoformat(),
             dt_util.now().isoformat(),
         )
-
-        if (
-            consumption_timestamps is None or len(consumption_timestamps) == 0
-        ):  # ignore devices that have no consumption
-            continue
 
         days_from_installation = max(len(consumption_timestamps), 1)
         usage_carbon_value = sum(
