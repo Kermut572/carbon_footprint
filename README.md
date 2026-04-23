@@ -2,6 +2,9 @@
 
 A Home Assistant custom integration to estimate embodied and usage carbon for devices and rooms.
 
+## Dependencies
+- [PowerCalc](https://github.com/bramstroker/homeassistant-powercalc): Not essential but recommended, as it gives power and energy consumption profiles for device that do not come with energy meters
+
 ## Installation
 1. Clone the repo into `config/custom_components/`:
    ```bash

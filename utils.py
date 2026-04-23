@@ -170,12 +170,17 @@ async def async_populate_energy_store(
 def utils_find_energy_entity_for_device(
     hass: HomeAssistant, device_id: str
 ) -> str | None:
-    """Return the entity_id of the energy sensor for a device_id, or None."""
+    """Return the entity_id of the energy sensor for a device_id, or None.
+
+    Prioritizes the PowerCalc entity in order to have the energy consumption of the IoT device itself
+    and not of the devices connected to it (in case of Smart Plugs).
+    """
     if not device_id or device_id == "":
         return None
 
     registry = er.async_get(hass)
 
+    sensors = []
     for entry in registry.entities.values():
         if entry.device_id != device_id:
             continue
@@ -186,9 +191,13 @@ def utils_find_energy_entity_for_device(
             state.attributes.get("device_class") == SensorDeviceClass.ENERGY
             and state.attributes.get("state_class") == SensorStateClass.TOTAL_INCREASING
         ):
-            return entry.entity_id
+            sensors.append(entry)
 
-    return None
+    if not sensors:
+        return None
+
+    sensors.sort(key=lambda entry: entry.platform != "powercalc")
+    return sensors[0].entity_id
 
 
 def utils_get_yearly_consumption(hass: HomeAssistant) -> float:
