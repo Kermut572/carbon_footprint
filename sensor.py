@@ -21,7 +21,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfMass
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, UnitOfMass
 from homeassistant.core import Event, EventStateChangedData, HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import (
@@ -57,28 +57,34 @@ async def async_setup_entry(
         CarbonTotalTodaySensor(hass, energy_store),
     ]
 
-    # setup entries for registered devices
-    devices = cf_store.get_devices_data()
-    em_sensor = utils_fetch_electricity_maps_sensor(hass)
-    for device_id, device_info in devices.items():
-        device_meta = device_info.get("metadata", {})
-        device_name = device_meta.get("display_name", "err")
+    async def setup_devices_sensors():
+        # setup entries for registered devices
+        dev_entities = []
+        devices = cf_store.get_devices_data()
+        em_sensor = utils_fetch_electricity_maps_sensor(hass)
+        for device_id, device_info in devices.items():
+            device_meta = device_info.get("metadata", {})
+            device_name = device_meta.get("display_name", "err")
 
-        energy_entity = utils_find_energy_entity_for_device(hass, device_id)
-        if not energy_entity:
-            continue
+            energy_entity = utils_find_energy_entity_for_device(hass, device_id)
+            if not energy_entity:
+                continue
 
-        entities.append(
-            CarbonUsageImpactSensor(
-                hass=hass,
-                device_id=device_id,
-                device_name=device_name,
-                energy_entity_id=energy_entity,
-                em_entity_id=em_sensor,
+            dev_entities.append(
+                CarbonUsageImpactSensor(
+                    hass=hass,
+                    device_id=device_id,
+                    device_name=device_name,
+                    energy_entity_id=energy_entity,
+                    em_entity_id=em_sensor,
+                )
             )
-        )
+        async_add_entities(dev_entities)
 
     async_add_entities(entities)
+    entry.async_on_unload(
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, setup_devices_sensors)
+    )
 
 
 class CarbonIntensityNowSensor(SensorEntity):
