@@ -435,7 +435,9 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
         self._attr_name = "Carbon impact of usage"
         self._attr_has_entity_name = True
 
-        self.suggested_object_id = slugify(f"{device_name}_carbon_impact_of_usage")
+        self._attr_suggested_object_id = slugify(
+            f"{device_name}_carbon_impact_of_usage"
+        )
 
         device_entry = dr.async_get(hass).async_get(device_id)
         if device_entry:
