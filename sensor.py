@@ -33,7 +33,7 @@ from homeassistant.helpers.event import (
     async_track_time_interval,
 )
 from homeassistant.helpers.typing import StateType
-from homeassistant.util import slugify
+from homeassistant.util import dt as dt_util, slugify
 
 from .const import DOMAIN
 from .energy_store import EnergyStore
@@ -481,8 +481,8 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
         stats = await utils_build_hourly_stamps(
             self.hass,
             self._device_id,
-            (datetime.now() - timedelta(days=180)).isoformat(),
-            datetime.now().isoformat(),
+            (dt_util.now() - timedelta(days=180)).isoformat(),
+            dt_util.now().isoformat(),
         )
         if stats is not None:
             metadata = {
