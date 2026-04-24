@@ -387,7 +387,7 @@ def utils_build_cfdb_device(device: dict) -> dict:
     return device_dict
 
 
-def utils_get_device_energy_consumption_map(
+async def utils_get_device_energy_consumption_map(
     hass: HomeAssistant, device_id: str, granularity: str
 ) -> dict:
     """Return a dictionary mapping a device's energy consumption by the given time granularity.
@@ -399,9 +399,10 @@ def utils_get_device_energy_consumption_map(
     if not energy_entity:
         return None
 
-    stats = statistics_during_period(
+    stats = await hass.async_add_executor_job(
+        statistics_during_period,
         hass,
-        dt_util.now() - timedelta(days=1825),
+        dt_util.now() - timedelta(days=365),
         dt_util.now(),
         {energy_entity},
         granularity,
@@ -421,7 +422,7 @@ def utils_get_device_energy_consumption_map(
     return result
 
 
-def utils_compute_device_consumption_footprint(
+async def utils_compute_device_consumption_footprint(
     hass: HomeAssistant,
     device_id: str,
     granularity: str,
@@ -429,7 +430,7 @@ def utils_compute_device_consumption_footprint(
     end_time: str,
 ) -> dict:
     """Return a dictionary mapping a device's energy consumption carbon impact by the given time granularity."""
-    energy_consumption_map = utils_get_device_energy_consumption_map(
+    energy_consumption_map = await utils_get_device_energy_consumption_map(
         hass,
         device_id,
         "hour",  # use hour here because we aggregate afterwards
@@ -600,7 +601,7 @@ def utils_local_type_matching(devices: dict) -> tuple[dict, dict]:
     return (matched_devices, no_match_devices)
 
 
-def utils_build_hourly_stamps(
+async def utils_build_hourly_stamps(
     hass: HomeAssistant,
     device_id: str,
     start_time: str,
@@ -624,7 +625,7 @@ def utils_build_hourly_stamps(
     device_info["history_uploaded"] = True
     hass.async_create_task(cf_store.async_save_data())
 
-    stamps = utils_compute_device_consumption_footprint(
+    stamps = await utils_compute_device_consumption_footprint(
         hass, device_id, "hour", start_time, end_time
     )
 

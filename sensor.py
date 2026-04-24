@@ -468,6 +468,7 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
 
     async def async_added_to_hass(self):
         """Register callback events."""
+        await super().async_added_to_hass()
         last_state = await self.async_get_last_state()
         if last_state is not None:
             with contextlib.suppress(ValueError, TypeError):
@@ -477,7 +478,7 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
             if isinstance(restored_last, (int, float)):
                 self._last_energy_reading = float(restored_last)
 
-        stats = utils_build_hourly_stamps(
+        stats = await utils_build_hourly_stamps(
             self.hass,
             self._device_id,
             datetime.now() - timedelta(days=180),
