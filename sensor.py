@@ -16,9 +16,7 @@ import logging
 from typing import Any
 
 from homeassistant.components.recorder.models.statistics import StatisticMeanType
-from homeassistant.components.recorder.statistics import (
-    async_import_statistics,
-)
+from homeassistant.components.recorder.statistics import async_import_statistics
 from homeassistant.components.sensor import (
     RestoreEntity,
     SensorEntity,
@@ -441,7 +439,7 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
         )
         if not safe_device_id:
             safe_device_id = "unknown"
-        self._statistic_id = f"{DOMAIN}:device_{safe_device_id}_carbon_usage"
+        self._statistic_id = f"{DOMAIN}.device_{safe_device_id}_carbon_usage"
 
         self._attr_unique_id = f"{device_id}_carbon_usage"
         self._attr_name = "Carbon impact of usage"
