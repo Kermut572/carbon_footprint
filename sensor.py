@@ -23,12 +23,15 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, UnitOfMass
 from homeassistant.core import Event, EventStateChangedData, HomeAssistant
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_time_interval,
 )
 from homeassistant.helpers.typing import StateType
+from homeassistant.util import slugify
 
 from .const import DOMAIN
 from .energy_store import EnergyStore
@@ -65,11 +68,11 @@ async def async_setup_entry(
         for device_id, device_info in devices.items():
             device_meta = device_info.get("metadata", {})
             device_name = device_meta.get("display_name", "err")
-            _LOGGER.info("Creating sensor for %s", device_name)
+            # _LOGGER.info("Creating sensor for %s", device_name)
 
             energy_entity = utils_find_energy_entity_for_device(hass, device_id)
             if not energy_entity:
-                _LOGGER.warning("No energy entity found for %s, skipping", device_name)
+                # _LOGGER.warning("No energy entity found for %s, skipping", device_name)
                 continue
 
             dev_entities.append(
@@ -430,6 +433,16 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
 
         self._attr_unique_id = f"{device_id}_carbon_usage"
         self._attr_name = "Carbon impact of usage"
+        self._attr_has_entity_name = True
+
+        self.suggested_object_id = slugify(f"{device_name}_carbon_impact_of_usage")
+
+        device_entry = dr.async_get(hass).async_get(device_id)
+        if device_entry:
+            self._attr_device_info = DeviceInfo(
+                identifiers=device_entry.identifiers,
+                connections=device_entry.connections,
+            )
 
     @property
     def native_value(self) -> float:
