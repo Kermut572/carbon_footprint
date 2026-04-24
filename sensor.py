@@ -495,7 +495,7 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
         if stats:
             metadata = {
                 "statistic_id": self._statistic_id,
-                "source": DOMAIN,
+                "source": "integration",
                 "name": f"{self._device_name} carbon impact of usage",
                 "unit_of_measurement": "gCO2eq",
                 "unit_class": None,
