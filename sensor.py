@@ -433,13 +433,13 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
         self._last_energy_reading = None
         self._total_carbon_impact = 0.0
         self._last_em_reading = None
+        self._statistic_id = None
 
         safe_device_id = "".join(
             ch for ch in device_id.lower() if ch.isascii() and ch.isalnum()
         )
         if not safe_device_id:
             safe_device_id = "unknown"
-        self._statistic_id = f"{DOMAIN}.device_{safe_device_id}_carbon_usage"
 
         self._attr_unique_id = f"{device_id}_carbon_usage"
         self._attr_name = "Carbon impact of usage"
@@ -477,6 +477,7 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
     async def async_added_to_hass(self):
         """Register callback events."""
         await super().async_added_to_hass()
+        self._statistic_id = self.entity_id
         last_state = await self.async_get_last_state()
         if last_state is not None:
             with contextlib.suppress(ValueError, TypeError):
@@ -495,7 +496,7 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
         if stats:
             metadata = {
                 "statistic_id": self._statistic_id,
-                "source": "integration",
+                "source": "recorder",
                 "name": f"{self._device_name} carbon impact of usage",
                 "unit_of_measurement": "gCO2eq",
                 "unit_class": None,
