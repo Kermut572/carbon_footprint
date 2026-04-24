@@ -22,6 +22,7 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fi
 import voluptuous as vol
 
 from homeassistant.components import websocket_api
+from homeassistant.components.recorder.statistics import statistics_during_period
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import _LOGGER, HomeAssistant, callback
 from homeassistant.helpers import (
@@ -60,7 +61,6 @@ def async_register_websocket_handlers(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_devices_to_add)
     websocket_api.async_register_command(hass, ws_get_all_devices_energy)
     websocket_api.async_register_command(hass, ws_update_devices_energy)
-    websocket_api.async_register_command(hass, ws_get_energy_footprint_time_interval)
     websocket_api.async_register_command(hass, ws_get_embodied_carbon_time_interval)
     websocket_api.async_register_command(
         hass, ws_get_consumption_footprint_time_interval
@@ -501,25 +501,60 @@ async def ws_get_consumption_footprint_time_interval(
     cf_store = entries[0].runtime_data.cf_store
     devices = cf_store.get_devices_data()
     devices_consumptions = {}
-    for device_id in devices:
-        consumption_timestamps = await hass.async_add_executor_job(
-            utils_compute_device_consumption_footprint,
-            hass,
-            device_id,
-            granularity,
-            msg["start_time"],
-            msg["end_time"],
-        )
 
-        if (
-            consumption_timestamps is None or len(consumption_timestamps) == 0
-        ):  # ignore devices that have no consumption
+    device_cu_map = {}
+    for device_id, device_info in devices.items():
+        cu_entity = device_info.get("cu_entity", None)
+        if not cu_entity:
             continue
 
-        devices_consumptions[device_id] = consumption_timestamps
-        device_name_map[device_id] = (
-            devices.get(device_id, {}).get("metadata", {}).get("display_name", "err")
+        device_cu_map[device_id] = cu_entity
+        device_name_map[device_id] = device_info.get("metadata", {}).get(
+            "display_name", "err"
         )
+
+    stats = await hass.async_add_executor_job(
+        statistics_during_period,
+        hass,
+        dt_util.as_utc(start_time),
+        dt_util.as_utc(end_time),
+        set(device_cu_map.values()),
+        granularity,
+        None,
+        {"sum"},
+    )
+
+    for device_id, cu_entity in device_cu_map.items():
+        data = stats.get(cu_entity, None)
+        if not data:
+            continue
+
+        data_points = []
+        last_reading = None
+        for dp in data:
+            start_ts = dp.get("start", None)
+            if not start_ts:
+                continue
+
+            reading = dp.get("sum", None)
+            if not reading:
+                continue
+
+            if not last_reading:
+                last_reading = reading
+                continue
+
+            delta_reading = max(reading - last_reading, 0.0)
+            ts_local = dt_util.as_local(dt_util.utc_from_timestamp(start_ts))
+            data_points.append(
+                {
+                    "timestamp": ts_local.replace(tzinfo=None).isoformat(),
+                    "consumption_footprint": delta_reading,
+                }
+            )
+
+        if data_points:
+            devices_consumptions[device_id] = data_points
 
     _LOGGER.debug("PROCESSED DEVICES")
     _LOGGER.debug(devices_consumptions)
@@ -532,140 +567,6 @@ async def ws_get_consumption_footprint_time_interval(
             "device_name_map": device_name_map,
         },
     )
-
-
-@websocket_api.websocket_command(
-    {
-        vol.Required("type"): f"{DOMAIN}/get_energy_footprint_time_interval",
-        vol.Required("start_time"): str,
-        vol.Required("end_time"): str,
-        vol.Required("granularity"): str,
-    }
-)
-@websocket_api.async_response
-async def ws_get_energy_footprint_time_interval(
-    hass: HomeAssistant,
-    connection: websocket_api.ActiveConnection,
-    msg: dict[str, Any],
-) -> None:
-    """Get the history of the energy footprint for a given time interval."""
-
-    start_time = dt_util.parse_datetime(msg["start_time"])
-    end_time = dt_util.parse_datetime(msg["end_time"])
-
-    if not start_time or not end_time:
-        _LOGGER.error(
-            "No start_date or date_time set for call to ws_get_energy_footprint_time_interval"
-        )
-        connection.send_error(msg["id"], "invalid_format", "Invalid date format")
-        return
-
-    if end_time < start_time:
-        _LOGGER.error(
-            "Invalid time interval for call to ws_get_energy_footprint_time_interval"
-        )
-        connection.send_error(msg["id"], "invalid_interval", "Invalid time interval")
-        return
-
-    granularity = msg["granularity"]
-    if granularity not in ("hour", "day", "month"):
-        _LOGGER.error(
-            "Invalid granularity for call to ws_get_energy_footprint_time_interval"
-        )
-        connection.send_error(msg["id"], "invalid_granularity", "Invalid granularity")
-        return
-
-    entry = _get_loaded_entry(hass)
-    if entry is None:
-        connection.send_error(
-            msg["id"], "config_entry_not_loaded", "Uh oh, no loaded entry found :-("
-        )
-        return
-
-    energy_store = entry.runtime_data.energy_store
-
-    results = []
-
-    match granularity:
-        case "hour":
-            for date_key, energy_footprint in energy_store.data.items():
-                data_time = dt_util.as_local(datetime.strptime(date_key, "%d-%m-%Y-%H"))
-                if data_time > end_time or data_time < start_time:
-                    continue
-
-                results.append(
-                    {
-                        "timestamp": data_time.isoformat(),
-                        "energy_footprint": energy_footprint,
-                    }
-                )
-        case "day":
-            curr_date = None
-            cumulated_fp = 0
-            days = 0
-
-            for date_key, energy_footprint in energy_store.data.items():
-                data_time = dt_util.as_local(datetime.strptime(date_key, "%d-%m-%Y-%H"))
-                if data_time > end_time or data_time < start_time:
-                    continue
-
-                if curr_date and curr_date.date() != data_time.date():
-                    results.append(
-                        {
-                            "timestamp": curr_date.isoformat(),
-                            "energy_footprint": cumulated_fp / days,
-                        }
-                    )
-                    days = 0
-                    cumulated_fp = 0
-
-                curr_date = data_time
-                cumulated_fp += energy_footprint
-                days += 1
-
-            if curr_date and days > 0:
-                results.append(
-                    {
-                        "timestamp": curr_date.isoformat(),
-                        "energy_footprint": cumulated_fp / days,
-                    }
-                )
-
-        case "month":
-            curr_date = None
-            cumulated_fp = 0
-            days = 0
-
-            for date_key, energy_footprint in energy_store.data.items():
-                data_time = dt_util.as_local(datetime.strptime(date_key, "%d-%m-%Y-%H"))
-                if data_time > end_time or data_time < start_time:
-                    continue
-
-                if curr_date and curr_date.month != data_time.month:
-                    results.append(
-                        {
-                            "timestamp": data_time.isoformat(),
-                            "energy_footprint": cumulated_fp / days,
-                        }
-                    )
-                    days = 0
-                    cumulated_fp = 0
-
-                curr_date = data_time
-                cumulated_fp += energy_footprint
-                days += 1
-
-            if curr_date and days > 0:
-                results.append(
-                    {
-                        "timestamp": curr_date.isoformat(),
-                        "energy_footprint": cumulated_fp / days,
-                    }
-                )
-
-    connection.send_result(msg["id"], {"energy_footprints": results})
-
-    return
 
 
 @websocket_api.websocket_command(
@@ -957,33 +858,30 @@ async def ws_get_carbon_by_room_with_usage(
             or device_reg.devices.get(device_id).name
         )
 
-        consumption_timestamps = await hass.async_add_executor_job(
-            utils_compute_device_consumption_footprint,
-            hass,
-            device_id,
-            "day",
-            (dt_util.now() - timedelta(days=1825)).isoformat(),
-            dt_util.now().isoformat(),
-        )
-
         usage_carbon_value = 0.0
+        cu_entity = device_info.get("cu_entity")
+        if cu_entity:
+            state = hass.states.get(cu_entity)
+            if state and state.state not in ("unknown", "unavailable"):
+                try:
+                    usage_carbon_value = float(state.state) / 1000.0
+                except Exception:
+                    usage_carbon_value = 0.0
+
         predicted_usage_carbon_value = 0.0
+        lifetime_days = device_info.get("lifetime_years", 5) * 365
+        install_date_str = metadata.get("install_date", None)
+        install_dt = None
+        if install_date_str:
+            install_dt = dt_util.parse_datetime(install_date_str)
 
-        if consumption_timestamps:
-            days_from_installation = max(len(consumption_timestamps), 1)
-            usage_carbon_value = (
-                sum(
-                    ct.get("consumption_footprint", 0.0)
-                    for ct in consumption_timestamps
-                )
-                / 1000
-            )
-
+        if install_dt:
+            if install_dt.tzinfo is None:
+                install_dt = dt_util.as_local(install_dt)
+            days_elapsed = max((dt_util.now() - install_dt).days, 1)
             predicted_usage_carbon_value = (
-                usage_carbon_value / days_from_installation
-            ) * device_info.get(
-                "lifetime_years" * 365, 1825
-            )  # 1825 days for five years
+                usage_carbon_value / days_elapsed
+            ) * lifetime_days
 
         # Try to find the room
         room_name = "Unknown Room"
@@ -1185,30 +1083,30 @@ async def ws_get_carbon_by_type_with_usage(
             or device_reg.devices.get(device_id).name
         )
 
-        consumption_timestamps = await hass.async_add_executor_job(
-            utils_compute_device_consumption_footprint,
-            hass,
-            device_id,
-            "day",
-            (dt_util.now() - timedelta(days=1825)).isoformat(),
-            dt_util.now().isoformat(),
-        )
-
         usage_carbon_value = 0.0
+        cu_entity = device_info.get("cu_entity")
+        if cu_entity:
+            state = hass.states.get(cu_entity)
+            if state and state.state not in ("unknown", "unavailable"):
+                try:
+                    usage_carbon_value = float(state.state) / 1000.0
+                except Exception:
+                    usage_carbon_value = 0.0
+
         predicted_usage_carbon_value = 0.0
+        lifetime_days = device_info.get("lifetime_years", 5) * 365
+        install_date_str = metadata.get("install_date", None)
+        install_dt = None
+        if install_date_str:
+            install_dt = dt_util.parse_datetime(install_date_str)
 
-        if consumption_timestamps:
-            days_from_installation = max(len(consumption_timestamps), 1)
-            usage_carbon_value = sum(
-                ct.get("consumption_footprint", 0.0) for ct in consumption_timestamps
-            )
-            usage_carbon_value /= 1000
-
+        if install_dt:
+            if install_dt.tzinfo is None:
+                install_dt = dt_util.as_local(install_dt)
+            days_elapsed = max((dt_util.now() - install_dt).days, 1)
             predicted_usage_carbon_value = (
-                usage_carbon_value / days_from_installation
-            ) * device_info.get(
-                "lifetime_years" * 365, 1825
-            )  # 1825 days for five years
+                usage_carbon_value / days_elapsed
+            ) * lifetime_days
 
         embodied_carbon_value = device_info.get("carbon_footprint", 0)
         device_type = device_info.get("type", "Unknown")

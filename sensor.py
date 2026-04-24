@@ -490,9 +490,20 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
         stats = await utils_build_hourly_stamps(
             self.hass,
             self._device_id,
-            (dt_util.now() - timedelta(days=180)).isoformat(),
+            (dt_util.now() - timedelta(days=365)).isoformat(),
             dt_util.now().isoformat(),
         )
+
+        entries = self.hass.config_entries.async_entries(DOMAIN)
+        cf_store = None
+        if entries:
+            cf_store = entries[0].runtime_data.cf_store
+            devices = cf_store.get_devices_data()
+            curr_device = devices.get(self._device_id, None)
+            if curr_device:
+                curr_device["cu_entity"] = self._statistic_id
+                self.hass.async_create_task(cf_store.async_save_data())
+
         if stats:
             metadata = {
                 "statistic_id": self._statistic_id,
@@ -505,12 +516,13 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
             }
             try:
                 async_import_statistics(self.hass, metadata, stats)
-                entries = self.hass.config_entries.async_entries(DOMAIN)
-                if entries:
-                    cf_store = entries[0].runtime_data.cf_store
-                    if device_info := cf_store.get_devices_data().get(self._device_id):
-                        device_info["history_uploaded"] = True
-                        self.hass.async_create_task(cf_store.async_save_data())
+                if cf_store and (
+                    device_info := cf_store.get_devices_data().get(self._device_id)
+                ):
+                    device_info["history_uploaded"] = True
+                    self.hass.async_create_task(cf_store.async_save_data())
+                self._last_energy_reading = stats[-1].get("sum", 0.0)
+                self.async_write_ha_state()
             except Exception:
                 _LOGGER.exception(
                     "Failed to import historical statistics for %s",

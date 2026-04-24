@@ -83,55 +83,6 @@ class CarbonFootprintPanel extends HTMLElement {
         return await CarbonUtils.updateDeviceEnergy(this);
     }
 
-    async getEnergyHistogram() {
-        try {
-            let pastDays;
-            switch (this._currentTimeFrame) {
-                case this._timeFrame.WEEK:
-                    pastDays = 7;
-                    break;
-                case this._timeFrame.MONTH:
-                    pastDays = 30;
-                    break;
-                case this._timeFrame.YEAR:
-                    pastDays = 365;
-                    break;
-                default:
-                    pastDays = 7;
-                    break;
-            }
-
-            console.log('Querying with ', pastDays, ' , timeframe was ', this._currentTimeFrame)
-
-            const endTime = new Date();
-            const startTime = new Date(endTime);
-            startTime.setDate(endTime.getDate() - pastDays);
-
-            const result = await this._hass.callWS({
-                type: 'carbon_footprint/get_energy_footprint_time_interval',
-                start_time: startTime.toISOString(),
-                end_time: endTime.toISOString(),
-                granularity: this._currentChartGranularity
-            });
-
-            if (!result.energy_footprints || result.energy_footprints.length === 0) {
-                return '<p>No historical data available</p>';
-            }
-
-            this._histogramData = result.energy_footprints;
-
-            return `
-                <div style="position: relative; height: 300px; width: 100%;">
-                    <canvas id="energy-histogram-chart"></canvas>
-                </div>
-            `;
-
-        } catch (err) {
-            console.error('Error loading histogram:', err);
-            return '<p>Error loading histogram data</p>';
-        }
-    }
-
     async getCarbonByRoom() {
         try {
             // Support test data toggle for recommendations testing
@@ -677,23 +628,6 @@ class CarbonFootprintPanel extends HTMLElement {
         link.type = 'text/css';
         link.href = '/api/carbon_footprint/style.css?version=1.18'; // :skull:
         this.appendChild(link);
-    }
-
-    async refreshHistogram() {
-        const newHtml = await this.getEnergyHistogram();
-        const container = this.querySelector('#energy-histogram-container');
-        if (container) {
-            container.innerHTML = newHtml;
-        }
-
-        if (typeof Chart === 'undefined') {
-            const script = document.createElement('script');
-            script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
-            //script.onload = () => this.renderHistogram();
-            document.head.appendChild(script);
-        } else {
-            //this.renderHistogram();
-        }
     }
 
     showLoadingOverlay(message = 'Loading...') {
