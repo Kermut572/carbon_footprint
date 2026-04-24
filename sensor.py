@@ -521,7 +521,15 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
                 ):
                     device_info["history_uploaded"] = True
                     self.hass.async_create_task(cf_store.async_save_data())
-                self._last_energy_reading = stats[-1].get("sum", 0.0)
+
+                with contextlib.suppress(ValueError, TypeError):
+                    self._total_carbon_impact = float(stats[-1].get("sum", 0.0))
+
+                state = self.hass.states.get(self._energy_entity_id)
+                if state and state.state not in ("unknown", "unavailable"):
+                    with contextlib.suppress(ValueError, TypeError):
+                        self._last_energy_reading = float(state.state)
+
                 self.async_write_ha_state()
             except Exception:
                 _LOGGER.exception(
