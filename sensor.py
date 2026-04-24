@@ -10,14 +10,19 @@ These sensors follow Home Assistant best practices for sensor implementation.
 
 from __future__ import annotations
 
+import contextlib
 from datetime import date, datetime, timedelta
 import logging
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.sensor import (
+    RestoreEntity,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfMass
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import (
     async_track_state_change_event,
@@ -27,6 +32,10 @@ from homeassistant.helpers.typing import StateType
 
 from .const import DOMAIN
 from .energy_store import EnergyStore
+from .utils import (
+    utils_fetch_electricity_maps_sensor,
+    utils_find_energy_entity_for_device,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -47,6 +56,27 @@ async def async_setup_entry(
         CarbonEmissionNowSensor(hass, cf_store),
         CarbonTotalTodaySensor(hass, energy_store),
     ]
+
+    # setup entries for registered devices
+    devices = cf_store.get_devices_data()
+    em_sensor = utils_fetch_electricity_maps_sensor(hass)
+    for device_id, device_info in devices.items():
+        device_meta = device_info.get("metadata", {})
+        device_name = device_meta.get("display_name", "err")
+
+        energy_entity = utils_find_energy_entity_for_device(hass, device_id)
+        if not energy_entity:
+            continue
+
+        entities.append(
+            CarbonUsageImpactSensor(
+                hass=hass,
+                device_id=device_id,
+                device_name=device_name,
+                energy_entity_id=energy_entity,
+                em_entity_id=em_sensor,
+            )
+        )
 
     async_add_entities(entities)
 
@@ -362,3 +392,103 @@ class CarbonTotalTodaySensor(SensorEntity):
     def native_value(self) -> StateType:
         """Return the native value of the sensor."""
         return self._attr_native_value
+
+
+class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
+    """Reports the cumulated carbon footprint of device at usage in gCO2eq."""
+
+    _attr_native_unit_of_measurement = "gCO2eq"
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        device_id: str,
+        device_name: str,
+        energy_entity_id: str,
+        em_entity_id: str,
+    ) -> None:
+        """Init a carbon usage impact sensor."""
+        self.hass = hass
+        self._device_id = device_id
+        self._device_name = device_name
+        self._energy_entity_id = energy_entity_id
+        self._em_entity_id = em_entity_id
+
+        self._last_energy_reading = None
+        self._total_carbon_impact = 0.0
+        self._last_em_reading = None
+
+        self._attr_unique_id = f"{device_id}_carbon_usage"
+        self._attr_name = "Carbon impact of usage"
+
+    @property
+    def native_value(self) -> float:
+        """Return rounded carbon impact."""
+        return round(self._total_carbon_impact, 3)
+
+    @property
+    def sensor_attributes(self) -> dict[str, Any]:
+        """Return sensor attributes."""
+        return {
+            "device_id": self._device_id,
+            "device_name": self._device_name,
+            "energy_entity_id": self._energy_entity_id,
+            "em_entity_id": self._em_entity_id,
+            "last_energy_reading": self._last_energy_reading,
+            "last_em_reading": self._last_em_reading,
+        }
+
+    async def async_added_to_hass(self):
+        """Register callback events."""
+
+        async def energy_state_listener(event: Event[EventStateChangedData]) -> None:
+            """Handler for state changes of energy sensor."""
+            new_state = event.data.get("new_state")
+            if new_state is None:
+                return
+
+            new_energy_reading = None
+            with contextlib.suppress(ValueError):
+                new_energy_reading = float(new_state.state)
+            if new_energy_reading is None:
+                return
+
+            em_state = self.hass.states.get(self._em_entity_id)
+            em_value = None
+            with contextlib.suppress(ValueError):
+                em_value = float(em_state.state)
+            if em_value is None:
+                em_value = 150.0
+
+            self._last_em_reading = em_value
+            if self._last_energy_reading is None:
+                self._last_energy_reading = new_energy_reading
+                self.async_write_ha_state()
+                return
+
+            delta_nrj = new_energy_reading - self._last_energy_reading
+            if delta_nrj <= 0:
+                self._last_energy_reading = new_energy_reading
+                self.async_write_ha_state()
+                return
+
+            self._total_carbon_impact += delta_nrj * em_value
+            self._last_energy_reading = new_energy_reading
+            self.async_write_ha_state()
+
+        self.async_on_remove(
+            async_track_state_change_event(
+                self.hass, self._energy_entity_id, energy_state_listener
+            )
+        )
+
+        if self._last_energy_reading is None:
+            state = self.hass.states.get(self._energy_entity_id)
+            val = None
+            with contextlib.suppress(ValueError):
+                val = float(state.state)
+            self._last_energy_reading = val
+
+        self.async_write_ha_state()
