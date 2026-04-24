@@ -57,7 +57,7 @@ async def async_setup_entry(
         CarbonTotalTodaySensor(hass, energy_store),
     ]
 
-    async def setup_devices_sensors():
+    async def setup_devices_sensors(_event: Event):
         # setup entries for registered devices
         dev_entities = []
         devices = cf_store.get_devices_data()
