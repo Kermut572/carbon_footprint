@@ -481,8 +481,8 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
         stats = await utils_build_hourly_stamps(
             self.hass,
             self._device_id,
-            datetime.now() - timedelta(days=180),
-            datetime.now(),
+            (datetime.now() - timedelta(days=180)).isoformat(),
+            datetime.now().isoformat(),
         )
         if stats is not None:
             metadata = {
