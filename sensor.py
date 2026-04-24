@@ -16,7 +16,9 @@ import logging
 from typing import Any
 
 from homeassistant.components.recorder.models.statistics import StatisticMeanType
-from homeassistant.components.recorder.statistics import async_add_external_statistics
+from homeassistant.components.recorder.statistics import (
+    async_import_statistics,
+)
 from homeassistant.components.sensor import (
     RestoreEntity,
     SensorEntity,
@@ -503,7 +505,7 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
                 "mean_type": StatisticMeanType.NONE,
             }
             try:
-                async_add_external_statistics(self.hass, metadata, stats)
+                async_import_statistics(self.hass, metadata, stats)
                 entries = self.hass.config_entries.async_entries(DOMAIN)
                 if entries:
                     cf_store = entries[0].runtime_data.cf_store
