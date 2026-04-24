@@ -598,3 +598,45 @@ def utils_local_type_matching(devices: dict) -> tuple[dict, dict]:
         matched_devices[device_name] = match_type
 
     return (matched_devices, no_match_devices)
+
+
+def utils_build_hourly_stamps(
+    hass: HomeAssistant,
+    device_id: str,
+    start_time: str,
+    end_time: str,
+) -> list:
+    """Build a device's carbon usage sensor historical data."""
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        _LOGGER.exception("No config entry found")
+        return None
+
+    cf_store = entries[0].runtime_data.cf_store
+    devices = cf_store.get_devices_data()
+    device_info = devices.get(device_id, None)
+    if not device_info:
+        return None
+
+    if device_info.get("history_uploaded", False):
+        return None
+
+    device_info["history_uploaded"] = True
+    hass.async_create_task(cf_store.async_save_data())
+
+    stamps = utils_compute_device_consumption_footprint(
+        hass, device_id, "hour", start_time, end_time
+    )
+
+    stats = []
+    total_cf = 0.0
+    for item in stamps:
+        total_cf += item.get("consumption_footprint", 0.0)
+        ts = item.get("timestamp")
+        if not ts:
+            continue
+
+        stats.append(
+            {"start": dt_util.as_utc(datetime.fromisoformat(ts)), "sum": total_cf}
+        )
+    return stats

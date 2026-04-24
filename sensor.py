@@ -15,6 +15,8 @@ from datetime import date, datetime, timedelta
 import logging
 from typing import Any
 
+from homeassistant.components.recorder.models.statistics import StatisticMeanType
+from homeassistant.components.recorder.statistics import async_import_statistics
 from homeassistant.components.sensor import (
     RestoreEntity,
     SensorEntity,
@@ -36,6 +38,7 @@ from homeassistant.util import slugify
 from .const import DOMAIN
 from .energy_store import EnergyStore
 from .utils import (
+    utils_build_hourly_stamps,
     utils_fetch_electricity_maps_sensor,
     utils_find_energy_entity_for_device,
 )
@@ -452,7 +455,7 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
         return round(self._total_carbon_impact, 3)
 
     @property
-    def sensor_attributes(self) -> dict[str, Any]:
+    def extra_state_attributes(self) -> dict[str, Any]:
         """Return sensor attributes."""
         return {
             "device_id": self._device_id,
@@ -465,6 +468,32 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
 
     async def async_added_to_hass(self):
         """Register callback events."""
+        last_state = await self.async_get_last_state()
+        if last_state is not None:
+            with contextlib.suppress(ValueError, TypeError):
+                self._total_carbon_impact = float(last_state.state)
+
+            restored_last = last_state.attributes.get("last_energy_reading")
+            if isinstance(restored_last, (int, float)):
+                self._last_energy_reading = float(restored_last)
+
+        stats = utils_build_hourly_stamps(
+            self.hass,
+            self._device_id,
+            datetime.now() - timedelta(days=180),
+            datetime.now(),
+        )
+        if stats is not None:
+            metadata = {
+                "statistic_id": self.entity_id,
+                "source": DOMAIN,
+                "name": None,
+                "unit_of_measurement": "gCO2eq",
+                "unit_class": None,
+                "has_sum": True,
+                "mean_type": StatisticMeanType.NONE,
+            }
+            async_import_statistics(self.hass, metadata, stats)
 
         async def energy_state_listener(event: Event[EventStateChangedData]) -> None:
             """Handler for state changes of energy sensor."""
