@@ -274,7 +274,7 @@ class CarbonEmissionNowSensor(SensorEntity):
                         # Convert watts to kilowatts
                         power_w = float(state.state)
                         total_power_kw += power_w / 1000.0
-                    except ValueError, TypeError:
+                    except Exception:
                         continue
 
         # Calculate emission: power (kW) * intensity (gCO2/kWh) = gCO2/h
