@@ -552,6 +552,7 @@ async def ws_get_consumption_footprint_time_interval(
                     "consumption_footprint": delta_reading,
                 }
             )
+            last_reading = reading
 
         if data_points:
             devices_consumptions[device_id] = data_points
