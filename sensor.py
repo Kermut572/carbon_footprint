@@ -16,7 +16,7 @@ import logging
 from typing import Any
 
 from homeassistant.components.recorder.models.statistics import StatisticMeanType
-from homeassistant.components.recorder.statistics import async_import_statistics
+from homeassistant.components.recorder.statistics import async_add_external_statistics
 from homeassistant.components.sensor import (
     RestoreEntity,
     SensorEntity,
@@ -257,7 +257,7 @@ class CarbonEmissionNowSensor(SensorEntity):
         total_power_kw = 0.0
         devices = self.cf_store.get_devices_data()
 
-        for device_name in devices.keys():
+        for device_name in devices:
             # Look for power sensors related to this device
             # Common entity suffixes for power: _power, power consumption
             for entity_id in self.hass.states.async_entity_ids("sensor"):
@@ -274,7 +274,7 @@ class CarbonEmissionNowSensor(SensorEntity):
                         # Convert watts to kilowatts
                         power_w = float(state.state)
                         total_power_kw += power_w / 1000.0
-                    except:
+                    except ValueError, TypeError:
                         continue
 
         # Calculate emission: power (kW) * intensity (gCO2/kWh) = gCO2/h
@@ -434,6 +434,13 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
         self._total_carbon_impact = 0.0
         self._last_em_reading = None
 
+        safe_device_id = "".join(
+            ch for ch in device_id.lower() if ch.isascii() and ch.isalnum()
+        )
+        if not safe_device_id:
+            safe_device_id = "unknown"
+        self._statistic_id = f"{DOMAIN}:device_{safe_device_id}_carbon_usage"
+
         self._attr_unique_id = f"{device_id}_carbon_usage"
         self._attr_name = "Carbon impact of usage"
         self._attr_has_entity_name = True
@@ -462,6 +469,7 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
             "device_name": self._device_name,
             "energy_entity_id": self._energy_entity_id,
             "em_entity_id": self._em_entity_id,
+            "statistic_id": self._statistic_id,
             "last_energy_reading": self._last_energy_reading,
             "last_em_reading": self._last_em_reading,
         }
@@ -484,17 +492,29 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
             (dt_util.now() - timedelta(days=180)).isoformat(),
             dt_util.now().isoformat(),
         )
-        if stats is not None:
+        if stats:
             metadata = {
-                "statistic_id": self.entity_id,
+                "statistic_id": self._statistic_id,
                 "source": DOMAIN,
-                "name": None,
+                "name": f"{self._device_name} carbon impact of usage",
                 "unit_of_measurement": "gCO2eq",
                 "unit_class": None,
                 "has_sum": True,
                 "mean_type": StatisticMeanType.NONE,
             }
-            async_import_statistics(self.hass, metadata, stats)
+            try:
+                async_add_external_statistics(self.hass, metadata, stats)
+                entries = self.hass.config_entries.async_entries(DOMAIN)
+                if entries:
+                    cf_store = entries[0].runtime_data.cf_store
+                    if device_info := cf_store.get_devices_data().get(self._device_id):
+                        device_info["history_uploaded"] = True
+                        self.hass.async_create_task(cf_store.async_save_data())
+            except Exception:
+                _LOGGER.exception(
+                    "Failed to import historical statistics for %s",
+                    self.entity_id,
+                )
 
         async def energy_state_listener(event: Event[EventStateChangedData]) -> None:
             """Handler for state changes of energy sensor."""

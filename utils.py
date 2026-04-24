@@ -638,6 +638,4 @@ async def utils_build_hourly_stamps(
             {"start": dt_util.as_utc(datetime.fromisoformat(ts)), "sum": total_cf}
         )
 
-    device_info["history_uploaded"] = True
-    hass.async_create_task(cf_store.async_save_data())
     return stats
