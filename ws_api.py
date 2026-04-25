@@ -1453,7 +1453,8 @@ async def ws_get_yearly_contribution(
 
     if yearly_contrib > 100:
         _LOGGER.warning(
-            r"Incoherent value of %f\% calculated for yearly contribution. Make sure a valid energy meter or a fallback energy value is set"
+            "Incoherent value of %d calculated for yearly contribution. Make sure a valid energy meter or a fallback energy value is set",
+            yearly_contrib,
         )
 
     connection.send_result(
