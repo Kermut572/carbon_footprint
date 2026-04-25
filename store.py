@@ -47,6 +47,27 @@ class CFStore:
             "carbon_footprint": carbon_footprint,
             "metadata": metadata,
         }
+
+        # keep type (if arg is "unknown"), cf, cu_entity, energy_entity and history_uploaded if it exists so it doesn't f up the entire logic
+        curr_device_info = self.data.get(device_id, None)
+        if curr_device_info is not None:
+            cu_entity = curr_device_info.get("cu_entity", None)
+            if cu_entity is not None:
+                entity_info["cu_entity"] = cu_entity
+
+            energy_entity = curr_device_info.get("energy_entity", None)
+            if energy_entity is not None:
+                entity_info["energy_entity"] = energy_entity
+
+            curr_type = curr_device_info.get("type", None)
+            curr_cf = curr_device_info.get("carbon_footprint", 0.0)
+            if curr_type is not None and type == "unknown":
+                entity_info["type"] = curr_type
+                entity_info["carbon_footprint"] = curr_cf
+
+            history_uploaded = curr_device_info.get("history_uploaded", False)
+            entity_info["history_uploaded"] = history_uploaded
+
         self.data[device_id] = entity_info
         await self.async_save_data()
 
