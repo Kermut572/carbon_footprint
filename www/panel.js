@@ -467,9 +467,6 @@ class CarbonFootprintPanel extends HTMLElement {
         this.appendChild(link);
     }
 
-    _valueChanged(ev) {
-        this._currentDevice = ev.detail.value;
-    }
 
     setCarbonValue(value) {
         this._currentCarbonValue = value;
@@ -1636,21 +1633,6 @@ class CarbonFootprintPanel extends HTMLElement {
     }
 
     attachFormHandler() {
-        const selector = this.querySelector('#device_selector');
-        if (selector) {
-            try {
-                selector.hass = this._hass;
-                selector.selector = {
-                    device: {},
-                };
-                selector.value = this._currentDevice ?? '';
-                selector.required = true;
-                selector.addEventListener('value-changed', (ev) => this._valueChanged(ev));
-            } catch (err) {
-                console.debug('Failed to init ha-selector', err);
-            }
-        }
-
         const suggestions = [
             "Temperature/humidity sensor",
             "Motion sensor",
@@ -1716,6 +1698,29 @@ class CarbonFootprintPanel extends HTMLElement {
             }
 
         }
+
+        const selector = this.querySelector('#device_selector');
+        if (selector) {
+            try {
+                selector.hass = this._hass;
+                selector.selector = {
+                    device: {},
+                };
+                selector.value = this._currentDevice ?? '';
+                selector.required = true;
+                selector.addEventListener('value-changed', async (ev) => {
+                    this._currentDevice = ev.detail.value;
+                    const autoComp = await this._hass.callWS({ type: 'carbon_footprint/get_device_autocomp', device_id: this._currentDevice });
+                    this._currentType = autoComp.type;
+                    typeSelector.value = this._currentType;
+                    this._currentCarbonValue = autoComp.cf;
+                    carbonSelector.value = this._currentCarbonValue;
+                });
+            } catch (err) {
+                console.debug('Failed to init ha-selector', err);
+            }
+        }
+
 
 
         const form = this.querySelector('#add-device-form');

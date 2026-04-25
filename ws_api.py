@@ -54,6 +54,7 @@ _LOGGER = logging.getLogger(__name__)
 @callback
 def async_register_websocket_handlers(hass: HomeAssistant) -> None:
     """Register WebSocket handlers."""
+    websocket_api.async_register_command(hass, ws_get_device_autocomp)
     websocket_api.async_register_command(hass, ws_get_carbon_data)
     websocket_api.async_register_command(hass, ws_get_type_embodied_footprint)
     websocket_api.async_register_command(hass, ws_set_device)
@@ -74,6 +75,39 @@ def async_register_websocket_handlers(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_db_matching)
     websocket_api.async_register_command(hass, ws_export_json)
     websocket_api.async_register_command(hass, ws_get_yearly_contribution)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/get_device_autocomp",
+        vol.Required("device_id"): str,
+    }
+)
+@callback
+def ws_get_device_autocomp(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Get a device's information to autocomplete the form."""
+    device_id = msg["device_id"]
+    entry = _get_loaded_entry(hass)
+    if entry is None:
+        connection.send_error(
+            msg["id"], "config_entry_not_loaded", "Uh oh, no loaded entry found :-("
+        )
+        return
+
+    devices = entry.runtime_data.cf_store.get_devices_data()
+    device_info = devices.get(device_id, {})
+
+    connection.send_result(
+        msg["id"],
+        {
+            "cf": device_info.get("carbon_footprint", 0.0),
+            "type": device_info.get("type", ""),
+        },
+    )
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_devices_to_add"})
