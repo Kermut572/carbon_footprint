@@ -208,8 +208,8 @@ def utils_get_device_install_date(
     lookup_device_metadata = lookup_device.get("metadata", {})
     install_date = lookup_device_metadata.get("install_date", None)
     if install_date is not None:
-        ts = datetime.fromisoformat(install_date)
-        return dt_util.as_local(dt_util.utc_from_timestamp(ts))
+        ts = dt_util.parse_datetime(install_date)
+        return dt_util.as_local(ts)
 
     data_points = statistics_during_period(
         hass,
