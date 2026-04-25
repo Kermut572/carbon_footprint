@@ -25,7 +25,7 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, UnitOfMass
 from homeassistant.core import Event, EventStateChangedData, HomeAssistant
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -91,7 +91,17 @@ async def async_setup_entry(
         async_add_entities(dev_entities)
 
     async def add_device_from_event(device_id: str, device_name: str):
+        entity_reg = er.async_get(hass)
+        uuid = f"{device_id}_carbon_usage"
+
+        if entity_reg.async_get(uuid) is not None:
+            _LOGGER.info(
+                "Did not add a sensor for %s because one already exists", device_name
+            )
+            return
+
         energy_entity, _ = utils_find_energy_entity_for_device(hass, device_id)
+
         if not energy_entity:
             _LOGGER.info(
                 "Could not add sensor for %s because it has no energy sensor",
