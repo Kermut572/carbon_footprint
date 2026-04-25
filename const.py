@@ -4,6 +4,7 @@ import json
 import pathlib
 
 DOMAIN = "carbon_footprint"
+DEVICE_ADDED_SIGNAL = f"{DOMAIN}_device_added_event"
 
 # ============================================================================
 # TEST MODE - FOR TESTING SENSORS WITHOUT ELECTRICITY MAPS INTEGRATION

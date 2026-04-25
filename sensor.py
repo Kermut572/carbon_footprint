@@ -26,6 +26,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, UnitOfMass
 from homeassistant.core import Event, EventStateChangedData, HomeAssistant
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import (
@@ -35,7 +36,7 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.typing import StateType
 from homeassistant.util import dt as dt_util, slugify
 
-from .const import DOMAIN
+from .const import DEVICE_ADDED_SIGNAL, DOMAIN
 from .energy_store import EnergyStore
 from .utils import (
     utils_build_hourly_stamps,
@@ -89,9 +90,36 @@ async def async_setup_entry(
             )
         async_add_entities(dev_entities)
 
+    async def add_device_from_event(device_id: str, device_name: str):
+        energy_entity, _ = utils_find_energy_entity_for_device(hass, device_id)
+        if not energy_entity:
+            _LOGGER.info(
+                "Could not add sensor for %s because it has no energy sensor",
+                device_name,
+            )
+            return
+
+        em_sensor = utils_fetch_electricity_maps_sensor(hass)
+        if not em_sensor:
+            _LOGGER.warning(
+                "Could not add sensor for %s because no Electricity Maps sensor was found, make sure it is installed"
+            )
+            return
+        entities = [
+            CarbonUsageImpactSensor(
+                hass, device_id, device_name, energy_entity, em_sensor
+            )
+        ]
+
+        async_add_entities(entities)
+
     async_add_entities(entities)
     entry.async_on_unload(
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, setup_devices_sensors)
+    )
+
+    entry.async_on_unload(
+        async_dispatcher_connect(hass, DEVICE_ADDED_SIGNAL, add_device_from_event)
     )
 
 
@@ -435,19 +463,9 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
         self._last_em_reading = None
         self._statistic_id = None
 
-        safe_device_id = "".join(
-            ch for ch in device_id.lower() if ch.isascii() and ch.isalnum()
-        )
-        if not safe_device_id:
-            safe_device_id = "unknown"
-
         self._attr_unique_id = f"{device_id}_carbon_usage"
         self._attr_name = "Carbon impact of usage"
         self._attr_has_entity_name = True
-
-        self._attr_suggested_object_id = slugify(
-            f"{device_name}_carbon_impact_of_usage"
-        )
 
         device_entry = dr.async_get(hass).async_get(device_id)
         if device_entry:

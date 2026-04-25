@@ -10,7 +10,7 @@ data.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 import json
 import logging
 from typing import Any
@@ -30,9 +30,10 @@ from homeassistant.helpers import (
     device_registry as dr,
     entity_registry as er,
 )
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.util import dt as dt_util
 
-from .const import BLOCKS_FOOTPRINTS, DOMAIN
+from .const import BLOCKS_FOOTPRINTS, DEVICE_ADDED_SIGNAL, DOMAIN
 from .utils import (
     ProviderError,
     utils_build_cfdb_device,
@@ -290,7 +291,7 @@ async def ws_set_device(
             hass=hass, device_entities=device_entities
         )
 
-        total_energy, sensor_name = await hass.async_add_executor_job(
+        total_energy, _ = await hass.async_add_executor_job(
             utils_get_device_total_energy_consumption, hass, device_entities
         )
 
@@ -306,6 +307,7 @@ async def ws_set_device(
         )
     )
 
+    async_dispatcher_send(hass, DEVICE_ADDED_SIGNAL, device_id, device_name)
     connection.send_result(msg["id"], {"success": True})
 
 
