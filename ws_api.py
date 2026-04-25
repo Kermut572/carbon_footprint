@@ -612,8 +612,8 @@ async def ws_get_embodied_carbon_time_interval(
             msg["id"], "config_entry_not_loaded", "Uh oh, no loaded entry found :-("
         )
         return
-
-    devices = entry.runtime_data.cf_store.get_devices_data()
+    cf_store = entry.runtime_data.cf_store
+    devices = cf_store.get_devices_data()
     response = {}
     for device_id, device_info in devices.items():
         carbon_footprint = (
@@ -621,19 +621,22 @@ async def ws_get_embodied_carbon_time_interval(
         )  # by default it is in kgCO2eq
         lifetime_years = device_info.get("lifetime_years", 5)
 
-        energy_entity = await hass.async_add_executor_job(
+        energy_entity, en_store_updated = await hass.async_add_executor_job(
             utils_find_energy_entity_for_device, hass, device_id
         )
         if not energy_entity:
             # _LOGGER.debug("Could not find energy entity for device %s", device_id)
             continue
 
-        install_date = await hass.async_add_executor_job(
+        install_date, id_store_updated = await hass.async_add_executor_job(
             utils_get_device_install_date, hass, energy_entity, device_id
         )
         if not install_date:
             # _LOGGER.debug("Could not find install date for device %s", device_id)
             continue
+
+        if en_store_updated or id_store_updated:
+            hass.async_create_task(cf_store.async_save_data())
 
         cf_per_hour = (carbon_footprint / lifetime_years) / 8766  # nb hours in a year
         curr_date = start_time
