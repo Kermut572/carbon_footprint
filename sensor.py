@@ -94,7 +94,7 @@ async def async_setup_entry(
         entity_reg = er.async_get(hass)
         uuid = f"{device_id}_carbon_usage"
 
-        if entity_reg.async_get(uuid) is not None:
+        if entity_reg.async_get_entity_id("sensor", DOMAIN, uuid) is not None:
             _LOGGER.info(
                 "Did not add a sensor for %s because one already exists", device_name
             )

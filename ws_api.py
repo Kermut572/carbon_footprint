@@ -554,8 +554,8 @@ async def ws_get_consumption_footprint_time_interval(
         if data_points:
             devices_consumptions[device_id] = data_points
 
-    _LOGGER.debug("PROCESSED DEVICES")
-    _LOGGER.debug(devices_consumptions)
+    # _LOGGER.debug("PROCESSED DEVICES")
+    # _LOGGER.debug(devices_consumptions)
 
     # response format: {"device_1": [{"ts_1": cf_1, "ts_2":cf_2,...}], "device_2": [], ...}
     connection.send_result(
