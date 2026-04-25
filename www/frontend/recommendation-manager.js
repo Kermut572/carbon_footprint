@@ -94,6 +94,13 @@ export function getIoTShareRecommendation(yearlyCons) {
             severity: 'warning',
         };
     }
+    if (value > 100) {
+        return {
+            message: `Incoherent value computed, have you set an energy meter or a fallback energy value in the settings?`,
+            emoji: '🫥',
+            severity: 'bad',
+        };
+    }
     return {
         message: `Your IoT load is relatively high at ${value.toFixed(1)}%. Consider a device audit and smarter controls to cut emissions.`,
         emoji: '🔴',
