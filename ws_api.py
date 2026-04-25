@@ -539,7 +539,7 @@ async def ws_get_consumption_footprint_time_interval(
             #    last_reading = reading
             #    continue
 
-            delta_reading = max(reading - last_reading, 0.0)
+            # delta_reading = max(reading - last_reading, 0.0)
             ts_local = dt_util.as_local(dt_util.utc_from_timestamp(start_ts))
             data_points.append(
                 {
