@@ -297,11 +297,6 @@ async def ws_set_device(
         if total_energy:
             metadata["total_energy"] = total_energy
 
-        if sensor_name:
-            metadata["install_date"] = await hass.async_add_executor_job(
-                utils_get_device_install_date, hass, sensor_name
-            )
-
     hass.async_create_task(
         cf_store.async_set_device_info(
             device_id,
@@ -521,7 +516,7 @@ async def ws_get_consumption_footprint_time_interval(
         set(device_cu_map.values()),
         granularity,
         None,
-        {"sum"},
+        {"change"},
     )
 
     for device_id, cu_entity in device_cu_map.items():
@@ -536,20 +531,20 @@ async def ws_get_consumption_footprint_time_interval(
             if not start_ts:
                 continue
 
-            reading = dp.get("sum", None)
+            reading = dp.get("change", None)
             if not reading:
                 continue
 
-            if not last_reading:
-                last_reading = reading
-                continue
+            # if not last_reading:
+            #    last_reading = reading
+            #    continue
 
             delta_reading = max(reading - last_reading, 0.0)
             ts_local = dt_util.as_local(dt_util.utc_from_timestamp(start_ts))
             data_points.append(
                 {
                     "timestamp": ts_local.replace(tzinfo=None).isoformat(),
-                    "consumption_footprint": delta_reading,
+                    "consumption_footprint": reading,  # delta_reading,
                 }
             )
             last_reading = reading
@@ -630,14 +625,14 @@ async def ws_get_embodied_carbon_time_interval(
             utils_find_energy_entity_for_device, hass, device_id
         )
         if not energy_entity:
-            _LOGGER.debug("Could not find energy entity for device %s", device_id)
+            # _LOGGER.debug("Could not find energy entity for device %s", device_id)
             continue
 
         install_date = await hass.async_add_executor_job(
-            utils_get_device_install_date, hass, energy_entity
+            utils_get_device_install_date, hass, energy_entity, device_id
         )
         if not install_date:
-            _LOGGER.debug("Could not find install date for device %s", device_id)
+            # _LOGGER.debug("Could not find install date for device %s", device_id)
             continue
 
         cf_per_hour = (carbon_footprint / lifetime_years) / 8766  # nb hours in a year

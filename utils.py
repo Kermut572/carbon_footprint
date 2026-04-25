@@ -188,10 +188,28 @@ def utils_get_device_total_energy_consumption(
     return (round(total_energy, 4), sensor_name)
 
 
-def utils_get_device_install_date(hass: HomeAssistant, sensor: str) -> date:
+def utils_get_device_install_date(
+    hass: HomeAssistant, sensor: str, device_id: str
+) -> date:
     """Return the date on which the device was installed, by using the first date recorded by the sensors."""
     if not sensor or sensor == "":
         return None
+
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        return None
+
+    cf_store = entries[0].runtime_data.cf_store
+    devices = cf_store.get_devices_data()
+    lookup_device = devices.get(device_id, None)
+    if lookup_device is None:
+        return None
+
+    lookup_device_metadata = lookup_device.get("metadata", {})
+    install_date = lookup_device_metadata.get("install_date", None)
+    if install_date is not None:
+        ts = datetime.fromisoformat(install_date)
+        return dt_util.as_local(dt_util.utc_from_timestamp(ts))
 
     data_points = statistics_during_period(
         hass,
@@ -212,8 +230,11 @@ def utils_get_device_install_date(hass: HomeAssistant, sensor: str) -> date:
 
     fp = series[0]
     start_ts = fp.get("start")
+    start_utc = dt_util.utc_from_timestamp(start_ts)
+    lookup_device_metadata["install_date"] = start_utc.isoformat()
+    hass.async_create_task(cf_store.async_save_data())
 
-    return dt_util.as_local(dt_util.utc_from_timestamp(start_ts))
+    return dt_util.as_local(start_utc)
 
 
 def utils_fetch_electricity_maps_sensor(hass: HomeAssistant) -> str:
@@ -296,6 +317,19 @@ def utils_find_energy_entity_for_device(
         return None
 
     registry = er.async_get(hass)
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        return None
+
+    cf_store = entries[0].runtime_data.cf_store
+    devices = cf_store.get_devices_data()
+    lookup_device = devices.get(device_id, None)
+    if lookup_device is None:
+        return None
+
+    energy_entity = lookup_device.get("energy_entity", None)
+    if energy_entity is not None and hass.states.get(energy_entity):
+        return energy_entity
 
     sensors = []
     for entry in registry.entities.values():
@@ -314,7 +348,11 @@ def utils_find_energy_entity_for_device(
         return None
 
     sensors.sort(key=lambda entry: entry.platform.lower() != "powercalc")
-    return sensors[0].entity_id
+    energy_entity = sensors[0].entity_id
+    lookup_device["energy_entity"] = energy_entity
+    hass.async_create_task(cf_store.async_save_data())
+
+    return energy_entity
 
 
 def utils_get_yearly_consumption(hass: HomeAssistant) -> float:
@@ -349,12 +387,12 @@ def utils_get_yearly_consumption(hass: HomeAssistant) -> float:
         {energy_meter_entity},
         "day",
         None,
-        {"sum"},
+        {"change"},
     )
 
     yearly_energy = 0.0
     for day in data.get(energy_meter_entity, []):
-        daily_nrg = day.get("sum", 0.0)
+        daily_nrg = day.get("change", 0.0)
         yearly_energy += daily_nrg
 
     return yearly_energy
@@ -407,7 +445,7 @@ async def utils_get_device_energy_consumption_map(
         {energy_entity},
         granularity,
         None,
-        {"sum", "mean"},
+        {"sum"},
     )
 
     result = {}
