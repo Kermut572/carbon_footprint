@@ -1446,13 +1446,17 @@ async def ws_get_yearly_contribution(
         device_metadata = device_stats.get("metadata", {})
         total_energy_consumed += device_metadata.get("total_energy", 1.0)
 
+    yearly_contrib = round(
+        (total_energy_consumed / (yearly_energy if yearly_energy != 0.0 else 1)) * 100,
+        2,
+    )
+
+    if yearly_contrib > 100:
+        _LOGGER.warning(
+            r"Incoherent value of %f\% calculated for yearly contribution. Make sure a valid energy meter or a fallback energy value is set"
+        )
+
     connection.send_result(
         msg["id"],
-        {
-            "yearly_contribution": round(
-                (total_energy_consumed / (yearly_energy if yearly_energy != 0.0 else 1))
-                * 100,
-                2,
-            )
-        },
+        {"yearly_contribution": yearly_contrib},
     )
