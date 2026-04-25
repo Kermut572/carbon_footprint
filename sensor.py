@@ -23,7 +23,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, UnitOfMass
+from homeassistant.const import UnitOfMass
 from homeassistant.core import Event, EventStateChangedData, HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
@@ -33,6 +33,7 @@ from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_time_interval,
 )
+from homeassistant.helpers.start import async_at_started
 from homeassistant.helpers.typing import StateType
 from homeassistant.util import dt as dt_util, slugify
 
@@ -64,7 +65,7 @@ async def async_setup_entry(
         CarbonTotalTodaySensor(hass, energy_store),
     ]
 
-    async def setup_devices_sensors(_event: Event):
+    async def setup_devices_sensors(_hass: HomeAssistant) -> None:
         # setup entries for registered devices
         dev_entities = []
         devices = cf_store.get_devices_data()
@@ -128,9 +129,7 @@ async def async_setup_entry(
         async_add_entities(entities)
 
     async_add_entities(entities)
-    entry.async_on_unload(
-        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, setup_devices_sensors)
-    )
+    entry.async_on_unload(async_at_started(hass, setup_devices_sensors))
 
     entry.async_on_unload(
         async_dispatcher_connect(hass, DEVICE_ADDED_SIGNAL, add_device_from_event)
