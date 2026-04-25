@@ -47,6 +47,21 @@ class CFStore:
             "carbon_footprint": carbon_footprint,
             "metadata": metadata,
         }
+
+        # just keep cu_entity, energy_entity and history_uploaded if it exists so it doesn't f up the entire logic
+        curr_device_info = self.data.get(device_id, None)
+        if curr_device_info is not None:
+            cu_entity = curr_device_info.get("cu_entity", None)
+            if cu_entity is not None:
+                entity_info["cu_entity"] = cu_entity
+
+            energy_entity = curr_device_info.get("energy_entity", None)
+            if energy_entity is not None:
+                entity_info["energy_entity"] = energy_entity
+
+            history_uploaded = curr_device_info.get("history_uploaded", False)
+            entity_info["history_uploaded"] = history_uploaded
+
         self.data[device_id] = entity_info
         await self.async_save_data()
 

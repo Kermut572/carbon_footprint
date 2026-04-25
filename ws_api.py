@@ -673,8 +673,8 @@ async def ws_get_embodied_carbon_time_interval(
             curr_date = next_date
 
         response[device_id] = results
-        _LOGGER.debug("PROCESSED DEVICES EMBODIED CARBON: %s", device_id)
-        _LOGGER.debug(results)
+        # _LOGGER.debug("PROCESSED DEVICES EMBODIED CARBON: %s", device_id)
+        # _LOGGER.debug(results)
 
     connection.send_result(
         msg["id"],
