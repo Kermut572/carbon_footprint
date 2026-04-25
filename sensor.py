@@ -73,7 +73,7 @@ async def async_setup_entry(
             device_name = device_meta.get("display_name", "err")
             # _LOGGER.info("Creating sensor for %s", device_name)
 
-            energy_entity = utils_find_energy_entity_for_device(hass, device_id)
+            energy_entity, _ = utils_find_energy_entity_for_device(hass, device_id)
             if not energy_entity:
                 # _LOGGER.warning("No energy entity found for %s, skipping", device_name)
                 continue
