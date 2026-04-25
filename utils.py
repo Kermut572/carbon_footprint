@@ -188,7 +188,7 @@ def utils_get_device_total_energy_consumption(
     return (round(total_energy, 4), sensor_name)
 
 
-def utils_get_device_install_date(
+async def utils_get_device_install_date(
     hass: HomeAssistant, sensor: str, device_id: str
 ) -> tuple[date, bool]:
     """Return the date on which the device was installed, by using the first date recorded by the sensors.
@@ -214,7 +214,8 @@ def utils_get_device_install_date(
         ts = dt_util.parse_datetime(install_date)
         return dt_util.as_local(ts), False
 
-    data_points = statistics_during_period(
+    data_points = await hass.async_add_executor_job(
+        statistics_during_period,
         hass,
         dt_util.now() - timedelta(weeks=520),
         None,
@@ -356,7 +357,7 @@ def utils_find_energy_entity_for_device(
     return energy_entity, True
 
 
-def utils_get_yearly_consumption(hass: HomeAssistant) -> float:
+async def utils_get_yearly_consumption(hass: HomeAssistant) -> float:
     """Returns the energy consumption (in kWh) of the last year from either the energy meter either the fallback value."""
 
     entries = hass.config_entries.async_entries(DOMAIN)
@@ -381,7 +382,8 @@ def utils_get_yearly_consumption(hass: HomeAssistant) -> float:
     ):
         return default_ret_value
 
-    data = statistics_during_period(
+    data = await hass.async_add_executor_job(
+        statistics_during_period,
         hass,
         dt_util.now() - timedelta(days=365),
         None,

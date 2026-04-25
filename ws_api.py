@@ -630,8 +630,8 @@ async def ws_get_embodied_carbon_time_interval(
             # _LOGGER.debug("Could not find energy entity for device %s", device_id)
             continue
 
-        install_date, id_store_updated = await hass.async_add_executor_job(
-            utils_get_device_install_date, hass, energy_entity, device_id
+        install_date, id_store_updated = await utils_get_device_install_date(
+            hass, energy_entity, device_id
         )
         if not install_date:
             # _LOGGER.debug("Could not find install date for device %s", device_id)
@@ -1437,9 +1437,7 @@ async def ws_get_yearly_contribution(
     devices = cf_store.get_devices_data()
 
     energy_meter = entries[0].options.get("energy_meter")
-    yearly_energy = await hass.async_add_executor_job(
-        utils_get_yearly_consumption, hass
-    )
+    yearly_energy = await utils_get_yearly_consumption(hass)
 
     total_energy_consumed = 1.0
     for device_id, device_stats in devices.items():
