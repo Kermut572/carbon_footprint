@@ -1443,6 +1443,11 @@ async def ws_get_yearly_contribution(
     for device_id, device_stats in devices.items():
         if energy_meter and device_id == energy_meter:
             continue
+
+        device_energy_entity = device_stats.get("energy_entity", None)
+        if device_energy_entity is None:
+            continue
+
         device_metadata = device_stats.get("metadata", {})
         total_energy_consumed += device_metadata.get("total_energy", 1.0)
 
