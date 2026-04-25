@@ -433,7 +433,7 @@ async def utils_get_device_energy_consumption_map(
 
     The keys are formatted as "%d-%m-%Y-%H".
     """
-    energy_entity = utils_find_energy_entity_for_device(hass, device_id)
+    energy_entity, _ = utils_find_energy_entity_for_device(hass, device_id)
     _LOGGER.debug("No energy entity found for device id %s, skipping", device_id)
     if not energy_entity:
         return None
