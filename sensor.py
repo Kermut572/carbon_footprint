@@ -90,9 +90,13 @@ async def async_setup_entry(
             )
         async_add_entities(dev_entities)
 
-    async def add_device_from_event(device_id: str, device_name: str):
+    async def add_device_from_event(device_id: str):
         entity_reg = er.async_get(hass)
         uuid = f"{device_id}_carbon_usage"
+
+        device_reg = dr.async_get(hass)
+        device_entry = device_reg.devices.get(device_id)
+        device_name = (device_entry.name_by_user or device_entry.name) or "err"
 
         if entity_reg.async_get_entity_id("sensor", DOMAIN, uuid) is not None:
             _LOGGER.info(

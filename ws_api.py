@@ -307,7 +307,7 @@ async def ws_set_device(
         )
     )
 
-    async_dispatcher_send(hass, DEVICE_ADDED_SIGNAL, device_id, device_name)
+    async_dispatcher_send(hass, DEVICE_ADDED_SIGNAL, device_id)
     connection.send_result(msg["id"], {"success": True})
 
 
