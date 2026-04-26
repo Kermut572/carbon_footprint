@@ -118,6 +118,7 @@ export function getUsagePatternRecommendation(
         id: 'usage_pattern',
         title,
     };
+    const logPrefix = '[Carbon Footprint][Usage Pattern]';
 
     const hasCurrentIntensity =
         currentIntensity !== undefined &&
@@ -126,8 +127,23 @@ export function getUsagePatternRecommendation(
     const hasIntensityHistory = Array.isArray(intensityHistory) && intensityHistory.length > 0;
     const hasUsageHistory =
         usageHistory && typeof usageHistory === 'object' && Object.keys(usageHistory).length > 0;
+    const usageDeviceCount = hasUsageHistory ? Object.keys(usageHistory).length : 0;
+
+    console.debug(logPrefix, 'input summary', {
+        hasUsageHistory,
+        usageDeviceCount,
+        hasIntensityHistory,
+        intensityPoints: hasIntensityHistory ? intensityHistory.length : 0,
+        hasCurrentIntensity,
+        currentIntensity,
+    });
 
     if (!hasIntensityHistory) {
+        console.debug(logPrefix, 'missing intensity history', {
+            hasCurrentIntensity,
+            currentIntensity,
+        });
+
         if (hasCurrentIntensity) {
             const safeIntensity = Number(currentIntensity);
             let message = `Current carbon intensity is ${safeIntensity.toFixed(0)} gCO₂eq/kWh.`;
@@ -171,6 +187,10 @@ export function getUsagePatternRecommendation(
     }
 
     if (!hasUsageHistory) {
+        console.debug(logPrefix, 'missing usage history', {
+            usageHistory,
+        });
+
         return {
             ...resultBase,
             message:
@@ -182,14 +202,23 @@ export function getUsagePatternRecommendation(
     }
 
     const usageByTimestamp = new Map();
+    let rawUsagePointCount = 0;
+    let validUsagePointCount = 0;
+    let skippedUsagePointCount = 0;
+
     for (const deviceId in usageHistory) {
         const devicePoints = usageHistory[deviceId];
         if (!Array.isArray(devicePoints)) {
+            console.debug(logPrefix, 'skipping device with non-array usage points', {
+                deviceId,
+                devicePoints,
+            });
             continue;
         }
 
         let previousCumulativeUsage = null;
         for (const point of devicePoints) {
+            rawUsagePointCount++;
             const timestamp = point.timestamp;
             let usageValue = Number(point.usage_kwh);
 
@@ -209,9 +238,11 @@ export function getUsagePatternRecommendation(
             }
 
             if (!timestamp || !Number.isFinite(usageValue) || usageValue <= 0) {
+                skippedUsagePointCount++;
                 continue;
             }
 
+            validUsagePointCount++;
             usageByTimestamp.set(
                 timestamp,
                 (usageByTimestamp.get(timestamp) || 0) + usageValue
@@ -219,7 +250,17 @@ export function getUsagePatternRecommendation(
         }
     }
 
+    console.debug(logPrefix, 'usage extraction summary', {
+        rawUsagePointCount,
+        validUsagePointCount,
+        skippedUsagePointCount,
+        usageTimestamps: usageByTimestamp.size,
+        usageSample: Array.from(usageByTimestamp.entries()).slice(0, 5),
+    });
+
     if (usageByTimestamp.size === 0) {
+        console.debug(logPrefix, 'no valid usage values extracted');
+
         return {
             ...resultBase,
             message:
@@ -231,6 +272,9 @@ export function getUsagePatternRecommendation(
     }
 
     const intensityByTimestamp = new Map();
+    let validIntensityPointCount = 0;
+    let skippedIntensityPointCount = 0;
+
     for (const point of intensityHistory) {
         const timestamp = point.timestamp;
         const intensityValue = Number(
@@ -238,13 +282,25 @@ export function getUsagePatternRecommendation(
         );
 
         if (!timestamp || !Number.isFinite(intensityValue) || intensityValue <= 0) {
+            skippedIntensityPointCount++;
             continue;
         }
 
+        validIntensityPointCount++;
         intensityByTimestamp.set(timestamp, intensityValue);
     }
 
+    console.debug(logPrefix, 'intensity extraction summary', {
+        rawIntensityPointCount: intensityHistory.length,
+        validIntensityPointCount,
+        skippedIntensityPointCount,
+        intensityTimestamps: intensityByTimestamp.size,
+        intensitySample: Array.from(intensityByTimestamp.entries()).slice(0, 5),
+    });
+
     if (intensityByTimestamp.size === 0) {
+        console.debug(logPrefix, 'no valid intensity values extracted');
+
         return {
             ...resultBase,
             message:
@@ -258,10 +314,12 @@ export function getUsagePatternRecommendation(
     let matchedUsage = 0;
     let weightedSum = 0;
     const matchedIntensities = [];
+    let unmatchedUsageTimestampCount = 0;
 
     for (const [timestamp, usageValue] of usageByTimestamp) {
         const intensityValue = intensityByTimestamp.get(timestamp);
         if (!Number.isFinite(intensityValue)) {
+            unmatchedUsageTimestampCount++;
             continue;
         }
 
@@ -270,7 +328,20 @@ export function getUsagePatternRecommendation(
         matchedIntensities.push(intensityValue);
     }
 
+    console.debug(logPrefix, 'timestamp match summary', {
+        usageTimestamps: usageByTimestamp.size,
+        intensityTimestamps: intensityByTimestamp.size,
+        matchedTimestamps: matchedIntensities.length,
+        unmatchedUsageTimestampCount,
+        matchedUsage,
+    });
+
     if (matchedUsage === 0 || matchedIntensities.length < 2) {
+        console.debug(logPrefix, 'not enough matched usage and intensity timestamps', {
+            matchedUsage,
+            matchedIntensityCount: matchedIntensities.length,
+        });
+
         return {
             ...resultBase,
             message:
@@ -286,7 +357,16 @@ export function getUsagePatternRecommendation(
         matchedIntensities.reduce((sum, value) => sum + value, 0) /
         matchedIntensities.length;
 
+    console.debug(logPrefix, 'computed recommendation metrics', {
+        weightedIntensity,
+        averageIntensity,
+        matchedUsage,
+        matchedIntensityCount: matchedIntensities.length,
+    });
+
     if (weightedIntensity > averageIntensity * 1.15) {
+        console.debug(logPrefix, 'returning warning recommendation');
+
         return {
             ...resultBase,
             message:
@@ -298,6 +378,8 @@ export function getUsagePatternRecommendation(
     }
 
     if (weightedIntensity < averageIntensity * 0.85) {
+        console.debug(logPrefix, 'returning good recommendation');
+
         return {
             ...resultBase,
             message:
@@ -307,6 +389,8 @@ export function getUsagePatternRecommendation(
             emoji: '✅',
         };
     }
+
+    console.debug(logPrefix, 'returning neutral recommendation');
 
     return {
         ...resultBase,
