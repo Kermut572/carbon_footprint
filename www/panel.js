@@ -147,7 +147,6 @@ class CarbonFootprintPanel extends HTMLElement {
             : null;
 
         // Fetch room data and generate recommendation
-        console.log('Fetching room data for recommendation...');
         const roomData = await this.getCarbonByRoom();
         const recommendation = getHighImpactAreaRecommendation(roomData);
 
@@ -166,7 +165,7 @@ class CarbonFootprintPanel extends HTMLElement {
             granularity: 'day'
         });
         const energyData = recResult.devices_consumptions;
-        const intensityData = data?.intensity_history || []; // TODO: implement intensity_history in backend if needed
+        const intensityData = data?.intensity_history || [];
         const usagePatternRec = getUsagePatternRecommendation(
             energyData,
             intensityData,
