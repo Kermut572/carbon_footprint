@@ -147,14 +147,30 @@ class CarbonFootprintPanel extends HTMLElement {
             : null;
 
         // Fetch room data and generate recommendation
-        console.log('Fetching room data for recommendation...');
         const roomData = await this.getCarbonByRoom();
         const recommendation = getHighImpactAreaRecommendation(roomData);
 
         // Generate carbon intensity recommendation
         const intensityRec = getCarbonIntensityRecommendation(data?.co2_intensity);
         const iotShareRec = getIoTShareRecommendation(yearlyCons);
-        const usagePatternRec = getUsagePatternRecommendation(this._histogramData, data?.intensity_history || []);
+
+        // Fetch consumption data for usage vs intensity recommendation (last 30 days)
+        const recEndTime = new Date();
+        const recStartTime = new Date(recEndTime);
+        recStartTime.setDate(recEndTime.getDate() - 30);
+        const recResult = await this._hass.callWS({
+            type: 'carbon_footprint/get_consumption_footprint_time_interval',
+            start_time: recStartTime.toISOString(),
+            end_time: recEndTime.toISOString(),
+            granularity: 'day'
+        });
+        const energyData = recResult.devices_consumptions;
+        const intensityData = data?.intensity_history || [];
+        const usagePatternRec = getUsagePatternRecommendation(
+            energyData,
+            intensityData,
+            data?.co2_intensity
+        );
 
         this.innerHTML = `
             <ha-app-layout>

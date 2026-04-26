@@ -10,7 +10,7 @@ data.
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 import json
 import logging
 from typing import Any
@@ -253,12 +253,34 @@ def ws_get_carbon_data(
     if updated_name:
         hass.async_create_task(cf_store.async_save_data())
 
+    intensity_history = []
+    energy_store = getattr(entry.runtime_data, "energy_store", None)
+    if energy_store is not None:
+        for date_key, intensity_value in energy_store.get_energy_footprint_data().items():
+            try:
+                timestamp = datetime.strptime(date_key, "%d-%m-%Y-%H")
+            except ValueError:
+                continue
+
+            try:
+                intensity_history.append(
+                    {
+                        "timestamp": timestamp.isoformat(),
+                        "intensity": float(intensity_value),
+                    }
+                )
+            except (TypeError, ValueError):
+                continue
+
+        intensity_history.sort(key=lambda item: item["timestamp"])
+
     connection.send_result(
         msg["id"],
         {
             "devices": devices,
             "co2_intensity": co2_intensity,
             "co2_intensity_status": status,
+            "intensity_history": intensity_history,
         },
     )
 
