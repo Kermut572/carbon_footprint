@@ -129,7 +129,7 @@ export function getUsagePatternRecommendation(
         usageHistory && typeof usageHistory === 'object' && Object.keys(usageHistory).length > 0;
     const usageDeviceCount = hasUsageHistory ? Object.keys(usageHistory).length : 0;
 
-    console.debug(logPrefix, 'input summary', {
+    console.log(logPrefix, 'input summary', {
         hasUsageHistory,
         usageDeviceCount,
         hasIntensityHistory,
@@ -139,7 +139,7 @@ export function getUsagePatternRecommendation(
     });
 
     if (!hasIntensityHistory) {
-        console.debug(logPrefix, 'missing intensity history', {
+        console.log(logPrefix, 'missing intensity history', {
             hasCurrentIntensity,
             currentIntensity,
         });
@@ -187,7 +187,7 @@ export function getUsagePatternRecommendation(
     }
 
     if (!hasUsageHistory) {
-        console.debug(logPrefix, 'missing usage history', {
+        console.log(logPrefix, 'missing usage history', {
             usageHistory,
         });
 
@@ -209,7 +209,7 @@ export function getUsagePatternRecommendation(
     for (const deviceId in usageHistory) {
         const devicePoints = usageHistory[deviceId];
         if (!Array.isArray(devicePoints)) {
-            console.debug(logPrefix, 'skipping device with non-array usage points', {
+            console.log(logPrefix, 'skipping device with non-array usage points', {
                 deviceId,
                 devicePoints,
             });
@@ -250,7 +250,7 @@ export function getUsagePatternRecommendation(
         }
     }
 
-    console.debug(logPrefix, 'usage extraction summary', {
+    console.log(logPrefix, 'usage extraction summary', {
         rawUsagePointCount,
         validUsagePointCount,
         skippedUsagePointCount,
@@ -259,7 +259,7 @@ export function getUsagePatternRecommendation(
     });
 
     if (usageByTimestamp.size === 0) {
-        console.debug(logPrefix, 'no valid usage values extracted');
+        console.log(logPrefix, 'no valid usage values extracted');
 
         return {
             ...resultBase,
@@ -290,7 +290,7 @@ export function getUsagePatternRecommendation(
         intensityByTimestamp.set(timestamp, intensityValue);
     }
 
-    console.debug(logPrefix, 'intensity extraction summary', {
+    console.log(logPrefix, 'intensity extraction summary', {
         rawIntensityPointCount: intensityHistory.length,
         validIntensityPointCount,
         skippedIntensityPointCount,
@@ -299,7 +299,7 @@ export function getUsagePatternRecommendation(
     });
 
     if (intensityByTimestamp.size === 0) {
-        console.debug(logPrefix, 'no valid intensity values extracted');
+        console.log(logPrefix, 'no valid intensity values extracted');
 
         return {
             ...resultBase,
@@ -328,7 +328,7 @@ export function getUsagePatternRecommendation(
         matchedIntensities.push(intensityValue);
     }
 
-    console.debug(logPrefix, 'timestamp match summary', {
+    console.log(logPrefix, 'timestamp match summary', {
         usageTimestamps: usageByTimestamp.size,
         intensityTimestamps: intensityByTimestamp.size,
         matchedTimestamps: matchedIntensities.length,
@@ -337,7 +337,7 @@ export function getUsagePatternRecommendation(
     });
 
     if (matchedUsage === 0 || matchedIntensities.length < 2) {
-        console.debug(logPrefix, 'not enough matched usage and intensity timestamps', {
+        console.log(logPrefix, 'not enough matched usage and intensity timestamps', {
             matchedUsage,
             matchedIntensityCount: matchedIntensities.length,
         });
@@ -357,7 +357,7 @@ export function getUsagePatternRecommendation(
         matchedIntensities.reduce((sum, value) => sum + value, 0) /
         matchedIntensities.length;
 
-    console.debug(logPrefix, 'computed recommendation metrics', {
+    console.log(logPrefix, 'computed recommendation metrics', {
         weightedIntensity,
         averageIntensity,
         matchedUsage,
@@ -365,7 +365,7 @@ export function getUsagePatternRecommendation(
     });
 
     if (weightedIntensity > averageIntensity * 1.15) {
-        console.debug(logPrefix, 'returning warning recommendation');
+        console.log(logPrefix, 'returning warning recommendation');
 
         return {
             ...resultBase,
@@ -378,7 +378,7 @@ export function getUsagePatternRecommendation(
     }
 
     if (weightedIntensity < averageIntensity * 0.85) {
-        console.debug(logPrefix, 'returning good recommendation');
+        console.log(logPrefix, 'returning good recommendation');
 
         return {
             ...resultBase,
@@ -390,7 +390,7 @@ export function getUsagePatternRecommendation(
         };
     }
 
-    console.debug(logPrefix, 'returning neutral recommendation');
+    console.log(logPrefix, 'returning neutral recommendation');
 
     return {
         ...resultBase,
