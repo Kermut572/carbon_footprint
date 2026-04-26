@@ -171,8 +171,6 @@ export function getUsagePatternRecommendation(
     }
 
     if (!hasUsageHistory) {
-        // TODO: Store hourly usage deltas as usage_kwh per timestamp so this recommendation
-        //       can compare actual consumption timing against carbon intensity.
         return {
             ...resultBase,
             message:
@@ -190,11 +188,25 @@ export function getUsagePatternRecommendation(
             continue;
         }
 
+        let previousCumulativeUsage = null;
         for (const point of devicePoints) {
             const timestamp = point.timestamp;
-            const usageValue = Number(
-                point.consumption_footprint ?? point.energy_footprint ?? point.energy ?? point.usage ?? NaN
-            );
+            let usageValue = Number(point.usage_kwh);
+
+            if (!Number.isFinite(usageValue)) {
+                const cumulativeUsage = Number(point.energy ?? point.usage ?? NaN);
+                if (Number.isFinite(cumulativeUsage)) {
+                    usageValue =
+                        previousCumulativeUsage === null
+                            ? 0
+                            : Math.max(cumulativeUsage - previousCumulativeUsage, 0);
+                    previousCumulativeUsage = cumulativeUsage;
+                } else {
+                    usageValue = Number(
+                        point.consumption_footprint ?? point.energy_footprint ?? NaN
+                    );
+                }
+            }
 
             if (!timestamp || !Number.isFinite(usageValue) || usageValue <= 0) {
                 continue;
