@@ -108,62 +108,199 @@ export function getIoTShareRecommendation(yearlyCons) {
     };
 }
 
-export function getUsagePatternRecommendation(histogramData, intensityData) {
-    if (!Array.isArray(histogramData) || histogramData.length === 0) {
+export function getUsagePatternRecommendation(
+    usageHistory,
+    intensityHistory,
+    currentIntensity
+) {
+    const title = 'Usage Pattern Insight';
+    const resultBase = {
+        id: 'usage_pattern',
+        title,
+    };
+
+    const hasCurrentIntensity =
+        currentIntensity !== undefined &&
+        currentIntensity !== null &&
+        !Number.isNaN(Number(currentIntensity));
+    const hasIntensityHistory = Array.isArray(intensityHistory) && intensityHistory.length > 0;
+    const hasUsageHistory =
+        usageHistory && typeof usageHistory === 'object' && Object.keys(usageHistory).length > 0;
+
+    if (!hasIntensityHistory) {
+        if (hasCurrentIntensity) {
+            const safeIntensity = Number(currentIntensity);
+            let message = `Current carbon intensity is ${safeIntensity.toFixed(0)} gCO₂eq/kWh.`;
+            let severity = 'neutral';
+            let emoji = '⚪';
+            let color = '#fff8e1';
+
+            if (safeIntensity < 150) {
+                message += ' This is a good time to run flexible appliances.';
+                severity = 'good';
+                emoji = '✅';
+                color = '#e8f5e9';
+            } else if (safeIntensity < 300) {
+                message += ' The grid intensity is moderate now; consider delaying non-essential loads.';
+                severity = 'neutral';
+                emoji = '⚠️';
+            } else {
+                message += ' Carbon intensity is high now. Delay non-essential usage if possible.';
+                severity = 'warning';
+                emoji = '⚠️';
+                color = '#ffebee';
+            }
+
+            return {
+                ...resultBase,
+                message,
+                severity,
+                color,
+                emoji,
+            };
+        }
+
         return {
-            title: 'Usage Pattern Insight',
-            message: 'No historical usage data is available to analyze your usage patterns.',
-            severity: 'info',
+            ...resultBase,
+            message:
+                'Carbon intensity history is unavailable. Usage pattern insights require historical carbon intensity data.',
+            severity: 'neutral',
             color: '#e8f5e9',
             emoji: 'ℹ️',
         };
     }
 
-    const energies = histogramData
-        .map((point) => Number(point.energy_footprint ?? point.energy ?? NaN))
-        .filter((value) => Number.isFinite(value));
-
-    if (energies.length === 0) {
+    if (!hasUsageHistory) {
+        // TODO: Store hourly usage deltas as usage_kwh per timestamp so this recommendation
+        //       can compare actual consumption timing against carbon intensity.
         return {
-            title: 'Usage Pattern Insight',
-            message: 'Usage data is present but could not be interpreted.',
-            severity: 'info',
+            ...resultBase,
+            message:
+                'Usage pattern insights will appear after enough usage history is collected. Energy usage history is required to compare with carbon intensity.',
+            severity: 'neutral',
             color: '#e8f5e9',
             emoji: 'ℹ️',
         };
     }
 
-    const avg = energies.reduce((sum, value) => sum + value, 0) / energies.length;
-    const spikeThreshold = avg * 1.5;
-    const spikes = energies.filter((value) => value > spikeThreshold);
-    const recentCount = Math.max(1, Math.min(7, energies.length));
-    const recent = energies.slice(-recentCount);
-    const recentAvg = recent.reduce((sum, value) => sum + value, 0) / recent.length;
+    const usageByTimestamp = new Map();
+    for (const deviceId in usageHistory) {
+        const devicePoints = usageHistory[deviceId];
+        if (!Array.isArray(devicePoints)) {
+            continue;
+        }
 
-    if (spikes.length === 0) {
+        for (const point of devicePoints) {
+            const timestamp = point.timestamp;
+            const usageValue = Number(
+                point.consumption_footprint ?? point.energy_footprint ?? point.energy ?? point.usage ?? NaN
+            );
+
+            if (!timestamp || !Number.isFinite(usageValue) || usageValue <= 0) {
+                continue;
+            }
+
+            usageByTimestamp.set(
+                timestamp,
+                (usageByTimestamp.get(timestamp) || 0) + usageValue
+            );
+        }
+    }
+
+    if (usageByTimestamp.size === 0) {
         return {
-            title: 'Usage Pattern Insight',
-            message: 'Your usage is fairly smooth and stable over the selected period.',
-            severity: 'success',
+            ...resultBase,
+            message:
+                'Usage history is available, but no valid hourly consumption values could be extracted.',
+            severity: 'neutral',
+            color: '#e8f5e9',
+            emoji: 'ℹ️',
+        };
+    }
+
+    const intensityByTimestamp = new Map();
+    for (const point of intensityHistory) {
+        const timestamp = point.timestamp;
+        const intensityValue = Number(
+            point.intensity ?? point.value ?? point.co2_intensity ?? NaN
+        );
+
+        if (!timestamp || !Number.isFinite(intensityValue) || intensityValue <= 0) {
+            continue;
+        }
+
+        intensityByTimestamp.set(timestamp, intensityValue);
+    }
+
+    if (intensityByTimestamp.size === 0) {
+        return {
+            ...resultBase,
+            message:
+                'Carbon intensity history is available, but no valid historical intensity values were found.',
+            severity: 'neutral',
+            color: '#e8f5e9',
+            emoji: 'ℹ️',
+        };
+    }
+
+    let matchedUsage = 0;
+    let weightedSum = 0;
+    const matchedIntensities = [];
+
+    for (const [timestamp, usageValue] of usageByTimestamp) {
+        const intensityValue = intensityByTimestamp.get(timestamp);
+        if (!Number.isFinite(intensityValue)) {
+            continue;
+        }
+
+        matchedUsage += usageValue;
+        weightedSum += usageValue * intensityValue;
+        matchedIntensities.push(intensityValue);
+    }
+
+    if (matchedUsage === 0 || matchedIntensities.length < 2) {
+        return {
+            ...resultBase,
+            message:
+                'Not enough matched usage and intensity timestamps are available to generate a usage-pattern recommendation.',
+            severity: 'neutral',
+            color: '#e8f5e9',
+            emoji: 'ℹ️',
+        };
+    }
+
+    const weightedIntensity = weightedSum / matchedUsage;
+    const averageIntensity =
+        matchedIntensities.reduce((sum, value) => sum + value, 0) /
+        matchedIntensities.length;
+
+    if (weightedIntensity > averageIntensity * 1.15) {
+        return {
+            ...resultBase,
+            message:
+                'A significant share of your usage occurs during higher-carbon periods. Shifting flexible appliances to cleaner hours could reduce emissions.',
+            severity: 'warning',
+            color: '#ffebee',
+            emoji: '⚠️',
+        };
+    }
+
+    if (weightedIntensity < averageIntensity * 0.85) {
+        return {
+            ...resultBase,
+            message:
+                'Your usage is well aligned with lower-carbon periods. Keep scheduling flexible appliances during cleaner hours.',
+            severity: 'good',
             color: '#e8f5e9',
             emoji: '✅',
         };
     }
 
-    if (recentAvg > avg * 1.1) {
-        return {
-            title: 'Usage Pattern Insight',
-            message: `Recently you’ve consumed more than usual over the last ${recentCount} entries.`,
-            severity: 'warning',
-            color: '#fff8e1',
-            emoji: '⚠️',
-        };
-    }
-
     return {
-        title: 'Usage Pattern Insight',
-        message: `You’ve had ${spikes.length} high-consumption spikes in this view. Try smoothing usage across the day.`,
-        severity: 'warning',
+        ...resultBase,
+        message:
+            'Your usage is close to the average grid intensity. Some improvement may still be possible by shifting flexible loads.',
+        severity: 'neutral',
         color: '#fff8e1',
         emoji: '⚠️',
     };

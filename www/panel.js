@@ -10,7 +10,7 @@ import {
     getHighImpactAreaRecommendation,
     getCarbonIntensityRecommendation,
     getIoTShareRecommendation,
-    getUsageVsIntensityRecommendation,
+    getUsagePatternRecommendation,
 } from './frontend/recommendation-manager.js';
 
 class CarbonFootprintPanel extends HTMLElement {
@@ -167,7 +167,11 @@ class CarbonFootprintPanel extends HTMLElement {
         });
         const energyData = recResult.devices_consumptions;
         const intensityData = data?.intensity_history || []; // TODO: implement intensity_history in backend if needed
-        const usageVsIntensityRec = getUsageVsIntensityRecommendation(energyData, intensityData);
+        const usagePatternRec = getUsagePatternRecommendation(
+            energyData,
+            intensityData,
+            data?.co2_intensity
+        );
 
         this.innerHTML = `
             <ha-app-layout>
@@ -341,15 +345,15 @@ class CarbonFootprintPanel extends HTMLElement {
                                 <!-- Usage Pattern Insight -->
                                 <div style="border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
                                     <div class="recommendation-header"
-                                        style="padding: 12px; background-color: ${usageVsIntensityRec.color}; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;"
+                                        style="padding: 12px; background-color: ${usagePatternRec.color}; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;"
                                         onclick="this.parentElement.querySelector('.recommendation-content-pattern').style.display = this.parentElement.querySelector('.recommendation-content-pattern').style.display === 'none' ? 'block' : 'none'; this.querySelector('.toggle-icon-pattern').textContent = this.parentElement.querySelector('.recommendation-content-pattern').style.display === 'none' ? '▼' : '▲';">
-                                        <strong>${usageVsIntensityRec.emoji} ${usageVsIntensityRec.title}</strong>
+                                        <strong>${usagePatternRec.emoji} ${usagePatternRec.title}</strong>
                                         <span class="toggle-icon-pattern" style="font-size: 12px;">▲</span>
                                     </div>
                                     <div class="recommendation-content-pattern"
                                         style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
                                         <p style="margin: 0; font-size: 13px; color: #555;">
-                                            ${usageVsIntensityRec.message}
+                                            ${usagePatternRec.message}
                                         </p>
                                     </div>
                                 </div>
