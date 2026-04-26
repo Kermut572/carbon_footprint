@@ -146,22 +146,22 @@ export function getUsagePatternRecommendation(
 
         if (hasCurrentIntensity) {
             const safeIntensity = Number(currentIntensity);
-            let message = `Current carbon intensity is ${safeIntensity.toFixed(0)} gCO₂eq/kWh.`;
+            let message = `I do not have enough historical carbon-intensity data yet to compare your usage timing over time. Based on the current grid value, carbon intensity is <b>${safeIntensity.toFixed(0)} gCO₂eq/kWh</b>.`;
             let severity = 'neutral';
             let emoji = '⚪';
             let color = '#fff8e1';
 
             if (safeIntensity < 150) {
-                message += ' This is a good time to run flexible appliances.';
+                message += ' That is relatively low, so now is a good moment to run flexible appliances such as a dishwasher, washing machine, dryer, or EV charger.';
                 severity = 'good';
                 emoji = '✅';
                 color = '#e8f5e9';
             } else if (safeIntensity < 300) {
-                message += ' The grid intensity is moderate now; consider delaying non-essential loads.';
+                message += ' That is a moderate level. If the task is flexible, waiting for a cleaner period could slightly reduce emissions.';
                 severity = 'neutral';
                 emoji = '⚠️';
             } else {
-                message += ' Carbon intensity is high now. Delay non-essential usage if possible.';
+                message += ' That is high. Try to postpone non-essential, energy-heavy tasks until the grid is cleaner.';
                 severity = 'warning';
                 emoji = '⚠️';
                 color = '#ffebee';
@@ -179,7 +179,7 @@ export function getUsagePatternRecommendation(
         return {
             ...resultBase,
             message:
-                'Carbon intensity history is unavailable. Usage pattern insights require historical carbon intensity data.',
+                'I cannot analyze your usage pattern yet because historical carbon-intensity data is unavailable. Once intensity history is collected, this recommendation can check whether your energy use happens during cleaner or dirtier grid periods.',
             severity: 'neutral',
             color: '#e8f5e9',
             emoji: 'ℹ️',
@@ -194,7 +194,7 @@ export function getUsagePatternRecommendation(
         return {
             ...resultBase,
             message:
-                'Usage pattern insights will appear after enough usage history is collected. Energy usage history is required to compare with carbon intensity.',
+                'I have carbon-intensity history, but no usable energy-usage history yet. Once device usage is collected, this recommendation will compare when you consume energy against how clean the grid was at those same times.',
             severity: 'neutral',
             color: '#e8f5e9',
             emoji: 'ℹ️',
@@ -264,7 +264,7 @@ export function getUsagePatternRecommendation(
         return {
             ...resultBase,
             message:
-                'Usage history is available, but no valid hourly consumption values could be extracted.',
+                'Usage history exists, but I could not extract any positive consumption values from it. Check that usage points include a timestamp and a numeric value such as <b>usage_kwh</b>, <b>energy</b>, <b>usage</b>, <b>consumption_footprint</b>, or <b>energy_footprint</b>.',
             severity: 'neutral',
             color: '#e8f5e9',
             emoji: 'ℹ️',
@@ -304,7 +304,7 @@ export function getUsagePatternRecommendation(
         return {
             ...resultBase,
             message:
-                'Carbon intensity history is available, but no valid historical intensity values were found.',
+                'Carbon-intensity history exists, but I could not extract any valid intensity values from it. The recommendation needs timestamped values such as <b>intensity</b>, <b>value</b>, or <b>co2_intensity</b>.',
             severity: 'neutral',
             color: '#e8f5e9',
             emoji: 'ℹ️',
@@ -345,7 +345,7 @@ export function getUsagePatternRecommendation(
         return {
             ...resultBase,
             message:
-                'Not enough matched usage and intensity timestamps are available to generate a usage-pattern recommendation.',
+                'I found both usage data and carbon-intensity data, but there were not enough matching timestamps to compare them reliably. This usually means the two histories use different time intervals or timestamp formats.',
             severity: 'neutral',
             color: '#e8f5e9',
             emoji: 'ℹ️',
@@ -356,6 +356,18 @@ export function getUsagePatternRecommendation(
     const averageIntensity =
         matchedIntensities.reduce((sum, value) => sum + value, 0) /
         matchedIntensities.length;
+    const intensityDifference = weightedIntensity - averageIntensity;
+    const intensityDifferencePercent =
+        averageIntensity > 0 ? (intensityDifference / averageIntensity) * 100 : 0;
+    const comparisonDirection =
+        intensityDifferencePercent > 0 ? 'higher' : 'lower';
+    const comparisonText =
+        Math.abs(intensityDifferencePercent) < 1
+            ? 'almost exactly in line with'
+            : `${Math.abs(intensityDifferencePercent).toFixed(0)}% ${comparisonDirection} than`;
+    const metricsMessage =
+        `Across <b>${matchedIntensities.length}</b> matched time periods, your usage-weighted grid intensity was <b>${weightedIntensity.toFixed(0)} gCO₂eq/kWh</b>. ` +
+        `The average grid intensity during those same periods was <b>${averageIntensity.toFixed(0)} gCO₂eq/kWh</b>, so your usage was ${comparisonText} the period average.`;
 
     console.log(logPrefix, 'computed recommendation metrics', {
         weightedIntensity,
@@ -370,7 +382,7 @@ export function getUsagePatternRecommendation(
         return {
             ...resultBase,
             message:
-                'A significant share of your usage occurs during higher-carbon periods. Shifting flexible appliances to cleaner hours could reduce emissions.',
+                `${metricsMessage} This suggests a noticeable share of your energy use happened when the grid was dirtier than usual. Try shifting flexible loads, such as laundry, dishwashing, charging, or heating cycles, to lower-carbon hours when possible.`,
             severity: 'warning',
             color: '#ffebee',
             emoji: '⚠️',
@@ -383,7 +395,7 @@ export function getUsagePatternRecommendation(
         return {
             ...resultBase,
             message:
-                'Your usage is well aligned with lower-carbon periods. Keep scheduling flexible appliances during cleaner hours.',
+                `${metricsMessage} This is a good pattern: your energy use is already aligned with cleaner grid periods. Keep scheduling flexible appliances during lower-carbon hours to maintain the benefit.`,
             severity: 'good',
             color: '#e8f5e9',
             emoji: '✅',
@@ -395,7 +407,7 @@ export function getUsagePatternRecommendation(
     return {
         ...resultBase,
         message:
-            'Your usage is close to the average grid intensity. Some improvement may still be possible by shifting flexible loads.',
+            `${metricsMessage} Your timing is close to average, so there is no strong problem signal. You may still reduce emissions by moving flexible, energy-heavy tasks away from higher-carbon periods when convenient.`,
         severity: 'neutral',
         color: '#fff8e1',
         emoji: '⚠️',
