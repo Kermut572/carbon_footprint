@@ -168,3 +168,128 @@ export function getUsagePatternRecommendation(histogramData, intensityData) {
         emoji: '⚠️',
     };
 }
+
+/**
+ * Analyze the correlation between energy usage and carbon intensity over time.
+ * Detects whether the user tends to consume energy during high carbon intensity periods.
+ * @param {Object} energyData - Consumption data from WS call, format: {device_id: [{timestamp, consumption_footprint}, ...]}
+ * @param {Array} intensityData - Historical carbon intensity data, format: [{timestamp, intensity}, ...]
+ * @returns {Object} Recommendation object with title, message, and severity.
+ */
+export function getUsageVsIntensityRecommendation(energyData, intensityData) {
+    // Check for sufficient data
+    if (!energyData || typeof energyData !== 'object' || Object.keys(energyData).length === 0) {
+        return {
+            title: 'Usage Pattern Insight',
+            message: 'No energy consumption data available to analyze usage patterns against carbon intensity.',
+            severity: 'info',
+            color: '#e8f5e9',
+            emoji: 'ℹ️',
+        };
+    }
+
+    if (!Array.isArray(intensityData) || intensityData.length === 0) {
+        return {
+            title: 'Usage Pattern Insight',
+            message: 'Carbon intensity history is not available. Unable to analyze usage timing.',
+            severity: 'info',
+            color: '#e8f5e9',
+            emoji: 'ℹ️',
+        };
+    }
+
+    // Aggregate total consumption per timestamp across all devices
+    const consumptionByTime = new Map();
+    let totalConsumption = 0;
+
+    for (const deviceId in energyData) {
+        const devicePoints = energyData[deviceId];
+        if (!Array.isArray(devicePoints)) continue;
+
+        for (const point of devicePoints) {
+            const ts = point.timestamp;
+            const consumption = Number(point.consumption_footprint) || 0;
+            if (consumption > 0) {
+                consumptionByTime.set(ts, (consumptionByTime.get(ts) || 0) + consumption);
+                totalConsumption += consumption;
+            }
+        }
+    }
+
+    if (totalConsumption === 0) {
+        return {
+            title: 'Usage Pattern Insight',
+            message: 'No energy consumption recorded in the selected period.',
+            severity: 'info',
+            color: '#e8f5e9',
+            emoji: 'ℹ️',
+        };
+    }
+
+    // Create intensity lookup map for faster access
+    const intensityByTime = new Map();
+    for (const point of intensityData) {
+        intensityByTime.set(point.timestamp, Number(point.intensity) || 0);
+    }
+
+    // Compute weighted average carbon intensity of user's consumption
+    let weightedSum = 0;
+    let validPoints = 0;
+
+    for (const [ts, consumption] of consumptionByTime) {
+        const intensity = intensityByTime.get(ts);
+        if (intensity !== undefined && intensity > 0) {
+            weightedSum += consumption * intensity;
+            validPoints++;
+        }
+    }
+
+    if (validPoints === 0) {
+        return {
+            title: 'Usage Pattern Insight',
+            message: 'Unable to match consumption data with carbon intensity data for the selected period.',
+            severity: 'info',
+            color: '#e8f5e9',
+            emoji: 'ℹ️',
+        };
+    }
+
+    const userWeightedIntensity = weightedSum / totalConsumption;
+
+    // Compute average grid carbon intensity over the same period
+    const intensities = Array.from(intensityByTime.values()).filter(i => i > 0);
+    const avgGridIntensity = intensities.reduce((sum, i) => sum + i, 0) / intensities.length;
+
+    // Compare user's weighted intensity to grid average
+    const ratio = userWeightedIntensity / avgGridIntensity;
+    const threshold = 0.1; // 10% difference considered similar
+
+    if (ratio > 1 + threshold) {
+        // User consumes at higher intensity times
+        return {
+            title: 'Usage Pattern Insight',
+            message: 'A significant portion of your usage occurs during high carbon intensity periods. Shifting usage to low-carbon hours could reduce emissions.',
+            severity: 'bad',
+            color: '#ffebee',
+            emoji: '🔴',
+        };
+    } else if (ratio < 1 - threshold) {
+        // User consumes at lower intensity times
+        return {
+            title: 'Usage Pattern Insight',
+            message: 'Your usage is well aligned with low-carbon periods. Good job optimizing your consumption timing!',
+            severity: 'good',
+            color: '#e8f5e9',
+            emoji: '✅',
+        };
+    } else {
+        // Similar to average
+        return {
+            title: 'Usage Pattern Insight',
+            message: 'Your usage is moderately aligned with grid carbon intensity. Some improvements in timing are possible.',
+            severity: 'warning',
+            color: '#fff8e1',
+            emoji: '⚠️',
+        };
+    }
+}

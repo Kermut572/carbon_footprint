@@ -10,7 +10,7 @@ import {
     getHighImpactAreaRecommendation,
     getCarbonIntensityRecommendation,
     getIoTShareRecommendation,
-    getUsagePatternRecommendation,
+    getUsageVsIntensityRecommendation,
 } from './frontend/recommendation-manager.js';
 
 class CarbonFootprintPanel extends HTMLElement {
@@ -154,7 +154,20 @@ class CarbonFootprintPanel extends HTMLElement {
         // Generate carbon intensity recommendation
         const intensityRec = getCarbonIntensityRecommendation(data?.co2_intensity);
         const iotShareRec = getIoTShareRecommendation(yearlyCons);
-        const usagePatternRec = getUsagePatternRecommendation(this._histogramData, data?.intensity_history || []);
+
+        // Fetch consumption data for usage vs intensity recommendation (last 30 days)
+        const recEndTime = new Date();
+        const recStartTime = new Date(recEndTime);
+        recStartTime.setDate(recEndTime.getDate() - 30);
+        const recResult = await this._hass.callWS({
+            type: 'carbon_footprint/get_consumption_footprint_time_interval',
+            start_time: recStartTime.toISOString(),
+            end_time: recEndTime.toISOString(),
+            granularity: 'day'
+        });
+        const energyData = recResult.devices_consumptions;
+        const intensityData = data?.intensity_history || []; // TODO: implement intensity_history in backend if needed
+        const usageVsIntensityRec = getUsageVsIntensityRecommendation(energyData, intensityData);
 
         this.innerHTML = `
             <ha-app-layout>
@@ -328,15 +341,15 @@ class CarbonFootprintPanel extends HTMLElement {
                                 <!-- Usage Pattern Insight -->
                                 <div style="border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
                                     <div class="recommendation-header"
-                                        style="padding: 12px; background-color: ${usagePatternRec.color}; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;"
+                                        style="padding: 12px; background-color: ${usageVsIntensityRec.color}; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;"
                                         onclick="this.parentElement.querySelector('.recommendation-content-pattern').style.display = this.parentElement.querySelector('.recommendation-content-pattern').style.display === 'none' ? 'block' : 'none'; this.querySelector('.toggle-icon-pattern').textContent = this.parentElement.querySelector('.recommendation-content-pattern').style.display === 'none' ? '▼' : '▲';">
-                                        <strong>${usagePatternRec.emoji} ${usagePatternRec.title}</strong>
+                                        <strong>${usageVsIntensityRec.emoji} ${usageVsIntensityRec.title}</strong>
                                         <span class="toggle-icon-pattern" style="font-size: 12px;">▲</span>
                                     </div>
                                     <div class="recommendation-content-pattern"
                                         style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
                                         <p style="margin: 0; font-size: 13px; color: #555;">
-                                            ${usagePatternRec.message}
+                                            ${usageVsIntensityRec.message}
                                         </p>
                                     </div>
                                 </div>
