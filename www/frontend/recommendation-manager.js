@@ -129,14 +129,6 @@ export function getUsagePatternRecommendation(
         usageHistory && typeof usageHistory === 'object' && Object.keys(usageHistory).length > 0;
     const usageDeviceCount = hasUsageHistory ? Object.keys(usageHistory).length : 0;
 
-    console.log(logPrefix, 'input summary', {
-        hasUsageHistory,
-        usageDeviceCount,
-        hasIntensityHistory,
-        intensityPoints: hasIntensityHistory ? intensityHistory.length : 0,
-        hasCurrentIntensity,
-        currentIntensity,
-    });
 
     if (!hasIntensityHistory) {
         console.log(logPrefix, 'missing intensity history', {
@@ -250,13 +242,6 @@ export function getUsagePatternRecommendation(
         }
     }
 
-    console.log(logPrefix, 'usage extraction summary', {
-        rawUsagePointCount,
-        validUsagePointCount,
-        skippedUsagePointCount,
-        usageTimestamps: usageByTimestamp.size,
-        usageSample: Array.from(usageByTimestamp.entries()).slice(0, 5),
-    });
 
     if (usageByTimestamp.size === 0) {
         console.log(logPrefix, 'no valid usage values extracted');
@@ -328,14 +313,6 @@ export function getUsagePatternRecommendation(
         matchedIntensities.push(intensityValue);
     }
 
-    console.log(logPrefix, 'timestamp match summary', {
-        usageTimestamps: usageByTimestamp.size,
-        intensityTimestamps: intensityByTimestamp.size,
-        matchedTimestamps: matchedIntensities.length,
-        unmatchedUsageTimestampCount,
-        matchedUsage,
-    });
-
     if (matchedUsage === 0 || matchedIntensities.length < 2) {
         console.log(logPrefix, 'not enough matched usage and intensity timestamps', {
             matchedUsage,
@@ -369,12 +346,7 @@ export function getUsagePatternRecommendation(
         `Across <b>${matchedIntensities.length}</b> matched time periods, your usage-weighted grid intensity was <b>${weightedIntensity.toFixed(0)} gCO₂eq/kWh</b>. ` +
         `The average grid intensity during those same periods was <b>${averageIntensity.toFixed(0)} gCO₂eq/kWh</b>, so your usage was ${comparisonText} the period average.`;
 
-    console.log(logPrefix, 'computed recommendation metrics', {
-        weightedIntensity,
-        averageIntensity,
-        matchedUsage,
-        matchedIntensityCount: matchedIntensities.length,
-    });
+
 
     if (weightedIntensity > averageIntensity * 1.15) {
         console.log(logPrefix, 'returning warning recommendation');
@@ -402,7 +374,7 @@ export function getUsagePatternRecommendation(
         };
     }
 
-    console.log(logPrefix, 'returning neutral recommendation');
+    console.log(logPrefix, 'returning neutral recommendation version 1.0');
 
     return {
         ...resultBase,
