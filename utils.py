@@ -21,10 +21,10 @@ _LOGGER = logging.getLogger(__name__)
 REGEX_MATCHER = [
     (
         re.compile(
-            r"\b(temp(erature)?|humid(ity)?|water|h2o|thermometer|wet|climate|weather)\b",
+            r"\b(window(\ssensor)?|door(\ssensor)?)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
-        "Temperature/humidity sensor",
+        "Window/door sensor",
     ),
     (
         re.compile(
@@ -42,6 +42,27 @@ REGEX_MATCHER = [
     ),
     (
         re.compile(
+            r"\b(energy(\smonitor|\scontrol)?)\b",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "Energy monitor",
+    ),
+    (
+        re.compile(
+            r"\b(thermostat|temp(erature)?\scontrol)\b",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "Thermostat",
+    ),
+    (
+        re.compile(
+            r"\b(temp(erature)?|humid(ity)?|water|h2o|thermometer|wet|climate|weather)\b",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "Temperature/humidity sensor",
+    ),
+    (
+        re.compile(
             r"\b(air|smoke|carbon dioxide|carbon monoxide|oxygen)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
@@ -49,24 +70,45 @@ REGEX_MATCHER = [
     ),
     (
         re.compile(
+            r"\b(wash(ing)?\smachine|cloth(es)?)\b",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "Washing machine",
+    ),
+    (
+        re.compile(
+            r"\b(dish(washer)?|dish(es)?)\b",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "Dishwasher",
+    ),
+    (
+        re.compile(
+            r"\b(refrigerator|fridge)\b",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "Refrigerator",
+    ),
+    (
+        re.compile(
+            r"\b(tele(vision)?|tv)\b",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "TV",
+    ),
+    (
+        re.compile(
             r"\b(camera|video|doorbell|webcam|cctv)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
-        "camera",
+        "Camera",
     ),
     (
         re.compile(
             r"\b(speaker|alexa|(home\s)?cinema|music|audio)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
-        "speaker",
-    ),
-    (
-        re.compile(
-            r"\b(light((\s)?bulb)?|lamp|bulb|led|rgb)\b",
-            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
-        ),
-        "light bulb",
+        "Speaker",
     ),
     (
         re.compile(
@@ -84,52 +126,10 @@ REGEX_MATCHER = [
     ),
     (
         re.compile(
-            r"\b(window(\ssensor)?|door(\ssensor)?)\b",
+            r"\b(light((\s)?bulb)?|lamp|bulb|led|rgb)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
-        "Window/door sensor",
-    ),
-    (
-        re.compile(
-            r"\b(thermostat|temp(erature)?\scontrol)\b",
-            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
-        ),
-        "thermostat",
-    ),
-    (
-        re.compile(
-            r"\b(energy(\smonitor|\scontrol)?)\b",
-            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
-        ),
-        "energy monitor",
-    ),
-    (
-        re.compile(
-            r"\b(wash(ing)?\smachine|cloth(es)?)\b",
-            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
-        ),
-        "washing machine",
-    ),
-    (
-        re.compile(
-            r"\b(tele(vision)?|tv)\b",
-            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
-        ),
-        "TV",
-    ),
-    (
-        re.compile(
-            r"\b(refrigerator)\b",
-            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
-        ),
-        "refrigerator",
-    ),
-    (
-        re.compile(
-            r"\b(dish(washer)?|dish(es)?)\b",
-            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
-        ),
-        "dishwasher",
+        "Light bulb",
     ),
 ]
 
