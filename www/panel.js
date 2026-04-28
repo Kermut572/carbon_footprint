@@ -735,13 +735,10 @@ class CarbonFootprintPanel extends HTMLElement {
                 } finally {
                     const current = parseFloat(progressBar.style.width) || 0;
                     progressBar.style.width = `${Math.min(100, current + percentIncrement)}%`;
-                    if (unmatchedDevices.length != 0) {
-                        Utils.showToast(this, `Could not detect device type for devices ${unmatchedDevices.toString()}`)
-                    }
                 }
             }
             if (unmatchedDevices.length != 0) {
-                console.log(`Could not detect device type for devices ${unmatchedDevices.toString()}`)
+                console.log(`Could not detect device type for devices ${unmatchedDevices.toString()}`);
             }
             console.log('Device Types Detection ended, continuing...');
 
@@ -753,13 +750,13 @@ class CarbonFootprintPanel extends HTMLElement {
             );
             this.showLoadingOverlay('Matching devices with database...');
 
-            console.log(`Sending ${JSON.stringify(devicesToSend, null, '\t')}`)
+            console.log(`Sending ${JSON.stringify(devicesToSend, null, '\t')}`);
             const dbMatchingResp = await this._hass.callWS({
                 type: 'carbon_footprint/db_matching',
                 device_types: devicesToSend,
             });
             let devicesMatched = dbMatchingResp.devices_matched;
-            console.log(`Matched ${JSON.stringify(devicesMatched, null, '\t')}`)
+            console.log(`Matched ${JSON.stringify(devicesMatched, null, '\t')}`);
 
 
             //flow: Once we got the device types: pull the db and match carbon values, this will automatically setup everything where possible.
@@ -794,10 +791,13 @@ class CarbonFootprintPanel extends HTMLElement {
             loaderAnim.style.display = 'none';
             const updatedData = await this.getCarbonData();
             await this.renderSettingsPage(updatedData);
-            if (successfulBatches !== 0)
-                Utils.showToast(this, `Successfully detected ${successfulBatches}/${totalRuns} device batches`)
-            else
-                Utils.showToast(this, `LLM detection failed on every batch. Check console logs for more information`)
+            if (unmatchedDevices.length != 0) {
+                Utils.showToast(this, `Could not detect device type for devices ${unmatchedDevices.toString()}`);
+                console.log(`Could not detect device type for devices ${unmatchedDevices.toString()}`);
+            }
+            else {
+                Utils.showToast(this, `Successfully detected all device types`);
+            }
         }
     }
 
