@@ -537,6 +537,7 @@ def ws_update_devices_energy(
         vol.Required("start_time"): str,
         vol.Required("end_time"): str,
         vol.Required("granularity"): str,
+        vol.Optional("is_appliance"): bool,
     }
 )
 @websocket_api.async_response
@@ -579,6 +580,8 @@ async def ws_get_consumption_footprint_time_interval(
         )
         return
 
+    is_appliance = msg.get("is_appliance", False)
+
     device_name_map = {}
     cf_store = entries[0].runtime_data.cf_store
     devices = cf_store.get_devices_data()
@@ -586,7 +589,11 @@ async def ws_get_consumption_footprint_time_interval(
 
     device_cu_map = {}
     for device_id, device_info in devices.items():
-        cu_entity = device_info.get("cu_entity", None)
+        cu_entity = (
+            device_info.get("cu_entity", None)
+            if not is_appliance
+            else device_info.get("cu_app_entity", None)
+        )
         if not cu_entity:
             continue
 
@@ -869,7 +876,10 @@ def ws_get_carbon_by_room(
 
 
 @websocket_api.websocket_command(
-    {vol.Required("type"): f"{DOMAIN}/get_carbon_by_room_with_usage"}
+    {
+        vol.Required("type"): f"{DOMAIN}/get_carbon_by_room_with_usage",
+        vol.Optional("is_appliance"): bool,
+    }
 )
 @websocket_api.async_response
 async def ws_get_carbon_by_room_with_usage(
@@ -919,6 +929,8 @@ async def ws_get_carbon_by_room_with_usage(
     device_reg = dr.async_get(hass)
     area_reg = ar.async_get(hass)
 
+    is_appliance = msg.get("is_appliance", False)
+
     # Get current CO2 intensity
     em_sensor = utils_fetch_electricity_maps_sensor(hass)
     co2_intensity_state = hass.states.get(em_sensor)
@@ -949,7 +961,11 @@ async def ws_get_carbon_by_room_with_usage(
         )
 
         usage_carbon_value = 0.0
-        cu_entity = device_info.get("cu_entity")
+        cu_entity = (
+            device_info.get("cu_entity")
+            if not is_appliance
+            else device_info.get("cu_app_entity")
+        )
         if cu_entity:
             state = hass.states.get(cu_entity)
             if state and state.state not in ("unknown", "unavailable"):
@@ -1102,7 +1118,10 @@ def ws_get_carbon_by_type(
 
 
 @websocket_api.websocket_command(
-    {vol.Required("type"): f"{DOMAIN}/get_carbon_by_type_with_usage"}
+    {
+        vol.Required("type"): f"{DOMAIN}/get_carbon_by_type_with_usage",
+        vol.Optional("is_appliance"): bool,
+    }
 )
 @websocket_api.async_response
 async def ws_get_carbon_by_type_with_usage(
@@ -1164,6 +1183,8 @@ async def ws_get_carbon_by_type_with_usage(
     device_reg = dr.async_get(hass)
     devices = cf_store.get_devices_data()
 
+    is_appliance = msg.get("is_appliance", False)
+
     type_dict: dict[str, dict] = {}
 
     for device_id, device_info in devices.items():
@@ -1174,7 +1195,11 @@ async def ws_get_carbon_by_type_with_usage(
         )
 
         usage_carbon_value = 0.0
-        cu_entity = device_info.get("cu_entity")
+        cu_entity = (
+            device_info.get("cu_entity")
+            if not is_appliance
+            else device_info.get("cu_app_entity")
+        )
         if cu_entity:
             state = hass.states.get(cu_entity)
             if state and state.state not in ("unknown", "unavailable"):
