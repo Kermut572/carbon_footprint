@@ -100,9 +100,13 @@ def ws_get_device_autocomp(
 
     devices = entry.runtime_data.cf_store.get_devices_data()
     device_reg = dr.async_get(hass)
-    device_entry = device_reg.async_get_device(device_id)
+    device_entry = device_reg.async_get(device_id)
     device_info = devices.get(device_id, {})
     if len(device_info.keys()) == 0:
+        if device_entry is None:
+            connection.send_result(msg["id"], {"cf": 0.0, "type": ""})
+            return
+
         model = device_entry.model
         manufacturer = device_entry.manufacturer
         name = device_entry.name_by_user or device_entry.name
@@ -116,7 +120,7 @@ def ws_get_device_autocomp(
         device_info["type"] = match.get(name, "")
 
         # cf lookup
-        for device in devices:
+        for device in devices.values():
             if device_info["type"] != device.get("type", ""):
                 continue
 
