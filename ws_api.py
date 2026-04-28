@@ -1266,6 +1266,8 @@ async def ws_llm_detection(
         )
         return
 
+    _LOGGER.debug("Could not detect device types for %s", devices_to_match)
+
     api_key = entry.options.get("api_key")
     if not api_key or len(api_key) == 0:
         _LOGGER.warning(
@@ -1331,18 +1333,18 @@ async def ws_llm_detection(
         connection.send_result(
             msg["id"],
             {
-                "device_types": matched_device_types,
+                "device_types": json.dumps(matched_device_types),
                 "unmatched_devices": json.dumps(devices_to_match),
             },
         )
-    except Exception as err:
+    except Exception:
         _LOGGER.exception(
             "Error occured during OpenRouter detection. Defaulting to local regex matching (might not infer types for all devices)"
         )
         connection.send_result(
             msg["id"],
             {
-                "device_types": matched_device_types,
+                "device_types": json.dumps(matched_device_types),
                 "unmatched_devices": json.dumps(devices_to_match),
             },
         )
