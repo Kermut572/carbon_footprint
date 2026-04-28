@@ -105,10 +105,12 @@ async def async_setup_entry(
         existing_entity_id = entity_reg.async_get_entity_id("sensor", DOMAIN, uuid)
         if existing_entity_id is not None:
             _LOGGER.info(
-                "Did not add a sensor for %s because one already exists", device_name
+                "Did not add a sensor for %s because one already exists (%s)",
+                device_name,
+                existing_entity_id,
             )
             existing_entry = entity_reg.async_get(existing_entity_id)
-            if existing_entry and existing_entry.device_id != device_id:
+            if existing_entry:
                 entity_reg.async_update_entity(existing_entity_id, device_id=device_id)
                 _LOGGER.info(
                     "Re-linked %s to device %s", existing_entity_id, device_name
