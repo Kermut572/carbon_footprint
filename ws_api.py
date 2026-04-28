@@ -956,10 +956,10 @@ async def ws_get_carbon_by_room_with_usage(
         # Get usage carbon: prefer metadata value (for test data), fall back to power sensor calculation
         metadata = device_info.get("metadata", {})
 
-        device_name = (
-            device_reg.devices.get(device_id).name_by_user
-            or device_reg.devices.get(device_id).name
-        )
+        device = device_reg.async_get(device_id)
+        if device is None:
+            continue
+        device_name = device.name_by_user or device.name
 
         usage_carbon_value = 0.0
         cu_entity = (
