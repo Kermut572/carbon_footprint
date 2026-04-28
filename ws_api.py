@@ -99,12 +99,35 @@ def ws_get_device_autocomp(
         return
 
     devices = entry.runtime_data.cf_store.get_devices_data()
+    device_reg = dr.async_get(hass)
+    device_entry = device_reg.async_get_device(device_id)
     device_info = devices.get(device_id, {})
+    if len(device_info.keys() == 0):
+        model = device_entry.model
+        manufacturer = device_entry.manufacturer
+        name = device_entry.name_by_user or device_entry.name
+        device_dict = {
+            name: {
+                "manufacturer": manufacturer,
+                "model": model,
+            }
+        }
+        match, _ = utils_local_type_matching(device_dict)
+        device_info["type"] = match.get(name, "")
+
+        # cf lookup
+        cf = 0.0
+        for device in devices:
+            if device_info["type"] != device.get("type", ""):
+                continue
+
+            cf = device.get("carbon_footprint", 0.0)
+            break
 
     connection.send_result(
         msg["id"],
         {
-            "cf": device_info.get("carbon_footprint", 0.0),
+            "cf": cf,
             "type": device_info.get("type", ""),
         },
     )
