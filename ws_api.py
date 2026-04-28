@@ -116,18 +116,17 @@ def ws_get_device_autocomp(
         device_info["type"] = match.get(name, "")
 
         # cf lookup
-        cf = 0.0
         for device in devices:
             if device_info["type"] != device.get("type", ""):
                 continue
 
-            cf = device.get("carbon_footprint", 0.0)
+            device_info["carbon_footprint"] = device.get("carbon_footprint", 0.0)
             break
 
     connection.send_result(
         msg["id"],
         {
-            "cf": cf,
+            "cf": device_info.get("catbon_footprint", 0.0),
             "type": device_info.get("type", ""),
         },
     )
