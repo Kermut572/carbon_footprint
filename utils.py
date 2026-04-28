@@ -472,7 +472,10 @@ async def utils_get_device_energy_consumption_map(
             continue
         dt = dt_util.as_local(dt_util.utc_from_timestamp(start_ts))
         map_key = dt.strftime("%d-%m-%Y-%H")
-        result[map_key] = stat.get("change", 0)
+        delta = stat.get("change", 0)
+        if delta < 0:
+            continue
+        result[map_key] = delta
 
     return result
 
