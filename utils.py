@@ -462,7 +462,7 @@ async def utils_get_device_energy_consumption_map(
         {energy_entity} if not is_appliance else {appliance_entity},
         granularity,
         None,
-        {"change"},
+        {"sum"},
     )
 
     result = {}
