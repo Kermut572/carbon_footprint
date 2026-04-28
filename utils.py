@@ -676,9 +676,7 @@ async def utils_build_hourly_stamps(
     stats = []
     total_cf = 0.0
     for item in stamps:
-        delta = item.get("consumption_footprint", 0.0)
-        if delta >= 0:
-            total_cf += item.get("consumption_footprint", 0.0)
+        total_cf += item.get("consumption_footprint", 0.0)
         ts = item.get("timestamp")
         if not ts:
             continue
