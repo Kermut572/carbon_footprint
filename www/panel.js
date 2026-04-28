@@ -740,6 +740,9 @@ class CarbonFootprintPanel extends HTMLElement {
                     }
                 }
             }
+            if (unmatchedDevices.length != 0) {
+                console.log(`Could not detect device type for devices ${unmatchedDevices.toString()}`)
+            }
             console.log('Device Types Detection ended, continuing...');
 
             const devicesToSend = Object.fromEntries(

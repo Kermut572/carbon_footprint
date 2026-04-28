@@ -1258,7 +1258,11 @@ async def ws_llm_detection(
     if len(devices_to_match.keys()) == 0:
         _LOGGER.debug("All devices could be matched locally, returning early")
         connection.send_result(
-            msg["id"], {"device_types": json.dumps(matched_device_types)}
+            msg["id"],
+            {
+                "device_types": json.dumps(matched_device_types),
+                "unmatched_devices": json.dumps({}),
+            },
         )
         return
 
