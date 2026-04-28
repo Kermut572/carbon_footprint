@@ -102,7 +102,7 @@ def ws_get_device_autocomp(
     device_reg = dr.async_get(hass)
     device_entry = device_reg.async_get_device(device_id)
     device_info = devices.get(device_id, {})
-    if len(device_info.keys() == 0):
+    if len(device_info.keys()) == 0:
         model = device_entry.model
         manufacturer = device_entry.manufacturer
         name = device_entry.name_by_user or device_entry.name
