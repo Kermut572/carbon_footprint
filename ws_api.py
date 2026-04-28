@@ -256,7 +256,10 @@ def ws_get_carbon_data(
     intensity_history = []
     energy_store = getattr(entry.runtime_data, "energy_store", None)
     if energy_store is not None:
-        for date_key, intensity_value in energy_store.get_energy_footprint_data().items():
+        for (
+            date_key,
+            intensity_value,
+        ) in energy_store.get_energy_footprint_data().items():
             try:
                 timestamp = datetime.strptime(date_key, "%d-%m-%Y-%H")
             except ValueError:
@@ -269,7 +272,7 @@ def ws_get_carbon_data(
                         "intensity": float(intensity_value),
                     }
                 )
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
 
         intensity_history.sort(key=lambda item: item["timestamp"])
@@ -679,7 +682,11 @@ async def ws_get_embodied_carbon_time_interval(
         )  # by default it is in kgCO2eq
         lifetime_years = device_info.get("lifetime_years", 5)
 
-        energy_entity, en_store_updated = await hass.async_add_executor_job(
+        (
+            energy_entity,
+            appliance_entity,
+            en_store_updated,
+        ) = await hass.async_add_executor_job(
             utils_find_energy_entity_for_device, hass, device_id
         )
         if not energy_entity:

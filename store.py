@@ -55,9 +55,17 @@ class CFStore:
             if cu_entity is not None:
                 entity_info["cu_entity"] = cu_entity
 
+            cu_app_entity = curr_device_info.get("cu_app_entity", None)
+            if cu_app_entity is not None:
+                entity_info["cu_app_entity"] = cu_app_entity
+
             energy_entity = curr_device_info.get("energy_entity", None)
             if energy_entity is not None:
                 entity_info["energy_entity"] = energy_entity
+
+            appliance_entity = curr_device_info.get("appliance_entity", None)
+            if appliance_entity is not None:
+                entity_info["appliance_entity"] = appliance_entity
 
             curr_type = curr_device_info.get("type", None)
             curr_cf = curr_device_info.get("carbon_footprint", 0.0)
