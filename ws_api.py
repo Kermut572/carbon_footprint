@@ -27,6 +27,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import _LOGGER, HomeAssistant, callback
 from homeassistant.helpers import (
     area_registry as ar,
+    config_validation as cv,
     device_registry as dr,
     entity_registry as er,
 )
@@ -537,7 +538,7 @@ def ws_update_devices_energy(
         vol.Required("start_time"): str,
         vol.Required("end_time"): str,
         vol.Required("granularity"): str,
-        vol.Optional("is_appliance"): bool,
+        vol.Optional("is_appliance", default=False): cv.boolean,
     }
 )
 @websocket_api.async_response
@@ -878,7 +879,7 @@ def ws_get_carbon_by_room(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/get_carbon_by_room_with_usage",
-        vol.Optional("is_appliance"): bool,
+        vol.Optional("is_appliance", default=False): cv.boolean,
     }
 )
 @websocket_api.async_response
@@ -1120,7 +1121,7 @@ def ws_get_carbon_by_type(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/get_carbon_by_type_with_usage",
-        vol.Optional("is_appliance"): bool,
+        vol.Optional("is_appliance", default=False): cv.boolean,
     }
 )
 @websocket_api.async_response
