@@ -967,7 +967,7 @@ async def ws_get_carbon_by_room_with_usage(
             if not is_appliance
             else device_info.get("cu_app_entity")
         )
-        _LOGGER.log("USING %s for device %s", cu_entity, device_name)
+        _LOGGER.debug("USING %s for device %s", cu_entity, device_name)
         if cu_entity:
             state = hass.states.get(cu_entity)
             if state and state.state not in ("unknown", "unavailable"):
