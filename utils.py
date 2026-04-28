@@ -466,7 +466,8 @@ async def utils_get_device_energy_consumption_map(
     )
 
     result = {}
-    for stat in stats.get(energy_entity, []):
+    check_entity = energy_entity if not is_appliance else appliance_entity
+    for stat in stats.get(check_entity, []):
         start_ts = stat.get("start")
         if not start_ts:
             continue
@@ -505,7 +506,18 @@ async def utils_compute_device_consumption_footprint(
 
     energy_store = entries[0].runtime_data.energy_store.data
 
-    delta_energy_dict = energy_consumption_map
+    last_value = None
+    delta_energy_dict = {}
+    for key, value in energy_consumption_map.items():
+        if last_value:
+            delta = value - last_value
+            delta_energy_dict[key] = max(delta, 0)
+
+        # if delta and delta < 0:
+        #    last_value = 0
+        #    continue
+
+        last_value = value
 
     results = []
     match granularity:
