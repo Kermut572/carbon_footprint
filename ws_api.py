@@ -1268,7 +1268,11 @@ async def ws_llm_detection(
             "No OpenRouter API Key set. This can be set in the integration settings. Defaulting to local regex matching (might not infer types for all devices)"
         )
         connection.send_result(
-            msg["id"], {"device_types": json.dumps(matched_device_types)}
+            msg["id"],
+            {
+                "device_types": json.dumps(matched_device_types),
+                "unmatched_devices": json.dumps(devices_to_match),
+            },
         )
         return
 
@@ -1305,7 +1309,10 @@ async def ws_llm_detection(
         result = await hass.async_add_executor_job(_openrouter_call)
         connection.send_result(
             msg["id"],
-            {"device_types": json.dumps(json.loads(result) | matched_device_types)},
+            {
+                "device_types": json.dumps(json.loads(result) | matched_device_types),
+                "unmatched_devices": json.dumps({}),
+            },
         )
 
     try:
@@ -1317,12 +1324,24 @@ async def ws_llm_detection(
             "OpenRouter provider error after retries: %s\nDefaulting to local regex matching (might not infer types for all devices)",
             err,
         )
-        connection.send_result(msg["id"], {"device_types": matched_device_types})
+        connection.send_result(
+            msg["id"],
+            {
+                "device_types": matched_device_types,
+                "unmatched_devices": json.dumps(devices_to_match),
+            },
+        )
     except Exception as err:
         _LOGGER.exception(
             "Error occured during OpenRouter detection. Defaulting to local regex matching (might not infer types for all devices)"
         )
-        connection.send_result(msg["id"], {"device_types": matched_device_types})
+        connection.send_result(
+            msg["id"],
+            {
+                "device_types": matched_device_types,
+                "unmatched_devices": json.dumps(devices_to_match),
+            },
+        )
 
 
 @websocket_api.websocket_command(

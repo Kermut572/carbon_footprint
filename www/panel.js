@@ -678,6 +678,9 @@ class CarbonFootprintPanel extends HTMLElement {
 
 
         let devicesDict = {};
+
+        let typedDevices = {};
+        let unmatchedDevices = [];
         for (let i = 0; i < deviceNames.length; i++) {
             let infoDict = {};
             infoDict['model'] = deviceModels[i];
@@ -709,9 +712,15 @@ class CarbonFootprintPanel extends HTMLElement {
                         devices: chunkDevicesDict
                     });
                     let deviceTypes = JSON.parse(llmResp.device_types || "{}");
+                    let unmatchedDevicesTypes = JSON.parse(llmResp.unmatched_devices || "{}")
                     Object.keys(chunkDevicesDict).forEach((key, idx) => {
-                        devicesDict[key].device_type = deviceTypes[key] ?? "unknown";
-                        devicesDict[key].device_id = chunkDeviceIds[idx] ?? null;
+                        if (key in unmatchedDevicesTypes) {
+                            unmatchedDevices.push(key);
+                        } else {
+                            devicesDict[key].device_type = deviceTypes[key] ?? "unknown";
+                            devicesDict[key].device_id = chunkDeviceIds[idx] ?? null;
+                            typedDevices[key] = devicesDict[key];
+                        }
                     });
                     console.log(`Batch ${i / chunkSize} successfully detected, continuing`);
                     successfulBatches++;
@@ -721,16 +730,20 @@ class CarbonFootprintPanel extends HTMLElement {
                     Object.keys(chunkDevicesDict).forEach((key, idx) => {
                         devicesDict[key].device_type = "error";
                         devicesDict[key].device_id = chunkDeviceIds[idx] ?? null;
+                        unmatchedDevices.push(key);
                     });
                 } finally {
                     const current = parseFloat(progressBar.style.width) || 0;
                     progressBar.style.width = `${Math.min(100, current + percentIncrement)}%`;
+                    if (unmatchedDevices.length != 0) {
+                        Utils.showToast(this, `Could not detect device type for devices ${unmatchedDevices.toString()}`)
+                    }
                 }
             }
             console.log('Device Types Detection ended, continuing...');
 
             const devicesToSend = Object.fromEntries(
-                Object.entries(devicesDict).filter(([name, info]) => {
+                Object.entries(typedDevices).filter(([name, info]) => {
                     const t = info?.device_type;
                     return typeof t === 'string' && t.length > 0 && t !== 'error';
                 })
