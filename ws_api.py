@@ -272,7 +272,7 @@ def ws_get_carbon_data(
                         "intensity": float(intensity_value),
                     }
                 )
-            except TypeError, ValueError:
+            except Exception:
                 continue
 
         intensity_history.sort(key=lambda item: item["timestamp"])
