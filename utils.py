@@ -472,10 +472,7 @@ async def utils_get_device_energy_consumption_map(
             continue
         dt = dt_util.as_local(dt_util.utc_from_timestamp(start_ts))
         map_key = dt.strftime("%d-%m-%Y-%H")
-        delta = stat.get("change", 0)
-        if delta < 0:
-            continue
-        result[map_key] = delta
+        result[map_key] = stat.get("sum", 0)
 
     return result
 
@@ -679,10 +676,7 @@ async def utils_build_hourly_stamps(
     stats = []
     total_cf = 0.0
     for item in stamps:
-        delta = item.get("consumption_footprint", 0.0)
-        if delta >= 0:
-            total_cf += item.get("consumption_footprint", 0.0)
-
+        total_cf += item.get("consumption_footprint", 0.0)
         ts = item.get("timestamp")
         if not ts:
             continue
