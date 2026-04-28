@@ -126,7 +126,7 @@ def ws_get_device_autocomp(
     connection.send_result(
         msg["id"],
         {
-            "cf": device_info.get("catbon_footprint", 0.0),
+            "cf": device_info.get("carbon_footprint", 0.0),
             "type": device_info.get("type", ""),
         },
     )
