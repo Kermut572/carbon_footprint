@@ -211,11 +211,11 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
                 connections=device_entry.connections,
             )
 
-    @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        state = self.hass.states.get(self._energy_entity_id)
-        return state is not None and state.state not in ("unknown", "unavailable")
+    # @property
+    # def available(self) -> bool:
+    #    """Return True if entity is available."""
+    #    state = self.hass.states.get(self._energy_entity_id)
+    #    return state is not None and state.state not in ("unknown", "unavailable")
 
     @property
     def native_value(self) -> float:
