@@ -329,6 +329,11 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
                 self.async_write_ha_state()
                 return
 
+            _LOGGER.debug(
+                "Writing %f total carbon impact to %s",
+                delta_nrj * em_value,
+                self._device_name,
+            )
             self._total_carbon_impact += delta_nrj * em_value
             self._last_energy_reading = new_energy_reading
             self.async_write_ha_state()

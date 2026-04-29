@@ -524,8 +524,7 @@ async def utils_compute_device_consumption_footprint(
             last_value = value
             continue
 
-        if delta >= 0:
-            delta_energy_dict[key] = max(delta, 0)
+        delta_energy_dict[key] = max(delta, 0)
 
         last_value = value
 
@@ -704,7 +703,11 @@ async def utils_build_hourly_stamps(
             continue
 
         stats.append(
-            {"start": dt_util.as_utc(datetime.fromisoformat(ts)), "sum": total_cf}
+            {
+                "start": dt_util.as_utc(datetime.fromisoformat(ts)),
+                "state": total_cf,
+                "sum": total_cf,
+            }
         )
 
     return stats
