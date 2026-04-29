@@ -324,7 +324,9 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
                 return
 
             delta_nrj = new_energy_reading - self._last_energy_reading
-            if delta_nrj <= 0:
+            if delta_nrj < 0:
+                self._last_energy_reading = self._last_energy_reading
+                self.async_write_ha_state()
                 return
 
             self._total_carbon_impact += delta_nrj * em_value
