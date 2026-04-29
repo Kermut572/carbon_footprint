@@ -1438,7 +1438,19 @@ class CarbonFootprintPanel extends HTMLElement {
     }
 
     async renderRoomChart() {
-        const canvas = this.querySelector('#room-pie-chart');
+        let canvas = this.querySelector('#room-pie-chart');
+        if (!canvas) {
+            const container = this.querySelector('#room-chart-view');
+            if (container) {
+                container.innerHTML = `
+                    <div style="position: relative; height: 400px; width: 100%;">
+                        <canvas id="room-pie-chart"></canvas>
+                    </div>
+                `;
+                canvas = this.querySelector('#room-pie-chart');
+            }
+        }
+
         if (!canvas) {
             return;
         }
@@ -1459,6 +1471,10 @@ class CarbonFootprintPanel extends HTMLElement {
 
         if (!data || data.length === 0) {
             const container = this.querySelector('#room-chart-view');
+            if (this._roomChart) {
+                this._roomChart.destroy();
+                this._roomChart = null;
+            }
             if (container) {
                 container.innerHTML = '<p>No room data available</p>';
             }
