@@ -1090,9 +1090,12 @@ def ws_get_carbon_by_type(
     type_dict: dict[str, dict] = {}
 
     for device_id, device_info in devices.items():
+        metadata = device_info.get("metadata", {})
+        device_entry = device_reg.async_get(device_id)
         device_name = (
-            device_reg.devices.get(device_id).name_by_user
-            or device_reg.devices.get(device_id).name
+            (device_entry.name_by_user or device_entry.name)
+            if device_entry
+            else metadata.get("display_name", device_id)
         )
         carbon_value = device_info.get("carbon_footprint", 0)
         device_type = device_info.get("type", "Unknown")
@@ -1191,9 +1194,11 @@ async def ws_get_carbon_by_type_with_usage(
 
     for device_id, device_info in devices.items():
         metadata = device_info.get("metadata", {})
+        device_entry = device_reg.async_get(device_id)
         device_name = (
-            device_reg.devices.get(device_id).name_by_user
-            or device_reg.devices.get(device_id).name
+            (device_entry.name_by_user or device_entry.name)
+            if device_entry
+            else metadata.get("display_name", device_id)
         )
 
         usage_carbon_value = 0.0

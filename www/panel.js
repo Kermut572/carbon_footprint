@@ -1476,7 +1476,8 @@ class CarbonFootprintPanel extends HTMLElement {
                 this._roomChart = null;
             }
             if (container) {
-                container.innerHTML = '<p>No room data available</p>';
+                const groupLabel = this._groupBy === 'type' ? 'type' : 'room';
+                container.innerHTML = `<p>No ${groupLabel} data available</p>`;
             }
             return;
         }
