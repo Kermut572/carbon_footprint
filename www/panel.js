@@ -29,6 +29,7 @@ class CarbonFootprintPanel extends HTMLElement {
         this._currentPage = 'main'; // 'main' or 'settings'
         this._carbonView = 'total'; // 'total', 'embodied', or 'usage'
         this._showApplianceUsage = false;
+        this._showEnergyApplianceUsage = false;
         this._ecView = 'total';
         this._groupBy = 'room'; // 'room' or 'type'
         this._currentDevice = null;
@@ -242,6 +243,14 @@ class CarbonFootprintPanel extends HTMLElement {
                                     <option value="last-month">Last Month</option>
                                     <option value="last-year">Last Year</option>
                                 </select>
+
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span>Appliance data:</span>
+                                    <div id="energy-appliance-usage-toggle" role="group" aria-label="Use appliance usage data in energy chart" style="display: inline-flex; border: 1px solid #bdbdbd; border-radius: 4px; overflow: hidden;">
+                                        <button type="button" data-appliance-usage="false" aria-pressed="${!this._showEnergyApplianceUsage}" style="min-width: 44px; padding: 6px 12px; border: none; cursor: pointer; background-color: ${this._showEnergyApplianceUsage ? '#f5f5f5' : 'var(--primary-color, #03a9f4)'}; color: ${this._showEnergyApplianceUsage ? '#333' : '#fff'}; font-weight: ${this._showEnergyApplianceUsage ? '400' : '600'};">No</button>
+                                        <button type="button" data-appliance-usage="true" aria-pressed="${this._showEnergyApplianceUsage}" style="min-width: 44px; padding: 6px 12px; border: none; border-left: 1px solid #bdbdbd; cursor: pointer; background-color: ${this._showEnergyApplianceUsage ? 'var(--primary-color, #03a9f4)' : '#f5f5f5'}; color: ${this._showEnergyApplianceUsage ? '#fff' : '#333'}; font-weight: ${this._showEnergyApplianceUsage ? '600' : '400'};">Yes</button>
+                                    </div>
+                                </div>
                             </div>
 
                             <div style="margin-bottom: 12px;">
@@ -458,6 +467,20 @@ class CarbonFootprintPanel extends HTMLElement {
             });
         }
 
+        const energyApplianceUsageToggle = this.querySelector('#energy-appliance-usage-toggle');
+        if (energyApplianceUsageToggle) {
+            energyApplianceUsageToggle.addEventListener('click', async (e) => {
+                const button = e.target.closest('button[data-appliance-usage]');
+                if (!button) {
+                    return;
+                }
+
+                this._showEnergyApplianceUsage = button.dataset.applianceUsage === 'true';
+                this._updateSegmentedToggleState('#energy-appliance-usage-toggle', this._showEnergyApplianceUsage);
+                await this.renderConsumptionHistogram();
+            });
+        }
+
         // Add settings button click handler
         const settingsBtn = this.querySelector('#settings-btn');
         if (settingsBtn) {
@@ -542,9 +565,13 @@ class CarbonFootprintPanel extends HTMLElement {
     }
 
     _updateApplianceUsageToggleState() {
-        const buttons = this.querySelectorAll('#appliance-usage-toggle button[data-appliance-usage]');
+        this._updateSegmentedToggleState('#appliance-usage-toggle', this._showApplianceUsage);
+    }
+
+    _updateSegmentedToggleState(selector, isOn) {
+        const buttons = this.querySelectorAll(`${selector} button[data-appliance-usage]`);
         for (const button of buttons) {
-            const isActive = (button.dataset.applianceUsage === 'true') === this._showApplianceUsage;
+            const isActive = (button.dataset.applianceUsage === 'true') === isOn;
             button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
             button.style.backgroundColor = isActive ? 'var(--primary-color, #03a9f4)' : '#f5f5f5';
             button.style.color = isActive ? '#fff' : '#333';
@@ -915,7 +942,9 @@ class CarbonFootprintPanel extends HTMLElement {
 
         if (this._useFakeConsumptionData) {
             const fakeData = this._getFakeConsumptionHistogramData(startTime, endTime);
-            consumptionData = fakeData.devices_consumptions;
+            consumptionData = this._showEnergyApplianceUsage
+                ? this._mergeDeviceTimeSeriesData(fakeData.devices_consumptions, fakeData.appliance_consumptions)
+                : fakeData.devices_consumptions;
             embodiedData = fakeData.embodied_carbon;
             deviceNameMap = fakeData.device_name_map || {};
             console.log('Using fake consumption histogram data:', fakeData);
@@ -924,11 +953,28 @@ class CarbonFootprintPanel extends HTMLElement {
                 type: 'carbon_footprint/get_consumption_footprint_time_interval',
                 start_time: startTime.toISOString(),
                 end_time: endTime.toISOString(),
-                granularity: this._currentChartGranularity
+                granularity: this._currentChartGranularity,
+                is_appliance: false
             });
 
             consumptionData = result.devices_consumptions;
             deviceNameMap = result.device_name_map || {};
+
+            if (this._showEnergyApplianceUsage) {
+                const applianceResult = await this._hass.callWS({
+                    type: 'carbon_footprint/get_consumption_footprint_time_interval',
+                    start_time: startTime.toISOString(),
+                    end_time: endTime.toISOString(),
+                    granularity: this._currentChartGranularity,
+                    is_appliance: true
+                });
+
+                consumptionData = this._mergeDeviceTimeSeriesData(consumptionData, applianceResult.devices_consumptions);
+                deviceNameMap = {
+                    ...deviceNameMap,
+                    ...(applianceResult.device_name_map || {}),
+                };
+            }
         }
         //if (!consumptionData || Object.keys(consumptionData).length === 0) {
         //    canvas.parentElement.innerHTML = '<p>No consumption data available for the selected period.</p>';
@@ -1296,6 +1342,7 @@ class CarbonFootprintPanel extends HTMLElement {
         ];
 
         const devices_consumptions = {};
+        const appliance_consumptions = {};
         const embodied_carbon = {};
         for (const device of devices) {
             devices_consumptions[device.id] = [];
@@ -1312,14 +1359,37 @@ class CarbonFootprintPanel extends HTMLElement {
             });
         }
 
+        appliance_consumptions.fake_kitchen_air_fryer = timestamps.map((timestamp, index) => ({
+            timestamp: timestamp.toISOString(),
+            consumption_footprint: 14 + index * 3,
+        }));
+
         return {
             devices_consumptions,
+            appliance_consumptions,
             embodied_carbon,
             device_name_map: {
                 fake_living_lamp: 'Living lamp',
                 fake_rpi_plug: 'Rpi plug',
+                fake_kitchen_air_fryer: 'Kitchen air fryer',
             },
         };
+    }
+
+    _mergeDeviceTimeSeriesData(baseData = {}, extraData = {}) {
+        const merged = {};
+        for (const [deviceId, points] of Object.entries(baseData || {})) {
+            merged[deviceId] = [...(points || [])];
+        }
+
+        for (const [deviceId, points] of Object.entries(extraData || {})) {
+            if (!merged[deviceId]) {
+                merged[deviceId] = [];
+            }
+            merged[deviceId].push(...(points || []));
+        }
+
+        return merged;
     }
 
     _mergeApplianceUsageData(baseData, applianceData) {
