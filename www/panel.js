@@ -27,7 +27,8 @@ class CarbonFootprintPanel extends HTMLElement {
         this._roomData = null;
         this._selectedRoom = null;
         this._currentPage = 'main'; // 'main' or 'settings'
-        this._carbonView = 'total'; // 'total', 'embodied', 'usage', or 'appliance'
+        this._carbonView = 'total'; // 'total', 'embodied', or 'usage'
+        this._showApplianceUsage = false;
         this._ecView = 'total';
         this._groupBy = 'room'; // 'room' or 'type'
         this._currentDevice = null;
@@ -85,9 +86,16 @@ class CarbonFootprintPanel extends HTMLElement {
 
     async getCarbonByRoom() {
         try {
+            if (this._useFakeCarbonData) {
+                const fakeData = this._getFakeCarbonDataForCurrentView();
+                console.log('Using fake carbon data for room data:', fakeData);
+                this._roomData = fakeData || [];
+                return this._roomData;
+            }
+
             // Support test data toggle for recommendations testing
             if (this._useFakeRoomData) {
-                const fakeData = this._getFakeRoomData();
+                const fakeData = this._getFakeRoomDataForCurrentView();
                 console.log('Using fake room data (test_data.py) for testing:', fakeData);
                 this._roomData = fakeData || [];
                 return this._roomData;
@@ -95,10 +103,19 @@ class CarbonFootprintPanel extends HTMLElement {
 
             const result = await this._hass.callWS({
                 type: 'carbon_footprint/get_carbon_by_room_with_usage',
-                is_appliance: this._carbonView === 'appliance'
+                is_appliance: false
             });
 
-            this._roomData = result.rooms || [];
+            let rooms = result.rooms || [];
+            if (this._showApplianceUsage) {
+                const applianceResult = await this._hass.callWS({
+                    type: 'carbon_footprint/get_carbon_by_room_with_usage',
+                    is_appliance: true
+                });
+                rooms = this._mergeApplianceUsageData(rooms, applianceResult.rooms || []);
+            }
+
+            this._roomData = rooms;
             return this._roomData;
 
         } catch (err) {
@@ -111,10 +128,19 @@ class CarbonFootprintPanel extends HTMLElement {
         try {
             const result = await this._hass.callWS({
                 type: 'carbon_footprint/get_carbon_by_type_with_usage',
-                is_appliance: this._carbonView === 'appliance'
+                is_appliance: false
             });
 
-            this._typeData = result.types || [];
+            let types = result.types || [];
+            if (this._showApplianceUsage) {
+                const applianceResult = await this._hass.callWS({
+                    type: 'carbon_footprint/get_carbon_by_type_with_usage',
+                    is_appliance: true
+                });
+                types = this._mergeApplianceUsageData(types, applianceResult.types || []);
+            }
+
+            this._typeData = types;
             return this._typeData;
 
         } catch (err) {
@@ -243,12 +269,20 @@ class CarbonFootprintPanel extends HTMLElement {
 
                     <ha-card header="Carbon Usage">
                         <div class="card-content">
-                            <div class="histogram-controls">
+                            <div class="histogram-controls" style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
                                 <label for="group-by-select">Group by:</label>
                                 <select id="group-by-select">
                                     <option value="room" ${this._groupBy === 'room' ? 'selected' : ''}>Room</option>
                                     <option value="type" ${this._groupBy === 'type' ? 'selected' : ''}>Type</option>
                                 </select>
+
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span>Appliance data:</span>
+                                    <div id="appliance-usage-toggle" role="group" aria-label="Use appliance usage data" style="display: inline-flex; border: 1px solid #bdbdbd; border-radius: 4px; overflow: hidden;">
+                                        <button type="button" data-appliance-usage="false" aria-pressed="${!this._showApplianceUsage}" style="min-width: 44px; padding: 6px 12px; border: none; cursor: pointer; background-color: ${this._showApplianceUsage ? '#f5f5f5' : 'var(--primary-color, #03a9f4)'}; color: ${this._showApplianceUsage ? '#333' : '#fff'}; font-weight: ${this._showApplianceUsage ? '400' : '600'};">No</button>
+                                        <button type="button" data-appliance-usage="true" aria-pressed="${this._showApplianceUsage}" style="min-width: 44px; padding: 6px 12px; border: none; border-left: 1px solid #bdbdbd; cursor: pointer; background-color: ${this._showApplianceUsage ? 'var(--primary-color, #03a9f4)' : '#f5f5f5'}; color: ${this._showApplianceUsage ? '#fff' : '#333'}; font-weight: ${this._showApplianceUsage ? '600' : '400'};">Yes</button>
+                                    </div>
+                                </div>
                             </div>
 
                             <!-- Carbon view toggle with unit explanation -->
@@ -265,10 +299,6 @@ class CarbonFootprintPanel extends HTMLElement {
                                     <label style="display: flex; align-items: center; cursor: pointer;">
                                         <input type="radio" name="carbon-view" value="usage" ${this._carbonView === 'usage' ? 'checked' : ''} style="margin-right: 6px;">
                                         <span>Usage Only</span>
-                                    </label>
-                                    <label style="display: flex; align-items: center; cursor: pointer;">
-                                        <input type="radio" name="carbon-view" value="appliance" ${this._carbonView === 'appliance' ? 'checked' : ''} style="margin-right: 6px;">
-                                        <span>Appliances</span>
                                     </label>
                                 </div>
                             </div>
@@ -482,11 +512,54 @@ class CarbonFootprintPanel extends HTMLElement {
             });
         }
 
+        const applianceUsageToggle = this.querySelector('#appliance-usage-toggle');
+        if (applianceUsageToggle) {
+            applianceUsageToggle.addEventListener('click', async (e) => {
+                const button = e.target.closest('button[data-appliance-usage]');
+                if (!button) {
+                    return;
+                }
+
+                this._showApplianceUsage = button.dataset.applianceUsage === 'true';
+                this._updateApplianceUsageToggleState();
+                await this.renderRoomChart();
+
+                const deviceDetailView = this.querySelector('#device-detail-view');
+                if (deviceDetailView && deviceDetailView.style.display !== 'none') {
+                    const data = this._groupBy === 'type'
+                        ? await this.getCarbonByType()
+                        : await this.getCarbonByRoom();
+
+                    if (data && this._selectedRoom) {
+                        const updatedItem = data.find(item =>
+                            item.room === this._selectedRoom.room ||
+                            item.type === this._selectedRoom.type
+                        );
+                        if (updatedItem) {
+                            this._selectedRoom = updatedItem;
+                            this.renderDeviceChart();
+                        }
+                    }
+                }
+            });
+        }
+
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
         link.href = '/api/carbon_footprint/style.css?version=1.12'; // :skull:
         this.appendChild(link);
+    }
+
+    _updateApplianceUsageToggleState() {
+        const buttons = this.querySelectorAll('#appliance-usage-toggle button[data-appliance-usage]');
+        for (const button of buttons) {
+            const isActive = (button.dataset.applianceUsage === 'true') === this._showApplianceUsage;
+            button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            button.style.backgroundColor = isActive ? 'var(--primary-color, #03a9f4)' : '#f5f5f5';
+            button.style.color = isActive ? '#fff' : '#333';
+            button.style.fontWeight = isActive ? '600' : '400';
+        }
     }
 
 
@@ -1153,6 +1226,115 @@ class CarbonFootprintPanel extends HTMLElement {
     _useFakeRoomData = false;  // Toggle for test data (from test_data.py) - doesn't affect real devices
     _hiddenRoomIndices = new Set();
 
+    _mergeApplianceUsageData(baseData, applianceData) {
+        const keyForGroup = item => item.room || item.type || 'Unknown';
+        const keyForDevice = device => device.id || device.name;
+        const applianceGroups = new Map(applianceData.map(item => [keyForGroup(item), item]));
+
+        return baseData.map(item => {
+            const applianceItem = applianceGroups.get(keyForGroup(item)) || {};
+            const applianceDevices = new Map((applianceItem.devices || []).map(device => [keyForDevice(device), device]));
+
+            const devices = (item.devices || []).map(device => {
+                const applianceDevice = applianceDevices.get(keyForDevice(device)) || {};
+                const usageCarbon = (device.usage_carbon || 0) + (applianceDevice.usage_carbon || 0);
+                const predictedCarbon = (device.predicted_carbon || 0) + (applianceDevice.predicted_carbon || 0);
+
+                return {
+                    ...device,
+                    usage_carbon: usageCarbon,
+                    appliance_usage_carbon: applianceDevice.usage_carbon || 0,
+                    predicted_carbon: predictedCarbon,
+                    appliance_predicted_carbon: applianceDevice.predicted_carbon || 0,
+                    total_carbon: (device.embodied_carbon || 0) + usageCarbon,
+                };
+            });
+
+            for (const [deviceKey, applianceDevice] of applianceDevices) {
+                if (devices.some(device => keyForDevice(device) === deviceKey)) {
+                    continue;
+                }
+
+                devices.push({
+                    ...applianceDevice,
+                    embodied_carbon: applianceDevice.embodied_carbon || 0,
+                    appliance_usage_carbon: applianceDevice.usage_carbon || 0,
+                    appliance_predicted_carbon: applianceDevice.predicted_carbon || 0,
+                    total_carbon: (applianceDevice.embodied_carbon || 0) + (applianceDevice.usage_carbon || 0),
+                });
+            }
+
+            const usageCarbon = devices.reduce((sum, device) => sum + (device.usage_carbon || 0), 0);
+            const applianceUsageCarbon = devices.reduce((sum, device) => sum + (device.appliance_usage_carbon || 0), 0);
+            const predictedCarbon = devices.reduce((sum, device) => sum + (device.predicted_carbon || 0), 0);
+            const appliancePredictedCarbon = devices.reduce((sum, device) => sum + (device.appliance_predicted_carbon || 0), 0);
+
+            return {
+                ...item,
+                usage_carbon: usageCarbon,
+                appliance_usage_carbon: applianceUsageCarbon,
+                predicted_carbon: predictedCarbon,
+                appliance_predicted_carbon: appliancePredictedCarbon,
+                total_carbon: (item.embodied_carbon || 0) + usageCarbon,
+                devices,
+            };
+        });
+    }
+
+    _getFakeDataForCurrentView(data) {
+        if (!this._showApplianceUsage) {
+            return data.map(room => ({
+                ...room,
+                devices: (room.devices || []).filter(device =>
+                    (device.embodied_carbon || 0) !== 0 ||
+                    (device.usage_carbon || 0) !== 0 ||
+                    (device.predicted_carbon || 0) !== 0
+                ),
+            }));
+        }
+
+        return data.map(room => {
+            const devices = (room.devices || []).map(device => {
+                const applianceUsageCarbon = device.appliance_usage_carbon || 0;
+                const appliancePredictedCarbon = device.appliance_predicted_carbon || 0;
+                const usageCarbon = (device.usage_carbon || 0) + applianceUsageCarbon;
+                const predictedCarbon = (device.predicted_carbon || 0) + appliancePredictedCarbon;
+
+                return {
+                    ...device,
+                    usage_carbon: usageCarbon,
+                    appliance_usage_carbon: applianceUsageCarbon,
+                    predicted_carbon: predictedCarbon,
+                    appliance_predicted_carbon: appliancePredictedCarbon,
+                    total_carbon: (device.embodied_carbon || 0) + usageCarbon,
+                };
+            });
+
+            const usageCarbon = devices.reduce((sum, device) => sum + (device.usage_carbon || 0), 0);
+            const applianceUsageCarbon = devices.reduce((sum, device) => sum + (device.appliance_usage_carbon || 0), 0);
+            const predictedCarbon = devices.reduce((sum, device) => sum + (device.predicted_carbon || 0), 0);
+            const appliancePredictedCarbon = devices.reduce((sum, device) => sum + (device.appliance_predicted_carbon || 0), 0);
+
+            return {
+                ...room,
+                usage_carbon: usageCarbon,
+                appliance_usage_carbon: applianceUsageCarbon,
+                predicted_carbon: predictedCarbon,
+                appliance_predicted_carbon: appliancePredictedCarbon,
+                total_carbon: (room.embodied_carbon || 0) + usageCarbon,
+                devices,
+            };
+        });
+    }
+
+    _getFakeCarbonDataForCurrentView() {
+        return this._getFakeDataForCurrentView(this._getFakeCarbonData());
+    }
+
+    _getFakeRoomDataForCurrentView() {
+        return this._getFakeDataForCurrentView(this._getFakeRoomData());
+    }
+
     _getFakeCarbonData() {
         return [
             {
@@ -1162,9 +1344,10 @@ class CarbonFootprintPanel extends HTMLElement {
                 total_carbon: 200,
                 predicted_carbon: 260,
                 devices: [
-                    { name: 'Fridge', embodied_carbon: 50, usage_carbon: 30, total_carbon: 80, predicted_carbon: 100 },
-                    { name: 'Oven', embodied_carbon: 40, usage_carbon: 25, total_carbon: 65, predicted_carbon: 85 },
-                    { name: 'Dishwasher', embodied_carbon: 30, usage_carbon: 25, total_carbon: 55, predicted_carbon: 75 },
+                    { name: 'Fridge plug', embodied_carbon: 50, usage_carbon: 30, appliance_usage_carbon: 24, total_carbon: 80, predicted_carbon: 100, appliance_predicted_carbon: 82 },
+                    { name: 'Oven plug', embodied_carbon: 40, usage_carbon: 25, appliance_usage_carbon: 18, total_carbon: 65, predicted_carbon: 85, appliance_predicted_carbon: 61 },
+                    { name: 'Dishwasher plug', embodied_carbon: 30, usage_carbon: 25, appliance_usage_carbon: 20, total_carbon: 55, predicted_carbon: 75, appliance_predicted_carbon: 60 },
+                    { id: 'Kitchen Air Fryer', name: 'Kitchen Air Fryer appliance', embodied_carbon: 0, usage_carbon: 0, appliance_usage_carbon: 35, total_carbon: 0, predicted_carbon: 0, appliance_predicted_carbon: 105 },
                 ]
             },
             {
@@ -1174,10 +1357,10 @@ class CarbonFootprintPanel extends HTMLElement {
                 total_carbon: 200,
                 predicted_carbon: 250,
                 devices: [
-                    { name: 'Lamp', embodied_carbon: 10, usage_carbon: 20, total_carbon: 30, predicted_carbon: 35 },
-                    { name: 'Heater', embodied_carbon: 35, usage_carbon: 60, total_carbon: 95, predicted_carbon: 125 },
-                    { name: 'Fan', embodied_carbon: 15, usage_carbon: 10, total_carbon: 25, predicted_carbon: 30 },
-                    { name: 'TV', embodied_carbon: 30, usage_carbon: 20, total_carbon: 50, predicted_carbon: 60 },
+                    { name: 'Lamp plug', embodied_carbon: 10, usage_carbon: 20, appliance_usage_carbon: 3, total_carbon: 30, predicted_carbon: 35, appliance_predicted_carbon: 5 },
+                    { name: 'Heater plug', embodied_carbon: 35, usage_carbon: 60, appliance_usage_carbon: 52, total_carbon: 95, predicted_carbon: 125, appliance_predicted_carbon: 108 },
+                    { name: 'Fan plug', embodied_carbon: 15, usage_carbon: 10, appliance_usage_carbon: 7, total_carbon: 25, predicted_carbon: 30, appliance_predicted_carbon: 21 },
+                    { name: 'TV plug', embodied_carbon: 30, usage_carbon: 20, appliance_usage_carbon: 14, total_carbon: 50, predicted_carbon: 60, appliance_predicted_carbon: 42 },
                 ]
             },
             {
@@ -1187,9 +1370,9 @@ class CarbonFootprintPanel extends HTMLElement {
                 total_carbon: 100,
                 predicted_carbon: 140,
                 devices: [
-                    { name: 'TV', embodied_carbon: 25, usage_carbon: 10, total_carbon: 35, predicted_carbon: 45 },
-                    { name: 'Speaker', embodied_carbon: 15, usage_carbon: 5, total_carbon: 20, predicted_carbon: 28 },
-                    { name: 'Game Console', embodied_carbon: 30, usage_carbon: 15, total_carbon: 45, predicted_carbon: 67 },
+                    { name: 'TV plug', embodied_carbon: 25, usage_carbon: 10, appliance_usage_carbon: 8, total_carbon: 35, predicted_carbon: 45, appliance_predicted_carbon: 36 },
+                    { name: 'Speaker plug', embodied_carbon: 15, usage_carbon: 5, appliance_usage_carbon: 2, total_carbon: 20, predicted_carbon: 28, appliance_predicted_carbon: 11 },
+                    { name: 'Game Console plug', embodied_carbon: 30, usage_carbon: 15, appliance_usage_carbon: 12, total_carbon: 45, predicted_carbon: 67, appliance_predicted_carbon: 54 },
                 ]
             },
             {
@@ -1199,8 +1382,8 @@ class CarbonFootprintPanel extends HTMLElement {
                 total_carbon: 35,
                 predicted_carbon: 50,
                 devices: [
-                    { name: 'Unknown Device A', embodied_carbon: 10, usage_carbon: 5, total_carbon: 15, predicted_carbon: 20 },
-                    { name: 'Unknown Device B', embodied_carbon: 10, usage_carbon: 10, total_carbon: 20, predicted_carbon: 30 },
+                    { name: 'Unknown plug A', embodied_carbon: 10, usage_carbon: 5, appliance_usage_carbon: 0, total_carbon: 15, predicted_carbon: 20, appliance_predicted_carbon: 0 },
+                    { name: 'Unknown plug B', embodied_carbon: 10, usage_carbon: 10, appliance_usage_carbon: 6, total_carbon: 20, predicted_carbon: 30, appliance_predicted_carbon: 18 },
                 ]
             }
         ];
@@ -1218,7 +1401,7 @@ class CarbonFootprintPanel extends HTMLElement {
                 predicted_carbon: 2.7,
                 total_carbon: 13.8,
                 devices: [
-                    { id: 'Bedroom AC Unit', name: 'Bedroom AC Unit', embodied_carbon: 12.0, usage_carbon: 1.8, predicted_carbon: 2.7, total_carbon: 13.8 }
+                    { id: 'Bedroom AC Unit', name: 'Bedroom AC Unit plug', embodied_carbon: 12.0, usage_carbon: 1.8, appliance_usage_carbon: 1.4, predicted_carbon: 2.7, appliance_predicted_carbon: 2.1, total_carbon: 13.8 }
                 ]
             },
             {
@@ -1229,9 +1412,9 @@ class CarbonFootprintPanel extends HTMLElement {
                 predicted_carbon: 5.25,
                 total_carbon: 61.5,
                 devices: [
-                    { id: 'Kitchen Refrigerator', name: 'Kitchen Refrigerator', embodied_carbon: 35.0, usage_carbon: 2.5, predicted_carbon: 3.75, total_carbon: 37.5 },
-                    { id: 'Kitchen Dishwasher', name: 'Kitchen Dishwasher', embodied_carbon: 18.5, usage_carbon: 0.8, predicted_carbon: 1.2, total_carbon: 19.3 },
-                    { id: 'Kitchen Coffee Maker', name: 'Kitchen Coffee Maker', embodied_carbon: 4.5, usage_carbon: 0.2, predicted_carbon: 0.3, total_carbon: 4.7 }
+                    { id: 'Kitchen Refrigerator', name: 'Kitchen Refrigerator plug', embodied_carbon: 35.0, usage_carbon: 2.5, appliance_usage_carbon: 2.1, predicted_carbon: 3.75, appliance_predicted_carbon: 3.15, total_carbon: 37.5 },
+                    { id: 'Kitchen Dishwasher', name: 'Kitchen Dishwasher plug', embodied_carbon: 18.5, usage_carbon: 0.8, appliance_usage_carbon: 0.6, predicted_carbon: 1.2, appliance_predicted_carbon: 0.9, total_carbon: 19.3 },
+                    { id: 'Kitchen Coffee Maker', name: 'Kitchen Coffee Maker plug', embodied_carbon: 4.5, usage_carbon: 0.2, appliance_usage_carbon: 0.1, predicted_carbon: 0.3, appliance_predicted_carbon: 0.15, total_carbon: 4.7 }
                 ]
             },
             {
@@ -1242,9 +1425,9 @@ class CarbonFootprintPanel extends HTMLElement {
                 predicted_carbon: 5.7,
                 total_carbon: 48.8,
                 devices: [
-                    { id: 'Living Room TV', name: 'Living Room TV', embodied_carbon: 15.5, usage_carbon: 0.5, predicted_carbon: 0.75, total_carbon: 16.0 },
-                    { id: 'Living Room Heater', name: 'Living Room Heater', embodied_carbon: 22.3, usage_carbon: 3.2, predicted_carbon: 4.8, total_carbon: 25.5 },
-                    { id: 'Living Room Smart Speaker', name: 'Living Room Smart Speaker', embodied_carbon: 7.2, usage_carbon: 0.1, predicted_carbon: 0.15, total_carbon: 7.35 }
+                    { id: 'Living Room TV', name: 'Living Room TV plug', embodied_carbon: 15.5, usage_carbon: 0.5, appliance_usage_carbon: 0.35, predicted_carbon: 0.75, appliance_predicted_carbon: 0.52, total_carbon: 16.0 },
+                    { id: 'Living Room Heater', name: 'Living Room Heater plug', embodied_carbon: 22.3, usage_carbon: 3.2, appliance_usage_carbon: 2.6, predicted_carbon: 4.8, appliance_predicted_carbon: 3.9, total_carbon: 25.5 },
+                    { id: 'Living Room Smart Speaker', name: 'Living Room Smart Speaker plug', embodied_carbon: 7.2, usage_carbon: 0.1, appliance_usage_carbon: 0.04, predicted_carbon: 0.15, appliance_predicted_carbon: 0.06, total_carbon: 7.35 }
                 ]
             }
         ];
@@ -1258,11 +1441,11 @@ class CarbonFootprintPanel extends HTMLElement {
 
         let data;
         if (this._useFakeCarbonData) {
-            data = this._getFakeCarbonData();
+            data = this._getFakeCarbonDataForCurrentView();
             console.log('Using fake carbon data for room chart:', data);
         } else if (this._useFakeRoomData) {
             // Use test data from test_data.py (only for testing recommendation system)
-            data = this._getFakeRoomData();
+            data = this._getFakeRoomDataForCurrentView();
             console.log('Using fake room data (test_data.py) for testing:', data);
         } else if (this._groupBy === 'type') {
             data = await this.getCarbonByType();
@@ -1437,12 +1620,9 @@ class CarbonFootprintPanel extends HTMLElement {
             if (this._carbonView === 'embodied') {
                 values = data.map(item => item.embodied_carbon || 0);
                 datasetLabel = 'Embodied Carbon';
-            } else if (this._carbonView === 'usage') {
-                values = data.map(item => item.usage_carbon || 0);
-                datasetLabel = 'Usage Carbon';
             } else {
                 values = data.map(item => item.usage_carbon || 0);
-                datasetLabel = 'Appliance Usage Carbon';
+                datasetLabel = 'Usage Carbon';
             }
 
             chartData = {
@@ -1559,9 +1739,14 @@ class CarbonFootprintPanel extends HTMLElement {
         // Calculate breakdown text
         const embodiedTotal = devices.reduce((sum, d) => sum + (d.embodied_carbon || 0), 0);
         const usageTotal = devices.reduce((sum, d) => sum + (d.usage_carbon || 0), 0);
+        const applianceUsageTotal = devices.reduce((sum, d) => sum + (d.appliance_usage_carbon || 0), 0);
         const totalSum = devices.reduce((sum, d) => sum + (d.total_carbon || 0), 0);
 
-        breakdown = `Embodied: ${embodiedTotal.toFixed(2)} kgCO₂eq | Usage: ${usageTotal.toFixed(2)} kgCO₂eq | Total: ${totalSum.toFixed(2)} kgCO₂eq`;
+        breakdown = `Embodied: ${embodiedTotal.toFixed(2)} kgCO₂eq | Total usage: ${usageTotal.toFixed(2)} kgCO₂eq`;
+        if (this._showApplianceUsage) {
+            breakdown += ` | Appliance usage: ${applianceUsageTotal.toFixed(2)} kgCO₂eq`;
+        }
+        breakdown += ` | Total: ${totalSum.toFixed(2)} kgCO₂eq`;
         const breakdownText = this.querySelector('#device-breakdown-text');
         if (breakdownText) {
             breakdownText.textContent = breakdown;
@@ -1617,7 +1802,7 @@ class CarbonFootprintPanel extends HTMLElement {
                     borderWidth: 0,
                 }
             ];
-        } else if (this._carbonView === 'usage') {
+        } else {
             // Single bars for usage
             const usageValues = devices.map(d => d.usage_carbon);
             datasets = [
@@ -1626,18 +1811,6 @@ class CarbonFootprintPanel extends HTMLElement {
                     data: usageValues,
                     backgroundColor: 'rgba(33, 150, 243, 0.7)',  // Blue
                     borderColor: 'rgb(33, 150, 243)',
-                    borderWidth: 0,
-                }
-            ];
-        } else {
-            // Single bars for appliance usage
-            const applianceValues = devices.map(d => d.usage_carbon);
-            datasets = [
-                {
-                    label: 'Appliance Usage Carbon',
-                    data: applianceValues,
-                    backgroundColor: 'rgba(255, 152, 0, 0.7)',
-                    borderColor: 'rgb(255, 152, 0)',
                     borderWidth: 0,
                 }
             ];
