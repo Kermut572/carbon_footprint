@@ -48,9 +48,15 @@ class CarbonFootprintPanel extends HTMLElement {
         this._timeFrame = {
             WEEK: "last-week",
             MONTH: "last-month",
-            YEAR: "last-year"
+            YEAR: "last-year",
+            CUSTOM: "custom"
         };
         this._currentTimeFrame = this._timeFrame.MONTH;
+        const defaultEndDate = new Date();
+        const defaultStartDate = new Date(defaultEndDate);
+        defaultStartDate.setDate(defaultEndDate.getDate() - 30);
+        this._customStartDate = this._formatDateInputValue(defaultStartDate);
+        this._customEndDate = this._formatDateInputValue(defaultEndDate);
     }
 
 
@@ -242,7 +248,15 @@ class CarbonFootprintPanel extends HTMLElement {
                                     <option value="last-week">Last Week</option>
                                     <option value="last-month">Last Month</option>
                                     <option value="last-year">Last Year</option>
+                                    <option value="custom">Custom</option>
                                 </select>
+
+                                <div id="custom-time-frame-controls" style="display: ${this._currentTimeFrame === this._timeFrame.CUSTOM ? 'flex' : 'none'}; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                    <label for="custom-start-date">From:</label>
+                                    <input type="date" id="custom-start-date" value="${this._customStartDate}" max="${this._customEndDate}" style="padding: 5px;">
+                                    <label for="custom-end-date">To:</label>
+                                    <input type="date" id="custom-end-date" value="${this._customEndDate}" min="${this._customStartDate}" style="padding: 5px;">
+                                </div>
 
                                 <div style="display: flex; align-items: center; gap: 8px;">
                                     <span>Appliance data:</span>
@@ -463,6 +477,31 @@ class CarbonFootprintPanel extends HTMLElement {
             timeFrameSelect.value = this._currentTimeFrame;
             timeFrameSelect.addEventListener('change', async (e) => {
                 this._currentTimeFrame = e.target.value;
+                this._updateCustomTimeFrameControls();
+                await this.renderConsumptionHistogram();
+            });
+        }
+
+        const customStartDate = this.querySelector('#custom-start-date');
+        const customEndDate = this.querySelector('#custom-end-date');
+        if (customStartDate && customEndDate) {
+            customStartDate.addEventListener('change', async (e) => {
+                this._customStartDate = e.target.value;
+                customEndDate.min = this._customStartDate;
+                if (this._customEndDate < this._customStartDate) {
+                    this._customEndDate = this._customStartDate;
+                    customEndDate.value = this._customEndDate;
+                }
+                await this.renderConsumptionHistogram();
+            });
+
+            customEndDate.addEventListener('change', async (e) => {
+                this._customEndDate = e.target.value;
+                customStartDate.max = this._customEndDate;
+                if (this._customStartDate > this._customEndDate) {
+                    this._customStartDate = this._customEndDate;
+                    customStartDate.value = this._customStartDate;
+                }
                 await this.renderConsumptionHistogram();
             });
         }
@@ -577,6 +616,45 @@ class CarbonFootprintPanel extends HTMLElement {
             button.style.color = isActive ? '#fff' : '#333';
             button.style.fontWeight = isActive ? '600' : '400';
         }
+    }
+
+    _formatDateInputValue(date) {
+        return date.toISOString().slice(0, 10);
+    }
+
+    _updateCustomTimeFrameControls() {
+        const controls = this.querySelector('#custom-time-frame-controls');
+        if (controls) {
+            controls.style.display = this._currentTimeFrame === this._timeFrame.CUSTOM ? 'flex' : 'none';
+        }
+    }
+
+    _getConsumptionHistogramTimeRange() {
+        if (this._currentTimeFrame === this._timeFrame.CUSTOM) {
+            const startTime = new Date(`${this._customStartDate}T00:00:00`);
+            const endTime = new Date(`${this._customEndDate}T23:59:59`);
+            return { startTime, endTime };
+        }
+
+        let pastDays;
+        switch (this._currentTimeFrame) {
+            case this._timeFrame.WEEK:
+                pastDays = 7;
+                break;
+            case this._timeFrame.MONTH:
+                pastDays = 30;
+                break;
+            case this._timeFrame.YEAR:
+                pastDays = 365;
+                break;
+            default:
+                pastDays = 7;
+        }
+
+        const endTime = new Date();
+        const startTime = new Date(endTime);
+        startTime.setDate(endTime.getDate() - pastDays);
+        return { startTime, endTime };
     }
 
     _findUpdatedSelectedGroup(data) {
@@ -917,24 +995,7 @@ class CarbonFootprintPanel extends HTMLElement {
             return;
         }
 
-        let pastDays;
-        switch (this._currentTimeFrame) {
-            case this._timeFrame.WEEK:
-                pastDays = 7;
-                break;
-            case this._timeFrame.MONTH:
-                pastDays = 30;
-                break;
-            case this._timeFrame.YEAR:
-                pastDays = 365;
-                break;
-            default:
-                pastDays = 7;
-        }
-
-        const endTime = new Date();
-        const startTime = new Date(endTime);
-        startTime.setDate(endTime.getDate() - pastDays);
+        const { startTime, endTime } = this._getConsumptionHistogramTimeRange();
 
         let consumptionData;
         let embodiedData;
