@@ -15,8 +15,12 @@ from datetime import datetime, timedelta
 import logging
 from typing import Any
 
+from homeassistant.components import recorder
 from homeassistant.components.recorder.models.statistics import StatisticMeanType
-from homeassistant.components.recorder.statistics import async_import_statistics
+from homeassistant.components.recorder.statistics import (
+    async_import_statistics,
+    statistics_during_period,
+)
 from homeassistant.components.sensor import (
     RestoreEntity,
     SensorEntity,
@@ -370,25 +374,40 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
             now = dt_util.now()
             str_dt = now.strftime("%d-%m-%Y-%H")
             dt_local = dt_util.as_local(datetime.strptime(str_dt, "%d-%m-%Y-%H"))
-
-            stats = [
-                {
-                    "start": dt_util.as_utc(dt_local),
-                    "state": self._total_carbon_impact + delta_nrj * em_value,
-                    "sum": self._total_carbon_impact + delta_nrj * em_value,
-                }
-            ]
-            try:
-                async_import_statistics(self.hass, metadata, stats)
-                _LOGGER.debug("Imported current stat for %s", self._device_name)
-            except Exception:
-                _LOGGER.exception(
-                    "Failed to import current statistics for %s",
-                    self._device_name,
-                )
+            start_utc = dt_util.as_utc(dt_local)
 
             self._total_carbon_impact += delta_nrj * em_value
             self._last_energy_reading = new_energy_reading
+
+            existing_stats = await recorder.get_instance(
+                self.hass
+            ).async_add_executor_job(
+                statistics_during_period,
+                self.hass,
+                start_utc,
+                start_utc + timedelta(hours=1),
+                {self._statistic_id},
+                "hour",
+                None,
+                {"sum"},
+            )
+
+            if not existing_stats.get(self._statistic_id):
+                stats = [
+                    {
+                        "start": start_utc,
+                        "state": self._total_carbon_impact,
+                        "sum": self._total_carbon_impact,
+                    }
+                ]
+                try:
+                    async_import_statistics(self.hass, metadata, stats)
+                    _LOGGER.debug("Imported current stat for %s", self._device_name)
+                except Exception:
+                    _LOGGER.exception(
+                        "Failed to import current statistics for %s",
+                        self._device_name,
+                    )
 
             self.async_write_ha_state()
 
