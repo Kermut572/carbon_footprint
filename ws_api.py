@@ -52,6 +52,11 @@ from .utils import (
 _LOGGER = logging.getLogger(__name__)
 
 
+def _normalize_device_type(device_type: str | None) -> tuple[str, str]:
+    display_type = (device_type or "Unknown").strip() or "Unknown"
+    return display_type.lower(), display_type[:1].upper() + display_type[1:].lower()
+
+
 @callback
 def async_register_websocket_handlers(hass: HomeAssistant) -> None:
     """Register WebSocket handlers."""
@@ -1098,23 +1103,25 @@ def ws_get_carbon_by_type(
             else metadata.get("display_name", device_id)
         )
         carbon_value = device_info.get("carbon_footprint", 0)
-        device_type = device_info.get("type", "Unknown")
+        device_type_key, device_type_label = _normalize_device_type(
+            device_info.get("type", "Unknown")
+        )
 
-        if device_type not in type_dict:
-            type_dict[device_type] = {
-                "type": device_type,
+        if device_type_key not in type_dict:
+            type_dict[device_type_key] = {
+                "type": device_type_label,
                 "total_carbon": 0,
                 "devices": [],
             }
 
-        type_dict[device_type]["devices"].append(
+        type_dict[device_type_key]["devices"].append(
             {
                 "id": device_id,
                 "name": device_name,
                 "carbon": carbon_value,
             }
         )
-        type_dict[device_type]["total_carbon"] += carbon_value
+        type_dict[device_type_key]["total_carbon"] += carbon_value
 
     type_list = list(type_dict.values())
     type_list.sort(key=lambda x: x["total_carbon"], reverse=True)
@@ -1231,13 +1238,15 @@ async def ws_get_carbon_by_type_with_usage(
             ) * lifetime_days
 
         embodied_carbon_value = device_info.get("carbon_footprint", 0)
-        device_type = device_info.get("type", "Unknown")
+        device_type_key, device_type_label = _normalize_device_type(
+            device_info.get("type", "Unknown")
+        )
 
         device_total = embodied_carbon_value + usage_carbon_value
 
-        if device_type not in type_dict:
-            type_dict[device_type] = {
-                "type": device_type,
+        if device_type_key not in type_dict:
+            type_dict[device_type_key] = {
+                "type": device_type_label,
                 "embodied_carbon": 0,
                 "usage_carbon": 0,
                 "total_carbon": 0,
@@ -1245,7 +1254,7 @@ async def ws_get_carbon_by_type_with_usage(
                 "devices": [],
             }
 
-        type_dict[device_type]["devices"].append(
+        type_dict[device_type_key]["devices"].append(
             {
                 "id": device_id,
                 "name": device_name,
@@ -1256,10 +1265,10 @@ async def ws_get_carbon_by_type_with_usage(
                 "carbon": embodied_carbon_value,
             }
         )
-        type_dict[device_type]["embodied_carbon"] += embodied_carbon_value
-        type_dict[device_type]["usage_carbon"] += usage_carbon_value
-        type_dict[device_type]["predicted_carbon"] += predicted_usage_carbon_value
-        type_dict[device_type]["total_carbon"] += device_total
+        type_dict[device_type_key]["embodied_carbon"] += embodied_carbon_value
+        type_dict[device_type_key]["usage_carbon"] += usage_carbon_value
+        type_dict[device_type_key]["predicted_carbon"] += predicted_usage_carbon_value
+        type_dict[device_type_key]["total_carbon"] += device_total
 
     type_list = []
     for type_data in type_dict.values():
