@@ -27,7 +27,7 @@ class CarbonFootprintPanel extends HTMLElement {
         this._roomData = null;
         this._selectedRoom = null;
         this._currentPage = 'main'; // 'main' or 'settings'
-        this._carbonView = 'total'; // 'total', 'embodied', or 'usage'
+        this._carbonView = 'total'; // 'total', 'embodied', 'usage', or 'appliance'
         this._ecView = 'total';
         this._groupBy = 'room'; // 'room' or 'type'
         this._currentDevice = null;
@@ -94,7 +94,8 @@ class CarbonFootprintPanel extends HTMLElement {
             }
 
             const result = await this._hass.callWS({
-                type: 'carbon_footprint/get_carbon_by_room_with_usage'
+                type: 'carbon_footprint/get_carbon_by_room_with_usage',
+                is_appliance: this._carbonView === 'appliance'
             });
 
             this._roomData = result.rooms || [];
@@ -109,7 +110,8 @@ class CarbonFootprintPanel extends HTMLElement {
     async getCarbonByType() {
         try {
             const result = await this._hass.callWS({
-                type: 'carbon_footprint/get_carbon_by_type_with_usage'
+                type: 'carbon_footprint/get_carbon_by_type_with_usage',
+                is_appliance: this._carbonView === 'appliance'
             });
 
             this._typeData = result.types || [];
@@ -253,16 +255,20 @@ class CarbonFootprintPanel extends HTMLElement {
                             <div style="margin-bottom: 12px;">
                                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                                     <label style="display: flex; align-items: center; cursor: pointer;">
-                                        <input type="radio" name="carbon-view" value="total" checked style="margin-right: 6px;">
+                                        <input type="radio" name="carbon-view" value="total" ${this._carbonView === 'total' ? 'checked' : ''} style="margin-right: 6px;">
                                         <span>Total (Stacked)</span>
                                     </label>
                                     <label style="display: flex; align-items: center; cursor: pointer;">
-                                        <input type="radio" name="carbon-view" value="embodied" style="margin-right: 6px;">
+                                        <input type="radio" name="carbon-view" value="embodied" ${this._carbonView === 'embodied' ? 'checked' : ''} style="margin-right: 6px;">
                                         <span>Embodied Only</span>
                                     </label>
                                     <label style="display: flex; align-items: center; cursor: pointer;">
-                                        <input type="radio" name="carbon-view" value="usage" style="margin-right: 6px;">
+                                        <input type="radio" name="carbon-view" value="usage" ${this._carbonView === 'usage' ? 'checked' : ''} style="margin-right: 6px;">
                                         <span>Usage Only</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; cursor: pointer;">
+                                        <input type="radio" name="carbon-view" value="appliance" ${this._carbonView === 'appliance' ? 'checked' : ''} style="margin-right: 6px;">
+                                        <span>Appliances</span>
                                     </label>
                                 </div>
                             </div>
@@ -1431,9 +1437,12 @@ class CarbonFootprintPanel extends HTMLElement {
             if (this._carbonView === 'embodied') {
                 values = data.map(item => item.embodied_carbon || 0);
                 datasetLabel = 'Embodied Carbon';
-            } else {
+            } else if (this._carbonView === 'usage') {
                 values = data.map(item => item.usage_carbon || 0);
                 datasetLabel = 'Usage Carbon';
+            } else {
+                values = data.map(item => item.usage_carbon || 0);
+                datasetLabel = 'Appliance Usage Carbon';
             }
 
             chartData = {
@@ -1608,7 +1617,7 @@ class CarbonFootprintPanel extends HTMLElement {
                     borderWidth: 0,
                 }
             ];
-        } else {
+        } else if (this._carbonView === 'usage') {
             // Single bars for usage
             const usageValues = devices.map(d => d.usage_carbon);
             datasets = [
@@ -1617,6 +1626,18 @@ class CarbonFootprintPanel extends HTMLElement {
                     data: usageValues,
                     backgroundColor: 'rgba(33, 150, 243, 0.7)',  // Blue
                     borderColor: 'rgb(33, 150, 243)',
+                    borderWidth: 0,
+                }
+            ];
+        } else {
+            // Single bars for appliance usage
+            const applianceValues = devices.map(d => d.usage_carbon);
+            datasets = [
+                {
+                    label: 'Appliance Usage Carbon',
+                    data: applianceValues,
+                    backgroundColor: 'rgba(255, 152, 0, 0.7)',
+                    borderColor: 'rgb(255, 152, 0)',
                     borderWidth: 0,
                 }
             ];
