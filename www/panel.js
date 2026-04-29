@@ -909,33 +909,46 @@ class CarbonFootprintPanel extends HTMLElement {
         const startTime = new Date(endTime);
         startTime.setDate(endTime.getDate() - pastDays);
 
-        const result = await this._hass.callWS({
-            type: 'carbon_footprint/get_consumption_footprint_time_interval',
-            start_time: startTime.toISOString(),
-            end_time: endTime.toISOString(),
-            granularity: this._currentChartGranularity
-        });
+        let consumptionData;
+        let embodiedData;
 
+        if (this._useFakeConsumptionData) {
+            const fakeData = this._getFakeConsumptionHistogramData(startTime, endTime);
+            consumptionData = fakeData.devices_consumptions;
+            embodiedData = fakeData.embodied_carbon;
+            console.log('Using fake consumption histogram data:', fakeData);
+        } else {
+            const result = await this._hass.callWS({
+                type: 'carbon_footprint/get_consumption_footprint_time_interval',
+                start_time: startTime.toISOString(),
+                end_time: endTime.toISOString(),
+                granularity: this._currentChartGranularity
+            });
 
-        const consumptionData = result.devices_consumptions;
+            consumptionData = result.devices_consumptions;
+        }
         //if (!consumptionData || Object.keys(consumptionData).length === 0) {
         //    canvas.parentElement.innerHTML = '<p>No consumption data available for the selected period.</p>';
         //    return;
         //}
 
-        const embodiedResult = (this._ecView == 'total' || this._ecView == 'embodied') ? await this._hass.callWS({
-            type: 'carbon_footprint/get_embodied_carbon_time_interval',
-            start_time: startTime.toISOString(),
-            end_time: endTime.toISOString(),
-            granularity: this._currentChartGranularity
-        }) : {};
+        if (!this._useFakeConsumptionData) {
+            const embodiedResult = (this._ecView == 'total' || this._ecView == 'embodied') ? await this._hass.callWS({
+                type: 'carbon_footprint/get_embodied_carbon_time_interval',
+                start_time: startTime.toISOString(),
+                end_time: endTime.toISOString(),
+                granularity: this._currentChartGranularity
+            }) : {};
 
-        const embodiedData = embodiedResult.embodied_carbon || {};
+            embodiedData = embodiedResult.embodied_carbon || {};
+        }
 
-        const deviceNames = result.device_name_map;
         const aggData = {};
 
         const procData = (data, type) => {
+            if (!data) {
+                return;
+            }
             for (const deviceId in data) {
                 if (data[deviceId]) {
                     data[deviceId].forEach(point => {
@@ -974,42 +987,35 @@ class CarbonFootprintPanel extends HTMLElement {
         const baseColors = [
             'rgba(76, 175, 80, 0.6)',
             'rgba(33, 150, 243, 0.6)',
-            'rgba(255, 152, 0, 0.6)',
-            'rgba(244, 67, 54, 0.6)',
-            'rgba(156, 39, 176, 0.6)',
-            'rgba(0, 150, 136, 0.6)',
-            'rgba(255, 235, 59, 0.6)',
-            'rgba(121, 85, 72, 0.6)',
         ];
 
         const datasets = [];
         const ctx = canvas.getContext('2d');
 
-        Object.keys(consumptionData).forEach((deviceId, index) => {
-            const baseColor = baseColors[index % baseColors.length];
-            const deviceName = deviceNames[deviceId];
+        const sumByTimestamp = (ts, type) => {
+            const devices = aggData[ts] || {};
+            return Object.values(devices).reduce((sum, deviceData) => sum + (deviceData[type] || 0), 0);
+        };
 
-            // embodied
-            const embodiedDataPoints = sortedTimestamps.map(ts => (aggData[ts] && aggData[ts][deviceId]?.embodied) || 0);
+        if (this._ecView === 'total' || this._ecView === 'embodied') {
+            const embodiedDataPoints = sortedTimestamps.map(ts => sumByTimestamp(ts, 'embodied'));
             datasets.push({
-                label: `${deviceName} (Embodied)`,
-                data: this._hiddenDeviceIndices.has(index) ? embodiedDataPoints.map(() => 0) : embodiedDataPoints,
-                backgroundColor: (this._ecView === 'total') ? this._createHatchPattern(ctx, baseColor) : baseColor,
-                deviceIndex: index,
-                stack: deviceId,
+                label: 'Embodied Carbon',
+                data: embodiedDataPoints,
+                backgroundColor: this._ecView === 'total' ? this._createHatchPattern(ctx, baseColors[0]) : baseColors[0],
+                stack: 'all-devices',
             });
+        }
 
-            // usage data
-            const usageData = sortedTimestamps.map(ts => (aggData[ts] && aggData[ts][deviceId]?.consumption) || 0);
+        if (this._ecView === 'total' || this._ecView === 'usage') {
+            const usageData = sortedTimestamps.map(ts => sumByTimestamp(ts, 'consumption'));
             datasets.push({
-                label: `${deviceName} (Usage)`,
-                data: this._hiddenDeviceIndices.has(index) ? usageData.map(() => 0) : usageData,
-                backgroundColor: baseColor,
-                deviceIndex: index,
-                stack: deviceId,
+                label: 'Usage Carbon',
+                data: usageData,
+                backgroundColor: baseColors[1],
+                stack: 'all-devices',
             });
-
-        });
+        }
 
         if (this._consumptionChart) {
             this._consumptionChart.destroy();
@@ -1031,46 +1037,30 @@ class CarbonFootprintPanel extends HTMLElement {
                             padding: 15,
                             font: { size: 13 },
                             generateLabels: () => {
-                                const deviceLabels = Object.keys(consumptionData).map((deviceId, index) => {
-                                    const isHidden = this._hiddenDeviceIndices.has(index);
-                                    return {
-                                        text: deviceNames[deviceId],
-                                        fillStyle: baseColors[index % baseColors.length],
-                                        hidden: isHidden,
-                                        strikethrough: isHidden,
-                                        deviceIndex: index,
-                                        datasetIndex: index * 2
-                                    };
-                                });
+                                const labels = [];
                                 if (this._ecView === 'total') {
-                                    deviceLabels.push({
+                                    labels.push({
                                         text: 'Embodied (hatched)',
-                                        fillStyle: this._createHatchPattern(ctx, 'rgba(120, 120, 120, 0.6)'),
-                                        deviceIndex: Object.keys(consumptionData).length
+                                        fillStyle: this._createHatchPattern(ctx, baseColors[0]),
                                     });
-                                    deviceLabels.push({
+                                    labels.push({
                                         text: 'Usage (solid)',
-                                        fillStyle: 'rgba(120, 120, 120, 0.6)',
-                                        deviceIndex: Object.keys(consumptionData).length + 1
+                                        fillStyle: baseColors[1],
+                                    });
+                                } else if (this._ecView === 'embodied') {
+                                    labels.push({
+                                        text: 'Embodied Carbon',
+                                        fillStyle: baseColors[0],
+                                    });
+                                } else {
+                                    labels.push({
+                                        text: 'Usage Carbon',
+                                        fillStyle: baseColors[1],
                                     });
                                 }
 
-                                return deviceLabels;
+                                return labels;
                             }
-                        },
-                        onClick: (e, legendItem) => {
-                            const deviceIndex = legendItem.deviceIndex;
-
-                            if (deviceIndex === undefined || deviceIndex >= Object.keys(consumptionData).length) {
-                                return;
-                            }
-
-                            if (this._hiddenDeviceIndices.has(deviceIndex)) {
-                                this._hiddenDeviceIndices.delete(deviceIndex);
-                            } else {
-                                this._hiddenDeviceIndices.add(deviceIndex);
-                            }
-                            this.renderConsumptionHistogram();
                         },
                     },
                     title: {
@@ -1228,7 +1218,80 @@ class CarbonFootprintPanel extends HTMLElement {
     // turn on/off fake data here
     _useFakeCarbonData = false;
     _useFakeRoomData = false;  // Toggle for test data (from test_data.py) - doesn't affect real devices
+    _useFakeConsumptionData = false; // Toggle for Energy Consumption Footprint chart testing
     _hiddenRoomIndices = new Set();
+
+    _getFakeConsumptionHistogramData(startTime, endTime) {
+        const stepDate = (date) => {
+            const nextDate = new Date(date);
+            switch (this._currentChartGranularity) {
+                case this._chartGranularity.HOUR:
+                    nextDate.setHours(nextDate.getHours() + 1);
+                    break;
+                case this._chartGranularity.MONTH:
+                    nextDate.setMonth(nextDate.getMonth() + 1);
+                    break;
+                case this._chartGranularity.DAY:
+                default:
+                    nextDate.setDate(nextDate.getDate() + 1);
+                    break;
+            }
+            return nextDate;
+        };
+
+        const alignDate = (date) => {
+            const aligned = new Date(date);
+            switch (this._currentChartGranularity) {
+                case this._chartGranularity.HOUR:
+                    aligned.setMinutes(0, 0, 0);
+                    break;
+                case this._chartGranularity.MONTH:
+                    aligned.setDate(1);
+                    aligned.setHours(0, 0, 0, 0);
+                    break;
+                case this._chartGranularity.DAY:
+                default:
+                    aligned.setHours(0, 0, 0, 0);
+                    break;
+            }
+            return aligned;
+        };
+
+        const maxPoints = this._currentChartGranularity === this._chartGranularity.HOUR ? 12 : 8;
+        const timestamps = [];
+        let cursor = alignDate(startTime);
+        while (cursor <= endTime && timestamps.length < maxPoints) {
+            timestamps.push(new Date(cursor));
+            cursor = stepDate(cursor);
+        }
+
+        const devices = [
+            { id: 'fake_living_lamp', usageStart: 18, embodiedStart: 7 },
+            { id: 'fake_rpi_plug', usageStart: 10, embodiedStart: 3 },
+        ];
+
+        const devices_consumptions = {};
+        const embodied_carbon = {};
+        for (const device of devices) {
+            devices_consumptions[device.id] = [];
+            embodied_carbon[device.id] = [];
+            timestamps.forEach((timestamp, index) => {
+                devices_consumptions[device.id].push({
+                    timestamp: timestamp.toISOString(),
+                    consumption_footprint: device.usageStart + index * 4,
+                });
+                embodied_carbon[device.id].push({
+                    timestamp: timestamp.toISOString(),
+                    embodied_footprint: device.embodiedStart + index,
+                });
+            });
+        }
+
+        return {
+            devices_consumptions,
+            embodied_carbon,
+        };
+    }
 
     _mergeApplianceUsageData(baseData, applianceData) {
         const keyForGroup = item => item.room || item.type || 'Unknown';
