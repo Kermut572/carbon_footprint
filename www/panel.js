@@ -1712,22 +1712,38 @@ class CarbonFootprintPanel extends HTMLElement {
         const roomChartView = this.querySelector('#room-chart-view');
         const deviceDetailView = this.querySelector('#device-detail-view');
         const roomTitle = this.querySelector('#selected-room-title');
+        const groupBySelect = this.querySelector('#group-by-select');
 
         if (roomChartView && deviceDetailView) {
             roomChartView.style.display = 'none';
             deviceDetailView.style.display = 'block';
             roomTitle.textContent = `Devices in ${this._selectedRoom.room || this._selectedRoom.type}`;
+            if (groupBySelect) {
+                groupBySelect.disabled = true;
+                groupBySelect.title = 'Go back to the chart to change this setting';
+                groupBySelect.style.appearance = 'none';
+                groupBySelect.style.webkitAppearance = 'none';
+                groupBySelect.style.mozAppearance = 'none';
+            }
         }
     }
 
     showRoomChart() {
         const roomChartView = this.querySelector('#room-chart-view');
         const deviceDetailView = this.querySelector('#device-detail-view');
+        const groupBySelect = this.querySelector('#group-by-select');
 
         if (roomChartView && deviceDetailView) {
             roomChartView.style.display = 'block';
             deviceDetailView.style.display = 'none';
             this._selectedRoom = null;
+            if (groupBySelect) {
+                groupBySelect.disabled = false;
+                groupBySelect.title = '';
+                groupBySelect.style.appearance = '';
+                groupBySelect.style.webkitAppearance = '';
+                groupBySelect.style.mozAppearance = '';
+            }
         }
     }
 
