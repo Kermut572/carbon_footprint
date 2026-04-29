@@ -11,8 +11,7 @@ These sensors follow Home Assistant best practices for sensor implementation.
 from __future__ import annotations
 
 import contextlib
-import datetime
-from datetime import timedelta
+from datetime import datetime, timedelta
 import logging
 from typing import Any
 
