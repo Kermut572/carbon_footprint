@@ -357,8 +357,37 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
                 delta_nrj * em_value,
                 self._device_name,
             )
+            metadata = {
+                "statistic_id": self._statistic_id,
+                "source": "recorder",
+                "name": f"{self._device_name} carbon impact of usage"
+                if not self.is_appliance
+                else f"{self._device_name} carbon impact of connected appliance",
+                "unit_of_measurement": "gCO2eq",
+                "unit_class": None,
+                "has_sum": True,
+                "mean_type": StatisticMeanType.NONE,
+            }
+
+            stats = [
+                {
+                    "start": dt_util.as_utc(dt_util.now()),
+                    "state": self._total_carbon_impact + delta_nrj * em_value,
+                    "sum": self._total_carbon_impact + delta_nrj * em_value,
+                }
+            ]
+            try:
+                async_import_statistics(self.hass, metadata, stats)
+                _LOGGER.debug("Imported current stat for %s", self._device_name)
+            except Exception:
+                _LOGGER.exception(
+                    "Failed to import current statistics for %s",
+                    self._device_name,
+                )
+
             self._total_carbon_impact += delta_nrj * em_value
             self._last_energy_reading = new_energy_reading
+
             self.async_write_ha_state()
 
         self.async_on_remove(
