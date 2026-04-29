@@ -363,7 +363,7 @@ def utils_find_energy_entity_for_device(
         if "daily" in sensor.entity_id or "daily" in (
             sensor.original_name or sensor.name
         ):
-            appliance_entity = sensor
+            appliance_entity = sensor.entity_id
     lookup_device["appliance_entity"] = appliance_entity
 
     return energy_entity, appliance_entity, True
