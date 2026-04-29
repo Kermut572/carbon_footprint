@@ -498,15 +498,10 @@ class CarbonFootprintPanel extends HTMLElement {
                         ? await this.getCarbonByType()
                         : await this.getCarbonByRoom();
 
-                    if (data && this._selectedRoom) {
-                        const updatedItem = data.find(item =>
-                            item.room === this._selectedRoom.room ||
-                            item.type === this._selectedRoom.type
-                        );
-                        if (updatedItem) {
-                            this._selectedRoom = updatedItem;
-                            this.renderDeviceChart();
-                        }
+                    const updatedItem = this._findUpdatedSelectedGroup(data);
+                    if (updatedItem) {
+                        this._selectedRoom = updatedItem;
+                        this.renderDeviceChart();
                     }
                 }
             });
@@ -530,15 +525,10 @@ class CarbonFootprintPanel extends HTMLElement {
                         ? await this.getCarbonByType()
                         : await this.getCarbonByRoom();
 
-                    if (data && this._selectedRoom) {
-                        const updatedItem = data.find(item =>
-                            item.room === this._selectedRoom.room ||
-                            item.type === this._selectedRoom.type
-                        );
-                        if (updatedItem) {
-                            this._selectedRoom = updatedItem;
-                            this.renderDeviceChart();
-                        }
+                    const updatedItem = this._findUpdatedSelectedGroup(data);
+                    if (updatedItem) {
+                        this._selectedRoom = updatedItem;
+                        this.renderDeviceChart();
                     }
                 }
             });
@@ -560,6 +550,20 @@ class CarbonFootprintPanel extends HTMLElement {
             button.style.color = isActive ? '#fff' : '#333';
             button.style.fontWeight = isActive ? '600' : '400';
         }
+    }
+
+    _findUpdatedSelectedGroup(data) {
+        if (!data || !this._selectedRoom) {
+            return null;
+        }
+
+        const key = this._groupBy === 'type' ? 'type' : 'room';
+        const selectedValue = this._selectedRoom[key];
+        if (selectedValue === undefined || selectedValue === null) {
+            return null;
+        }
+
+        return data.find(item => item[key] === selectedValue) || null;
     }
 
 
