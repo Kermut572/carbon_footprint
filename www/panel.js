@@ -911,11 +911,13 @@ class CarbonFootprintPanel extends HTMLElement {
 
         let consumptionData;
         let embodiedData;
+        let deviceNameMap = {};
 
         if (this._useFakeConsumptionData) {
             const fakeData = this._getFakeConsumptionHistogramData(startTime, endTime);
             consumptionData = fakeData.devices_consumptions;
             embodiedData = fakeData.embodied_carbon;
+            deviceNameMap = fakeData.device_name_map || {};
             console.log('Using fake consumption histogram data:', fakeData);
         } else {
             const result = await this._hass.callWS({
@@ -926,6 +928,7 @@ class CarbonFootprintPanel extends HTMLElement {
             });
 
             consumptionData = result.devices_consumptions;
+            deviceNameMap = result.device_name_map || {};
         }
         //if (!consumptionData || Object.keys(consumptionData).length === 0) {
         //    canvas.parentElement.innerHTML = '<p>No consumption data available for the selected period.</p>';
@@ -1003,6 +1006,7 @@ class CarbonFootprintPanel extends HTMLElement {
                 label: 'Embodied Carbon',
                 data: embodiedDataPoints,
                 backgroundColor: this._ecView === 'total' ? this._createHatchPattern(ctx, baseColors[0]) : baseColors[0],
+                metricType: 'embodied',
                 stack: 'all-devices',
             });
         }
@@ -1013,6 +1017,7 @@ class CarbonFootprintPanel extends HTMLElement {
                 label: 'Usage Carbon',
                 data: usageData,
                 backgroundColor: baseColors[1],
+                metricType: 'consumption',
                 stack: 'all-devices',
             });
         }
@@ -1069,7 +1074,27 @@ class CarbonFootprintPanel extends HTMLElement {
                     },
                     tooltip: {
                         callbacks: {
-                            label: (context) => `${context.dataset.label}: ${context.parsed.y.toFixed(4)} gCO₂eq`
+                            label: (context) => {
+                                const metricType = context.dataset.metricType;
+                                const timestamp = sortedTimestamps[context.dataIndex];
+                                const devices = aggData[timestamp] || {};
+                                const deviceBreakdown = Object.entries(devices)
+                                    .map(([deviceId, values]) => ({
+                                        name: deviceNameMap[deviceId] || deviceId,
+                                        value: values[metricType] || 0,
+                                    }))
+                                    .filter(item => item.value > 0)
+                                    .sort((a, b) => b.value - a.value);
+
+                                const lines = [`${context.dataset.label}: ${context.parsed.y.toFixed(4)} gCO₂eq`];
+                                if (deviceBreakdown.length) {
+                                    lines.push('Devices:');
+                                    deviceBreakdown.forEach(item => {
+                                        lines.push(`${item.name}: ${item.value.toFixed(4)} gCO₂eq`);
+                                    });
+                                }
+                                return lines;
+                            }
                         }
                     }
                 },
@@ -1290,6 +1315,10 @@ class CarbonFootprintPanel extends HTMLElement {
         return {
             devices_consumptions,
             embodied_carbon,
+            device_name_map: {
+                fake_living_lamp: 'Living lamp',
+                fake_rpi_plug: 'Rpi plug',
+            },
         };
     }
 
