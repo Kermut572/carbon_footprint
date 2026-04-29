@@ -368,15 +368,13 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
                 "mean_type": StatisticMeanType.NONE,
             }
 
-            dt = dt_util.as_local(dt_util.utc_from_timestamp(dt_util.now()))
-            str_dt = dt.strftime("%d-%m-%Y-%H")
-            dt = dt.strptime(str_dt, "%d-%m-%Y-%H")
+            now = dt_util.now()
+            str_dt = now.strftime("%d-%m-%Y-%H")
+            dt_local = dt_util.as_local(datetime.strptime(str_dt, "%d-%m-%Y-%H"))
 
             stats = [
                 {
-                    "start": dt_util.utcnow().replace(
-                        minute=0, second=0, microsecond=0
-                    ),
+                    "start": dt_util.as_utc(dt_local),
                     "state": self._total_carbon_impact + delta_nrj * em_value,
                     "sum": self._total_carbon_impact + delta_nrj * em_value,
                 }
