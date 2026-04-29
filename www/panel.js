@@ -312,7 +312,7 @@ class CarbonFootprintPanel extends HTMLElement {
 
                             <!-- Device detail view (hidden by default) -->
                             <div id="device-detail-view" style="display: none;">
-                                <button id="back-to-rooms-btn" style="margin-bottom: 16px; padding: 8px 16px; background-color: #757575; color: white; border: none; border-radius: 4px; cursor: pointer;">← Back to Rooms</button>
+                                <button id="back-to-rooms-btn" style="margin-bottom: 16px; padding: 8px 16px; background-color: #757575; color: white; border: none; border-radius: 4px; cursor: pointer;">← Back to Chart</button>
                                 <h3 id="selected-room-title"></h3>
 
                                 <!-- Legend explaining embodied vs usage -->
