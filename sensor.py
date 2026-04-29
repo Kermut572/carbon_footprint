@@ -253,9 +253,7 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
             self.hass,
             self._device_id,
             (now - timedelta(days=365)).isoformat(),
-            (
-                now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
-            ).isoformat(),
+            now.isoformat(),
             self.is_appliance,
         )
 
