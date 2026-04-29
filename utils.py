@@ -702,6 +702,17 @@ async def utils_build_hourly_stamps(
         if not ts:
             continue
 
+        """ for ref.
+        for row in hourly:
+        running_sum += row["kwh"]
+        stats.append(
+            StatisticData(
+                start=row["datetime"],
+                state=row["kwh"],
+                sum=running_sum,
+            )
+        )
+        """
         stats.append(
             {
                 "start": dt_util.as_utc(datetime.fromisoformat(ts)),

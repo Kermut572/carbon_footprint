@@ -212,6 +212,12 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
             )
 
     @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        state = self.hass.states.get(self._energy_entity_id)
+        return state is not None and state.state not in ("unknown", "unavailable")
+
+    @property
     def native_value(self) -> float:
         """Return rounded carbon impact."""
         return round(self._total_carbon_impact, 3)
@@ -308,6 +314,7 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
             with contextlib.suppress(ValueError):
                 new_energy_reading = float(new_state.state)
             if new_energy_reading is None:
+                self.async_write_ha_state()
                 return
 
             em_state = self.hass.states.get(self._em_entity_id)
@@ -317,6 +324,13 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
             if em_value is None:
                 em_value = 150.0
 
+            _LOGGER.debug(
+                "Last energy reading for %s was %f, VS current reading which is %f",
+                self._device_name,
+                self._last_energy_reading,
+                new_energy_reading,
+            )
+
             self._last_em_reading = em_value
             if self._last_energy_reading is None:
                 self._last_energy_reading = new_energy_reading
@@ -324,8 +338,14 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
                 return
 
             delta_nrj = new_energy_reading - self._last_energy_reading
-            if delta_nrj < 0:
-                self._last_energy_reading = self._last_energy_reading
+            _LOGGER.debug("Computed a delta of %f for %s", delta_nrj, self._device_name)
+            _LOGGER.debug(
+                "Current total carbon value for %s is %f",
+                self._device_name,
+                self._total_carbon_impact,
+            )
+            if delta_nrj <= 0:
+                self._last_energy_reading = new_energy_reading
                 self.async_write_ha_state()
                 return
 
