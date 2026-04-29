@@ -21,7 +21,7 @@ from openrouter import OpenRouter
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 import voluptuous as vol
 
-from homeassistant.components import websocket_api
+from homeassistant.components import recorder, websocket_api
 from homeassistant.components.recorder.statistics import statistics_during_period
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import _LOGGER, HomeAssistant, callback
@@ -608,7 +608,7 @@ async def ws_get_consumption_footprint_time_interval(
             "display_name", "err"
         )
 
-    stats = await hass.async_add_executor_job(
+    stats = await recorder.get_instance(hass).async_add_executor_job(
         statistics_during_period,
         hass,
         dt_util.as_utc(start_time),

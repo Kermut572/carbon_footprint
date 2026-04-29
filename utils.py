@@ -5,6 +5,7 @@ import logging
 from logging import Logger
 import re
 
+from homeassistant.components import recorder
 from homeassistant.components.recorder.statistics import statistics_during_period
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.core import HomeAssistant
@@ -214,7 +215,7 @@ async def utils_get_device_install_date(
         ts = dt_util.parse_datetime(install_date)
         return dt_util.as_local(ts), False
 
-    data_points = await hass.async_add_executor_job(
+    data_points = await recorder.get_instance(hass).async_add_executor_job(
         statistics_during_period,
         hass,
         dt_util.now() - timedelta(weeks=520),
@@ -281,7 +282,7 @@ async def async_populate_energy_store(
         return
 
     em_sensor = utils_fetch_electricity_maps_sensor(hass)
-    data_points = await hass.async_add_executor_job(
+    data_points = await recorder.get_instance(hass).async_add_executor_job(
         statistics_during_period,
         hass,
         dt_util.now() - timedelta(weeks=260),
@@ -394,7 +395,7 @@ async def utils_get_yearly_consumption(hass: HomeAssistant) -> float:
     ):
         return default_ret_value
 
-    data = await hass.async_add_executor_job(
+    data = await recorder.get_instance(hass).async_add_executor_job(
         statistics_during_period,
         hass,
         dt_util.now() - timedelta(days=365),
@@ -454,7 +455,7 @@ async def utils_get_device_energy_consumption_map(
     if not energy_entity:
         return None
 
-    stats = await hass.async_add_executor_job(
+    stats = await recorder.get_instance(hass).async_add_executor_job(
         statistics_during_period,
         hass,
         dt_util.now() - timedelta(days=365),
