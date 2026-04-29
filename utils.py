@@ -513,9 +513,9 @@ async def utils_compute_device_consumption_footprint(
             delta = value - last_value
             delta_energy_dict[key] = max(delta, 0)
 
-        # if delta and delta < 0:
-        #    last_value = 0
-        #    continue
+        if delta and delta < 0:
+            last_value = 0
+            continue
 
         last_value = value
 
