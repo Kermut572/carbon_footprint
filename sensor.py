@@ -284,7 +284,8 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
                     self.hass.async_create_task(cf_store.async_save_data())
 
                 with contextlib.suppress(ValueError, TypeError):
-                    self._total_carbon_impact = float(stats[-1].get("sum", 0.0))
+                    new_val = float(stats[-1].get("sum", 0.0)) or 0.0
+                    self._total_carbon_impact = max(new_val, self._total_carbon_impact)
 
                 state = self.hass.states.get(self._energy_entity_id)
                 if state and state.state not in ("unknown", "unavailable"):
@@ -325,8 +326,6 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
 
             delta_nrj = new_energy_reading - self._last_energy_reading
             if delta_nrj <= 0:
-                self._last_energy_reading = new_energy_reading
-                self.async_write_ha_state()
                 return
 
             self._total_carbon_impact += delta_nrj * em_value
