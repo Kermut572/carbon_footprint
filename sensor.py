@@ -248,11 +248,14 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
             if isinstance(restored_last, (int, float)):
                 self._last_energy_reading = float(restored_last)
 
+        now = dt_util.now()
         stats = await utils_build_hourly_stamps(
             self.hass,
             self._device_id,
-            (dt_util.now() - timedelta(days=365)).isoformat(),
-            dt_util.now().isoformat(),
+            (now - timedelta(days=365)).isoformat(),
+            (
+                now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
+            ).isoformat(),
             self.is_appliance,
         )
 
