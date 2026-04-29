@@ -11,6 +11,7 @@ These sensors follow Home Assistant best practices for sensor implementation.
 from __future__ import annotations
 
 import contextlib
+import datetime
 from datetime import timedelta
 import logging
 from typing import Any
@@ -366,6 +367,10 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
                 "has_sum": True,
                 "mean_type": StatisticMeanType.NONE,
             }
+
+            dt = dt_util.as_local(dt_util.utc_from_timestamp(dt_util.now()))
+            str_dt = dt.strftime("%d-%m-%Y-%H")
+            dt = dt.strptime(str_dt, "%d-%m-%Y-%H")
 
             stats = [
                 {
