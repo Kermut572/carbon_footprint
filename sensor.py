@@ -369,7 +369,9 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
 
             stats = [
                 {
-                    "start": dt_util.as_utc(dt_util.now()),
+                    "start": dt_util.as_utc(
+                        dt_util.now().replace(minute=0, second=0, microsecond=0)
+                    ),
                     "state": self._total_carbon_impact + delta_nrj * em_value,
                     "sum": self._total_carbon_impact + delta_nrj * em_value,
                 }
