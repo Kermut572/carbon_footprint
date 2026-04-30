@@ -458,22 +458,6 @@ class CarbonFootprintPanel extends HTMLElement {
                                     </div>
                                 </div>
 
-                                <!-- Carbon intensity usage -->
-                                <div style="border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
-                                    <div class="recommendation-header"
-                                        style="padding: 12px; background-color: ${intensityRec.color}; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;"
-                                        onclick="this.parentElement.querySelector('.recommendation-content-2').style.display = this.parentElement.querySelector('.recommendation-content-2').style.display === 'none' ? 'block' : 'none'; this.querySelector('.toggle-icon-2').textContent = this.parentElement.querySelector('.recommendation-content-2').style.display === 'none' ? '▼' : '▲';">
-                                        <strong>Optimize Usage Timing (${intensityRec.label})</strong>
-                                        <span class="toggle-icon-2" style="font-size: 12px;">▲</span>
-                                    </div>
-                                    <div class="recommendation-content-2"
-                                        style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
-                                        <p style="margin: 0; font-size: 13px; color: #555;">
-                                            ${intensityRec.message}
-                                        </p>
-                                    </div>
-                                </div>
-
                                 <!-- Usage Pattern Insight -->
                                 <div style="border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
                                     <div class="recommendation-header"
