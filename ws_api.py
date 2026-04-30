@@ -81,6 +81,7 @@ def async_register_websocket_handlers(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_db_matching)
     websocket_api.async_register_command(hass, ws_export_json)
     websocket_api.async_register_command(hass, ws_get_yearly_contribution)
+    websocket_api.async_register_command(hass, ws_get_annual_consumption_summary)
 
 
 @websocket_api.websocket_command(
@@ -1620,4 +1621,100 @@ async def ws_get_yearly_contribution(
     connection.send_result(
         msg["id"],
         {"yearly_contribution": yearly_contrib},
+    )
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/get_annual_consumption_summary"}
+)
+@websocket_api.async_response
+async def ws_get_annual_consumption_summary(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return annual/available-period carbon consumption summary for dashboard cards."""
+    entry = _get_loaded_entry(hass)
+    if not entry:
+        _LOGGER.exception("No config entry found")
+        connection.send_error(
+            msg["id"], "config_entry_not_found", "Uh oh, no config entry found :-("
+        )
+        return
+
+    end_time = dt_util.now()
+    start_time = end_time - relativedelta(years=1)
+
+    cf_store = entry.runtime_data.cf_store
+    devices = cf_store.get_devices_data()
+    carbon_usage_entities = {
+        device_info.get("cu_entity")
+        for device_info in devices.values()
+        if device_info.get("cu_entity")
+    }
+
+    if not carbon_usage_entities:
+        connection.send_result(
+            msg["id"],
+            {
+                "kgCO2eq": 0,
+                "carKm": 0,
+                "rangeText": "No carbon consumption data available yet.",
+            },
+        )
+        return
+
+    stats = await recorder.get_instance(hass).async_add_executor_job(
+        statistics_during_period,
+        hass,
+        dt_util.as_utc(start_time),
+        dt_util.as_utc(end_time),
+        carbon_usage_entities,
+        "day",
+        None,
+        {"change"},
+    )
+
+    total_grams = 0.0
+    first_data_time = None
+    for entity_stats in stats.values():
+        for datapoint in entity_stats:
+            reading = datapoint.get("change")
+            start_ts = datapoint.get("start")
+            if not reading or not start_ts:
+                continue
+
+            total_grams += float(reading)
+            datapoint_time = dt_util.as_local(dt_util.utc_from_timestamp(start_ts))
+            if first_data_time is None or datapoint_time < first_data_time:
+                first_data_time = datapoint_time
+
+    if first_data_time is None:
+        connection.send_result(
+            msg["id"],
+            {
+                "kgCO2eq": 0,
+                "carKm": 0,
+                "rangeText": "No carbon consumption data available yet.",
+            },
+        )
+        return
+
+    has_full_year = first_data_time <= start_time
+    range_text = (
+        "Based on the last 12 months of available data."
+        if has_full_year
+        else (
+            f"This data is from {first_data_time.date().isoformat()} to today; "
+            "no further data available."
+        )
+    )
+
+    connection.send_result(
+        msg["id"],
+        {
+            "kgCO2eq": total_grams / 1000,
+            "carKm": total_grams / 21.8,
+            "rangeText": range_text,
+        },
     )

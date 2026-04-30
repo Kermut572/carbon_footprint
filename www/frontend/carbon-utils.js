@@ -59,6 +59,21 @@ export class CarbonUtils {
         }
     }
 
+    static async getAnnualConsumptionSummary(instance) {
+        try {
+            return await instance._hass.callWS({
+                type: 'carbon_footprint/get_annual_consumption_summary',
+            });
+        } catch (err) {
+            console.error('Error loading annual consumption summary:', err);
+            return {
+                kgCO2eq: null,
+                carKm: null,
+                rangeText: 'Annual carbon consumption data is unavailable.',
+            };
+        }
+    }
+
     /**
      * Update the device list display
      * @param {CarbonFootprintPanel} instance - The component instance

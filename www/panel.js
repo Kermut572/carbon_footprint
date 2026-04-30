@@ -178,54 +178,6 @@ class CarbonFootprintPanel extends HTMLElement {
         return await CarbonUtils.updateDeviceList(this);
     }
 
-    async getAnnualConsumptionSummary() {
-        const endTime = new Date();
-        const startTime = new Date(endTime);
-        startTime.setFullYear(endTime.getFullYear() - 1);
-
-        try {
-            const result = await this._hass.callWS({
-                type: 'carbon_footprint/get_consumption_footprint_time_interval',
-                start_time: startTime.toISOString(),
-                end_time: endTime.toISOString(),
-                granularity: 'day',
-                is_appliance: false
-            });
-
-            const points = Object.values(result.devices_consumptions || {}).flat();
-            if (!points.length) {
-                return {
-                    kgCO2eq: 0,
-                    carKm: 0,
-                    rangeText: 'No carbon consumption data available yet.',
-                };
-            }
-
-            const totalGrams = points.reduce((sum, point) => sum + (point.consumption_footprint || 0), 0);
-            const sortedDates = points
-                .map(point => new Date(point.timestamp))
-                .filter(date => !Number.isNaN(date.getTime()))
-                .sort((a, b) => a - b);
-            const firstDate = sortedDates[0] || startTime;
-            const hasFullYear = firstDate <= startTime;
-
-            return {
-                kgCO2eq: totalGrams / 1000,
-                carKm: totalGrams / 21.8,
-                rangeText: hasFullYear
-                    ? 'Based on the last 12 months of available data.'
-                    : `This data is from ${firstDate.toLocaleDateString()} to today; no further data available.`,
-            };
-        } catch (err) {
-            console.error('Error loading annual consumption summary:', err);
-            return {
-                kgCO2eq: null,
-                carKm: null,
-                rangeText: 'Annual carbon consumption data is unavailable.',
-            };
-        }
-    }
-
     async render(data) {
         if (this._currentPage === 'settings') {
             this.renderSettingsPage(data);
@@ -276,7 +228,7 @@ class CarbonFootprintPanel extends HTMLElement {
             intensityData,
             currentCarbonIntensity
         );
-        const annualConsumption = await this.getAnnualConsumptionSummary();
+        const annualConsumption = await CarbonUtils.getAnnualConsumptionSummary(this);
 
         this.innerHTML = `
             <ha-app-layout>
