@@ -1136,6 +1136,7 @@ class CarbonFootprintPanel extends HTMLElement {
             const devices = aggData[ts] || {};
             return Object.values(devices).reduce((sum, deviceData) => sum + (deviceData[type] || 0), 0);
         };
+        const formatKgCO2 = grams => `${(grams / 1000).toFixed(3)} kgCO₂eq`;
 
         if (this._ecView === 'total' || this._ecView === 'embodied') {
             const embodiedDataPoints = sortedTimestamps.map(ts => sumByTimestamp(ts, 'embodied'));
@@ -1228,11 +1229,11 @@ class CarbonFootprintPanel extends HTMLElement {
                                     .filter(item => item.value > 0)
                                     .sort((a, b) => b.value - a.value);
 
-                                const lines = [`${context.dataset.label}: ${context.parsed.y.toFixed(4)} gCO₂eq`];
+                                const lines = [`${context.dataset.label}: ${formatKgCO2(context.parsed.y)}`];
                                 if (deviceBreakdown.length) {
                                     lines.push('Devices:');
                                     deviceBreakdown.forEach(item => {
-                                        lines.push(`${item.name}: ${item.value.toFixed(4)} gCO₂eq`);
+                                        lines.push(`${item.name}: ${formatKgCO2(item.value)}`);
                                     });
                                 }
                                 return lines;
