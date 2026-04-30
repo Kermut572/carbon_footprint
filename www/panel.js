@@ -178,6 +178,54 @@ class CarbonFootprintPanel extends HTMLElement {
         return await CarbonUtils.updateDeviceList(this);
     }
 
+    async getAnnualConsumptionSummary() {
+        const endTime = new Date();
+        const startTime = new Date(endTime);
+        startTime.setFullYear(endTime.getFullYear() - 1);
+
+        try {
+            const result = await this._hass.callWS({
+                type: 'carbon_footprint/get_consumption_footprint_time_interval',
+                start_time: startTime.toISOString(),
+                end_time: endTime.toISOString(),
+                granularity: 'day',
+                is_appliance: false
+            });
+
+            const points = Object.values(result.devices_consumptions || {}).flat();
+            if (!points.length) {
+                return {
+                    kgCO2eq: 0,
+                    carKm: 0,
+                    rangeText: 'No carbon consumption data available yet.',
+                };
+            }
+
+            const totalGrams = points.reduce((sum, point) => sum + (point.consumption_footprint || 0), 0);
+            const sortedDates = points
+                .map(point => new Date(point.timestamp))
+                .filter(date => !Number.isNaN(date.getTime()))
+                .sort((a, b) => a - b);
+            const firstDate = sortedDates[0] || startTime;
+            const hasFullYear = firstDate <= startTime;
+
+            return {
+                kgCO2eq: totalGrams / 1000,
+                carKm: totalGrams / 21.8,
+                rangeText: hasFullYear
+                    ? 'Based on the last 12 months of available data.'
+                    : `This data is from ${firstDate.toLocaleDateString()} to today; no further data available.`,
+            };
+        } catch (err) {
+            console.error('Error loading annual consumption summary:', err);
+            return {
+                kgCO2eq: null,
+                carKm: null,
+                rangeText: 'Annual carbon consumption data is unavailable.',
+            };
+        }
+    }
+
     async render(data) {
         if (this._currentPage === 'settings') {
             this.renderSettingsPage(data);
@@ -203,8 +251,12 @@ class CarbonFootprintPanel extends HTMLElement {
         const roomData = await this.getCarbonByRoom();
         const recommendation = getHighImpactAreaRecommendation(roomData);
 
+        const currentCarbonIntensity = data?.co2_intensity_status === 'fallback'
+            ? null
+            : data?.co2_intensity;
+
         // Generate carbon intensity recommendation
-        const intensityRec = getCarbonIntensityRecommendation(data?.co2_intensity);
+        const intensityRec = getCarbonIntensityRecommendation(currentCarbonIntensity);
         const iotShareRec = getIoTShareRecommendation(yearlyCons);
 
         // Fetch consumption data for usage vs intensity recommendation (last 30 days)
@@ -222,8 +274,9 @@ class CarbonFootprintPanel extends HTMLElement {
         const usagePatternRec = getUsagePatternRecommendation(
             energyData,
             intensityData,
-            data?.co2_intensity
+            currentCarbonIntensity
         );
+        const annualConsumption = await this.getAnnualConsumptionSummary();
 
         this.innerHTML = `
             <ha-app-layout>
@@ -233,22 +286,40 @@ class CarbonFootprintPanel extends HTMLElement {
                 </header>
 
                 <div class="content" slot="content">
-                    <ha-card header="Energy Consumption Footprint">
-                        <div class="card-content">
-                            <p>Current Energy CO₂ Intensity:
-                                <span class="ci-value">
-                                    <b>${data?.co2_intensity_status === 'fallback'
-                                        ? 'Unknown'
-                                        : (data?.co2_intensity ?? 'N/A')}</b>
-                                </span>
-                                ${data?.co2_intensity_status === 'fallback' ? '' : 'gCO₂eq/kWh'}
+                    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px;">
+                        <ha-card header="Annual consumption">
+                            <div class="card-content" style="font-size: 22px; font-weight: 600;">
+                                ${annualConsumption.kgCO2eq === null ? 'N/A' : annualConsumption.kgCO2eq.toFixed(2)} kgCO₂eq
+                                <div style="font-size: 13px; font-weight: 400; color: #666; margin-top: 6px;">${annualConsumption.rangeText}</div>
+                                <div style="font-size: 13px; font-weight: 400; color: #666; margin-top: 6px;">
+                                    which is equivalent to riding ${annualConsumption.carKm === null ? 'N/A' : annualConsumption.carKm.toFixed(1)} km by car
+                                    <span title="According to the ImpactCO2 framework of the French Republic. Considering a gasoline-powered car." style="display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; border: 1px solid #777; color: #555; font-size: 11px; font-weight: 600; cursor: help; margin-left: 4px;">i</span>
+                                </div>
+                            </div>
+                        </ha-card>
+                        <ha-card header="Carbon intensity">
+                            <div class="card-content" style="font-size: 22px; font-weight: 600;">
+                                ${data?.co2_intensity_status === 'fallback' ? 'Unknown' : `${data?.co2_intensity ?? 'N/A'} gCO₂eq/kWh`}
                                 <span class="ci-indicator ${CarbonUtils.getCarbonColor(
                                     data?.co2_intensity_status === 'fallback' ? null : data?.co2_intensity
                                 )}"></span>
-                                <span class="ci-label">${CarbonUtils.getCarbonLabel(
+                                <span class="ci-label" style="font-size: 14px; font-weight: 500;">${CarbonUtils.getCarbonLabel(
                                     data?.co2_intensity_status === 'fallback' ? null : data?.co2_intensity
                                 )}</span>
-                            </p>
+                                <div style="font-size: 13px; font-weight: 400; color: #666; margin-top: 6px; line-height: 1.35;">
+                                    ${intensityRec.message}
+                                </div>
+                            </div>
+                        </ha-card>
+                        <ha-card header="Blablabla">
+                            <div class="card-content" style="font-size: 22px; font-weight: 600;">
+                                N/A
+                            </div>
+                        </ha-card>
+                    </div>
+
+                    <ha-card header="Energy Consumption Footprint">
+                        <div class="card-content">
                             <p style="font-size: 12px; color: #666; margin-top: 8px; margin-bottom: 16px;">
                                 <em>Devices energy consumption footprint over time (in grams CO₂ equivalent)</em>
                             </p>
