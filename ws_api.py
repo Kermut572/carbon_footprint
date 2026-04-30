@@ -21,12 +21,13 @@ from openrouter import OpenRouter
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 import voluptuous as vol
 
-from homeassistant.components import websocket_api
+from homeassistant.components import recorder, websocket_api
 from homeassistant.components.recorder.statistics import statistics_during_period
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import _LOGGER, HomeAssistant, callback
 from homeassistant.helpers import (
     area_registry as ar,
+    config_validation as cv,
     device_registry as dr,
     entity_registry as er,
 )
@@ -49,6 +50,11 @@ from .utils import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _normalize_device_type(device_type: str | None) -> tuple[str, str]:
+    display_type = (device_type or "Unknown").strip() or "Unknown"
+    return display_type.lower(), display_type[:1].upper() + display_type[1:].lower()
 
 
 @callback
@@ -99,7 +105,33 @@ def ws_get_device_autocomp(
         return
 
     devices = entry.runtime_data.cf_store.get_devices_data()
+    device_reg = dr.async_get(hass)
+    device_entry = device_reg.async_get(device_id)
     device_info = devices.get(device_id, {})
+    if len(device_info.keys()) == 0:
+        if device_entry is None:
+            connection.send_result(msg["id"], {"cf": 0.0, "type": ""})
+            return
+
+        model = device_entry.model
+        manufacturer = device_entry.manufacturer
+        name = device_entry.name_by_user or device_entry.name
+        device_dict = {
+            name: {
+                "manufacturer": manufacturer,
+                "model": model,
+            }
+        }
+        match, _ = utils_local_type_matching(device_dict)
+        device_info["type"] = match.get(name, "")
+
+        # cf lookup
+        for device in devices.values():
+            if device_info["type"] != device.get("type", ""):
+                continue
+
+            device_info["carbon_footprint"] = device.get("carbon_footprint", 0.0)
+            break
 
     connection.send_result(
         msg["id"],
@@ -256,7 +288,10 @@ def ws_get_carbon_data(
     intensity_history = []
     energy_store = getattr(entry.runtime_data, "energy_store", None)
     if energy_store is not None:
-        for date_key, intensity_value in energy_store.get_energy_footprint_data().items():
+        for (
+            date_key,
+            intensity_value,
+        ) in energy_store.get_energy_footprint_data().items():
             try:
                 timestamp = datetime.strptime(date_key, "%d-%m-%Y-%H")
             except ValueError:
@@ -269,7 +304,7 @@ def ws_get_carbon_data(
                         "intensity": float(intensity_value),
                     }
                 )
-            except (TypeError, ValueError):
+            except Exception:
                 continue
 
         intensity_history.sort(key=lambda item: item["timestamp"])
@@ -508,6 +543,7 @@ def ws_update_devices_energy(
         vol.Required("start_time"): str,
         vol.Required("end_time"): str,
         vol.Required("granularity"): str,
+        vol.Optional("is_appliance", default=False): cv.boolean,
     }
 )
 @websocket_api.async_response
@@ -550,6 +586,8 @@ async def ws_get_consumption_footprint_time_interval(
         )
         return
 
+    is_appliance = msg.get("is_appliance", False)
+
     device_name_map = {}
     cf_store = entries[0].runtime_data.cf_store
     devices = cf_store.get_devices_data()
@@ -557,7 +595,11 @@ async def ws_get_consumption_footprint_time_interval(
 
     device_cu_map = {}
     for device_id, device_info in devices.items():
-        cu_entity = device_info.get("cu_entity", None)
+        cu_entity = (
+            device_info.get("cu_entity", None)
+            if not is_appliance
+            else device_info.get("cu_app_entity", None)
+        )
         if not cu_entity:
             continue
 
@@ -566,7 +608,7 @@ async def ws_get_consumption_footprint_time_interval(
             "display_name", "err"
         )
 
-    stats = await hass.async_add_executor_job(
+    stats = await recorder.get_instance(hass).async_add_executor_job(
         statistics_during_period,
         hass,
         dt_util.as_utc(start_time),
@@ -679,7 +721,11 @@ async def ws_get_embodied_carbon_time_interval(
         )  # by default it is in kgCO2eq
         lifetime_years = device_info.get("lifetime_years", 5)
 
-        energy_entity, en_store_updated = await hass.async_add_executor_job(
+        (
+            energy_entity,
+            appliance_entity,
+            en_store_updated,
+        ) = await hass.async_add_executor_job(
             utils_find_energy_entity_for_device, hass, device_id
         )
         if not energy_entity:
@@ -836,7 +882,10 @@ def ws_get_carbon_by_room(
 
 
 @websocket_api.websocket_command(
-    {vol.Required("type"): f"{DOMAIN}/get_carbon_by_room_with_usage"}
+    {
+        vol.Required("type"): f"{DOMAIN}/get_carbon_by_room_with_usage",
+        vol.Optional("is_appliance", default=False): cv.boolean,
+    }
 )
 @websocket_api.async_response
 async def ws_get_carbon_by_room_with_usage(
@@ -886,6 +935,8 @@ async def ws_get_carbon_by_room_with_usage(
     device_reg = dr.async_get(hass)
     area_reg = ar.async_get(hass)
 
+    is_appliance = msg.get("is_appliance", False)
+
     # Get current CO2 intensity
     em_sensor = utils_fetch_electricity_maps_sensor(hass)
     co2_intensity_state = hass.states.get(em_sensor)
@@ -910,13 +961,18 @@ async def ws_get_carbon_by_room_with_usage(
         # Get usage carbon: prefer metadata value (for test data), fall back to power sensor calculation
         metadata = device_info.get("metadata", {})
 
-        device_name = (
-            device_reg.devices.get(device_id).name_by_user
-            or device_reg.devices.get(device_id).name
-        )
+        device = device_reg.async_get(device_id)
+        if device is None:
+            continue
+        device_name = device.name_by_user or device.name
 
         usage_carbon_value = 0.0
-        cu_entity = device_info.get("cu_entity")
+        cu_entity = (
+            device_info.get("cu_entity")
+            if not is_appliance
+            else device_info.get("cu_app_entity")
+        )
+        _LOGGER.debug("USING %s for device %s", cu_entity, device_name)
         if cu_entity:
             state = hass.states.get(cu_entity)
             if state and state.state not in ("unknown", "unavailable"):
@@ -1039,28 +1095,33 @@ def ws_get_carbon_by_type(
     type_dict: dict[str, dict] = {}
 
     for device_id, device_info in devices.items():
+        metadata = device_info.get("metadata", {})
+        device_entry = device_reg.async_get(device_id)
         device_name = (
-            device_reg.devices.get(device_id).name_by_user
-            or device_reg.devices.get(device_id).name
+            (device_entry.name_by_user or device_entry.name)
+            if device_entry
+            else metadata.get("display_name", device_id)
         )
         carbon_value = device_info.get("carbon_footprint", 0)
-        device_type = device_info.get("type", "Unknown")
+        device_type_key, device_type_label = _normalize_device_type(
+            device_info.get("type", "Unknown")
+        )
 
-        if device_type not in type_dict:
-            type_dict[device_type] = {
-                "type": device_type,
+        if device_type_key not in type_dict:
+            type_dict[device_type_key] = {
+                "type": device_type_label,
                 "total_carbon": 0,
                 "devices": [],
             }
 
-        type_dict[device_type]["devices"].append(
+        type_dict[device_type_key]["devices"].append(
             {
                 "id": device_id,
                 "name": device_name,
                 "carbon": carbon_value,
             }
         )
-        type_dict[device_type]["total_carbon"] += carbon_value
+        type_dict[device_type_key]["total_carbon"] += carbon_value
 
     type_list = list(type_dict.values())
     type_list.sort(key=lambda x: x["total_carbon"], reverse=True)
@@ -1069,7 +1130,10 @@ def ws_get_carbon_by_type(
 
 
 @websocket_api.websocket_command(
-    {vol.Required("type"): f"{DOMAIN}/get_carbon_by_type_with_usage"}
+    {
+        vol.Required("type"): f"{DOMAIN}/get_carbon_by_type_with_usage",
+        vol.Optional("is_appliance", default=False): cv.boolean,
+    }
 )
 @websocket_api.async_response
 async def ws_get_carbon_by_type_with_usage(
@@ -1131,17 +1195,25 @@ async def ws_get_carbon_by_type_with_usage(
     device_reg = dr.async_get(hass)
     devices = cf_store.get_devices_data()
 
+    is_appliance = msg.get("is_appliance", False)
+
     type_dict: dict[str, dict] = {}
 
     for device_id, device_info in devices.items():
         metadata = device_info.get("metadata", {})
+        device_entry = device_reg.async_get(device_id)
         device_name = (
-            device_reg.devices.get(device_id).name_by_user
-            or device_reg.devices.get(device_id).name
+            (device_entry.name_by_user or device_entry.name)
+            if device_entry
+            else metadata.get("display_name", device_id)
         )
 
         usage_carbon_value = 0.0
-        cu_entity = device_info.get("cu_entity")
+        cu_entity = (
+            device_info.get("cu_entity")
+            if not is_appliance
+            else device_info.get("cu_app_entity")
+        )
         if cu_entity:
             state = hass.states.get(cu_entity)
             if state and state.state not in ("unknown", "unavailable"):
@@ -1166,13 +1238,15 @@ async def ws_get_carbon_by_type_with_usage(
             ) * lifetime_days
 
         embodied_carbon_value = device_info.get("carbon_footprint", 0)
-        device_type = device_info.get("type", "Unknown")
+        device_type_key, device_type_label = _normalize_device_type(
+            device_info.get("type", "Unknown")
+        )
 
         device_total = embodied_carbon_value + usage_carbon_value
 
-        if device_type not in type_dict:
-            type_dict[device_type] = {
-                "type": device_type,
+        if device_type_key not in type_dict:
+            type_dict[device_type_key] = {
+                "type": device_type_label,
                 "embodied_carbon": 0,
                 "usage_carbon": 0,
                 "total_carbon": 0,
@@ -1180,7 +1254,7 @@ async def ws_get_carbon_by_type_with_usage(
                 "devices": [],
             }
 
-        type_dict[device_type]["devices"].append(
+        type_dict[device_type_key]["devices"].append(
             {
                 "id": device_id,
                 "name": device_name,
@@ -1191,10 +1265,10 @@ async def ws_get_carbon_by_type_with_usage(
                 "carbon": embodied_carbon_value,
             }
         )
-        type_dict[device_type]["embodied_carbon"] += embodied_carbon_value
-        type_dict[device_type]["usage_carbon"] += usage_carbon_value
-        type_dict[device_type]["predicted_carbon"] += predicted_usage_carbon_value
-        type_dict[device_type]["total_carbon"] += device_total
+        type_dict[device_type_key]["embodied_carbon"] += embodied_carbon_value
+        type_dict[device_type_key]["usage_carbon"] += usage_carbon_value
+        type_dict[device_type_key]["predicted_carbon"] += predicted_usage_carbon_value
+        type_dict[device_type_key]["total_carbon"] += device_total
 
     type_list = []
     for type_data in type_dict.values():
@@ -1251,9 +1325,15 @@ async def ws_llm_detection(
     if len(devices_to_match.keys()) == 0:
         _LOGGER.debug("All devices could be matched locally, returning early")
         connection.send_result(
-            msg["id"], {"device_types": json.dumps(matched_device_types)}
+            msg["id"],
+            {
+                "device_types": json.dumps(matched_device_types),
+                "unmatched_devices": json.dumps({}),
+            },
         )
         return
+
+    _LOGGER.debug("Could not detect device types for %s", devices_to_match)
 
     api_key = entry.options.get("api_key")
     if not api_key or len(api_key) == 0:
@@ -1261,7 +1341,11 @@ async def ws_llm_detection(
             "No OpenRouter API Key set. This can be set in the integration settings. Defaulting to local regex matching (might not infer types for all devices)"
         )
         connection.send_result(
-            msg["id"], {"device_types": json.dumps(matched_device_types)}
+            msg["id"],
+            {
+                "device_types": json.dumps(matched_device_types),
+                "unmatched_devices": json.dumps(devices_to_match),
+            },
         )
         return
 
@@ -1298,7 +1382,10 @@ async def ws_llm_detection(
         result = await hass.async_add_executor_job(_openrouter_call)
         connection.send_result(
             msg["id"],
-            {"device_types": json.dumps(json.loads(result) | matched_device_types)},
+            {
+                "device_types": json.dumps(json.loads(result) | matched_device_types),
+                "unmatched_devices": json.dumps({}),
+            },
         )
 
     try:
@@ -1310,12 +1397,24 @@ async def ws_llm_detection(
             "OpenRouter provider error after retries: %s\nDefaulting to local regex matching (might not infer types for all devices)",
             err,
         )
-        connection.send_result(msg["id"], {"device_types": matched_device_types})
-    except Exception as err:
+        connection.send_result(
+            msg["id"],
+            {
+                "device_types": json.dumps(matched_device_types),
+                "unmatched_devices": json.dumps(devices_to_match),
+            },
+        )
+    except Exception:
         _LOGGER.exception(
             "Error occured during OpenRouter detection. Defaulting to local regex matching (might not infer types for all devices)"
         )
-        connection.send_result(msg["id"], {"device_types": matched_device_types})
+        connection.send_result(
+            msg["id"],
+            {
+                "device_types": json.dumps(matched_device_types),
+                "unmatched_devices": json.dumps(devices_to_match),
+            },
+        )
 
 
 @websocket_api.websocket_command(
