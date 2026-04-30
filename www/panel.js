@@ -1020,6 +1020,35 @@ class CarbonFootprintPanel extends HTMLElement {
         if (!canvas) {
             return;
         }
+        const canvasContainer = canvas.parentElement;
+        const showEmptyConsumptionChartMessage = (message) => {
+            if (this._consumptionChart) {
+                this._consumptionChart.destroy();
+                this._consumptionChart = null;
+            }
+            if (canvasContainer) {
+                canvasContainer.style.display = 'none';
+                let emptyMessage = canvasContainer.nextElementSibling;
+                if (!emptyMessage || emptyMessage.id !== 'consumption-empty-message') {
+                    emptyMessage = document.createElement('p');
+                    emptyMessage.id = 'consumption-empty-message';
+                    emptyMessage.style.margin = '16px 0';
+                    emptyMessage.style.color = '#666';
+                    canvasContainer.insertAdjacentElement('afterend', emptyMessage);
+                }
+                emptyMessage.textContent = message;
+                emptyMessage.style.display = 'block';
+            }
+        };
+        const hideEmptyConsumptionChartMessage = () => {
+            if (canvasContainer) {
+                canvasContainer.style.display = '';
+                const emptyMessage = canvasContainer.nextElementSibling;
+                if (emptyMessage?.id === 'consumption-empty-message') {
+                    emptyMessage.style.display = 'none';
+                }
+            }
+        };
 
         const { startTime, endTime } = this._getConsumptionHistogramTimeRange();
 
@@ -1109,6 +1138,15 @@ class CarbonFootprintPanel extends HTMLElement {
         if (this._ecView == 'total' || this._ecView == 'usage' || this._ecView === 'appliance') procData(consumptionData, `consumption`);
         procData(embodiedData, `embodied`);
         const sortedTimestamps = Object.keys(aggData).sort();
+        const hasConsumptionData = sortedTimestamps.some(ts => {
+            const devices = aggData[ts] || {};
+            return Object.values(devices).some(deviceData => (deviceData.consumption || 0) > 0);
+        });
+        if (this._ecView === 'appliance' && !hasConsumptionData) {
+            showEmptyConsumptionChartMessage('No appliances available for the selected period.');
+            return;
+        }
+        hideEmptyConsumptionChartMessage();
 
         const labels = sortedTimestamps.map(ts => {
             const date = new Date(ts);
@@ -1654,9 +1692,7 @@ class CarbonFootprintPanel extends HTMLElement {
                 devices: [
                     { name: 'Fridge plug', embodied_carbon: 50, usage_carbon: 30, appliance_usage_carbon: 24, total_carbon: 80, predicted_carbon: 100, appliance_predicted_carbon: 82 },
                     { name: 'Oven plug', embodied_carbon: 40, usage_carbon: 25, appliance_usage_carbon: 18, total_carbon: 65, predicted_carbon: 85, appliance_predicted_carbon: 61 },
-                    { name: 'Dishwasher plug', embodied_carbon: 30, usage_carbon: 25, appliance_usage_carbon: 20, total_carbon: 55, predicted_carbon: 75, appliance_predicted_carbon: 60 },
-                    { id: 'Kitchen Air Fryer', name: 'Kitchen Air Fryer appliance', embodied_carbon: 0, usage_carbon: 0, appliance_usage_carbon: 35, total_carbon: 0, predicted_carbon: 0, appliance_predicted_carbon: 105 },
-                ]
+                    { name: 'Dishwasher plug', embodied_carbon: 30, usage_carbon: 25, appliance_usage_carbon: 20, total_carbon: 55, predicted_carbon: 75, appliance_predicted_carbon: 60 },                ]
             },
             {
                 room: 'Bedroom',
@@ -1782,6 +1818,20 @@ class CarbonFootprintPanel extends HTMLElement {
             if (container) {
                 const groupLabel = this._groupBy === 'type' ? 'type' : 'room';
                 container.innerHTML = `<p>No ${groupLabel} data available</p>`;
+            }
+            return;
+        }
+
+        const hasApplianceDevices = data.some(item => (item.devices || []).length > 0);
+        const hasApplianceCarbon = data.some(item => (item.appliance_usage_carbon ?? item.usage_carbon ?? 0) > 0);
+        if (this._carbonView === 'appliance' && (!hasApplianceDevices || !hasApplianceCarbon)) {
+            const container = this.querySelector('#room-chart-view');
+            if (this._roomChart) {
+                this._roomChart.destroy();
+                this._roomChart = null;
+            }
+            if (container) {
+                container.innerHTML = '<p>No appliances available.</p>';
             }
             return;
         }
