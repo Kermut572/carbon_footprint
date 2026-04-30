@@ -27,7 +27,7 @@ class CarbonFootprintPanel extends HTMLElement {
         this._roomData = null;
         this._selectedRoom = null;
         this._currentPage = 'main'; // 'main' or 'settings'
-        this._carbonView = 'total'; // 'total', 'embodied', or 'usage'
+        this._carbonView = 'total'; // 'total', 'embodied', 'usage', or 'appliance'
         this._showApplianceUsage = false;
         this._showEnergyApplianceUsage = false;
         this._ecView = 'total';
@@ -108,6 +108,15 @@ class CarbonFootprintPanel extends HTMLElement {
                 return this._roomData;
             }
 
+            if (this._carbonView === 'appliance') {
+                const applianceResult = await this._hass.callWS({
+                    type: 'carbon_footprint/get_carbon_by_room_with_usage',
+                    is_appliance: true
+                });
+                this._roomData = this._normalizeApplianceOnlyData(applianceResult.rooms || []);
+                return this._roomData;
+            }
+
             const result = await this._hass.callWS({
                 type: 'carbon_footprint/get_carbon_by_room_with_usage',
                 is_appliance: false
@@ -133,6 +142,15 @@ class CarbonFootprintPanel extends HTMLElement {
 
     async getCarbonByType() {
         try {
+            if (this._carbonView === 'appliance') {
+                const applianceResult = await this._hass.callWS({
+                    type: 'carbon_footprint/get_carbon_by_type_with_usage',
+                    is_appliance: true
+                });
+                this._typeData = this._normalizeApplianceOnlyData(applianceResult.types || []);
+                return this._typeData;
+            }
+
             const result = await this._hass.callWS({
                 type: 'carbon_footprint/get_carbon_by_type_with_usage',
                 is_appliance: false
@@ -270,16 +288,20 @@ class CarbonFootprintPanel extends HTMLElement {
                             <div style="margin-bottom: 12px;">
                                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                                     <label style="display: flex; align-items: center; cursor: pointer;">
-                                        <input type="radio" name="ec-view" value="total" checked style="margin-right: 6px;">
+                                        <input type="radio" name="ec-view" value="total" ${this._ecView === 'total' ? 'checked' : ''} style="margin-right: 6px;">
                                         <span>Total (Stacked)</span>
                                     </label>
                                     <label style="display: flex; align-items: center; cursor: pointer;">
-                                        <input type="radio" name="ec-view" value="embodied" style="margin-right: 6px;">
+                                        <input type="radio" name="ec-view" value="embodied" ${this._ecView === 'embodied' ? 'checked' : ''} style="margin-right: 6px;">
                                         <span>Embodied Only</span>
                                     </label>
                                     <label style="display: flex; align-items: center; cursor: pointer;">
-                                        <input type="radio" name="ec-view" value="usage" style="margin-right: 6px;">
+                                        <input type="radio" name="ec-view" value="usage" ${this._ecView === 'usage' ? 'checked' : ''} style="margin-right: 6px;">
                                         <span>Usage Only</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; cursor: pointer;">
+                                        <input type="radio" name="ec-view" value="appliance" ${this._ecView === 'appliance' ? 'checked' : ''} style="margin-right: 6px;">
+                                        <span>Appliances Only</span>
                                     </label>
                                 </div>
                             </div>
@@ -322,6 +344,10 @@ class CarbonFootprintPanel extends HTMLElement {
                                     <label style="display: flex; align-items: center; cursor: pointer;">
                                         <input type="radio" name="carbon-view" value="usage" ${this._carbonView === 'usage' ? 'checked' : ''} style="margin-right: 6px;">
                                         <span>Usage Only</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; cursor: pointer;">
+                                        <input type="radio" name="carbon-view" value="appliance" ${this._carbonView === 'appliance' ? 'checked' : ''} style="margin-right: 6px;">
+                                        <span>Appliances Only</span>
                                     </label>
                                 </div>
                             </div>
@@ -1003,9 +1029,11 @@ class CarbonFootprintPanel extends HTMLElement {
 
         if (this._useFakeConsumptionData) {
             const fakeData = this._getFakeConsumptionHistogramData(startTime, endTime);
-            consumptionData = this._showEnergyApplianceUsage
-                ? this._mergeDeviceTimeSeriesData(fakeData.devices_consumptions, fakeData.appliance_consumptions)
-                : fakeData.devices_consumptions;
+            consumptionData = this._ecView === 'appliance'
+                ? fakeData.appliance_consumptions
+                : (this._showEnergyApplianceUsage
+                    ? this._mergeDeviceTimeSeriesData(fakeData.devices_consumptions, fakeData.appliance_consumptions)
+                    : fakeData.devices_consumptions);
             embodiedData = fakeData.embodied_carbon;
             deviceNameMap = fakeData.device_name_map || {};
             console.log('Using fake consumption histogram data:', fakeData);
@@ -1021,7 +1049,7 @@ class CarbonFootprintPanel extends HTMLElement {
             consumptionData = result.devices_consumptions;
             deviceNameMap = result.device_name_map || {};
 
-            if (this._showEnergyApplianceUsage) {
+            if (this._showEnergyApplianceUsage || this._ecView == 'appliance') {
                 const applianceResult = await this._hass.callWS({
                     type: 'carbon_footprint/get_consumption_footprint_time_interval',
                     start_time: startTime.toISOString(),
@@ -1030,7 +1058,9 @@ class CarbonFootprintPanel extends HTMLElement {
                     is_appliance: true
                 });
 
-                consumptionData = this._mergeDeviceTimeSeriesData(consumptionData, applianceResult.devices_consumptions);
+                consumptionData = this._ecView === 'appliance'
+                    ? applianceResult.devices_consumptions
+                    : this._mergeDeviceTimeSeriesData(consumptionData, applianceResult.devices_consumptions);
                 deviceNameMap = {
                     ...deviceNameMap,
                     ...(applianceResult.device_name_map || {}),
@@ -1076,7 +1106,7 @@ class CarbonFootprintPanel extends HTMLElement {
                 }
             }
         };
-        if (this._ecView == 'total' || this._ecView == 'usage') procData(consumptionData, `consumption`);
+        if (this._ecView == 'total' || this._ecView == 'usage' || this._ecView === 'appliance') procData(consumptionData, `consumption`);
         procData(embodiedData, `embodied`);
         const sortedTimestamps = Object.keys(aggData).sort();
 
@@ -1106,6 +1136,7 @@ class CarbonFootprintPanel extends HTMLElement {
             const devices = aggData[ts] || {};
             return Object.values(devices).reduce((sum, deviceData) => sum + (deviceData[type] || 0), 0);
         };
+        const formatKgCO2 = grams => `${(grams / 1000).toFixed(3)} kgCO₂eq`;
 
         if (this._ecView === 'total' || this._ecView === 'embodied') {
             const embodiedDataPoints = sortedTimestamps.map(ts => sumByTimestamp(ts, 'embodied'));
@@ -1118,12 +1149,12 @@ class CarbonFootprintPanel extends HTMLElement {
             });
         }
 
-        if (this._ecView === 'total' || this._ecView === 'usage') {
+        if (this._ecView === 'total' || this._ecView === 'usage' || this._ecView === 'appliance') {
             const usageData = sortedTimestamps.map(ts => sumByTimestamp(ts, 'consumption'));
             datasets.push({
-                label: 'Usage Carbon',
+                label: this._ecView === 'appliance' ? 'Appliance Usage Carbon' : 'Usage Carbon',
                 data: usageData,
-                backgroundColor: baseColors[1],
+                backgroundColor: this._ecView === 'appliance' ? 'rgba(255, 152, 0, 0.6)' : baseColors[1],
                 metricType: 'consumption',
                 stack: 'all-devices',
             });
@@ -1164,6 +1195,11 @@ class CarbonFootprintPanel extends HTMLElement {
                                         text: 'Embodied Carbon',
                                         fillStyle: baseColors[0],
                                     });
+                                } else if (this._ecView === 'appliance') {
+                                    labels.push({
+                                        text: 'Appliance Usage Carbon',
+                                        fillStyle: 'rgba(255, 152, 0, 0.6)',
+                                    });
                                 } else {
                                     labels.push({
                                         text: 'Usage Carbon',
@@ -1193,11 +1229,11 @@ class CarbonFootprintPanel extends HTMLElement {
                                     .filter(item => item.value > 0)
                                     .sort((a, b) => b.value - a.value);
 
-                                const lines = [`${context.dataset.label}: ${context.parsed.y.toFixed(4)} gCO₂eq`];
+                                const lines = [`${context.dataset.label}: ${formatKgCO2(context.parsed.y)}`];
                                 if (deviceBreakdown.length) {
                                     lines.push('Devices:');
                                     deviceBreakdown.forEach(item => {
-                                        lines.push(`${item.name}: ${item.value.toFixed(4)} gCO₂eq`);
+                                        lines.push(`${item.name}: ${formatKgCO2(item.value)}`);
                                     });
                                 }
                                 return lines;
@@ -1348,9 +1384,9 @@ class CarbonFootprintPanel extends HTMLElement {
     // ============================================================================
 
     // turn on/off fake data here
-    _useFakeCarbonData = false;
-    _useFakeRoomData = false;  // Toggle for test data (from test_data.py) - doesn't affect real devices
-    _useFakeConsumptionData = false; // Toggle for Energy Consumption Footprint chart testing
+    _useFakeCarbonData = true;
+    _useFakeRoomData = true;  // Toggle for test data (from test_data.py) - doesn't affect real devices
+    _useFakeConsumptionData = true; // Toggle for Energy Consumption Footprint chart testing
     _hiddenRoomIndices = new Set();
 
     _getFakeConsumptionHistogramData(startTime, endTime) {
@@ -1508,7 +1544,52 @@ class CarbonFootprintPanel extends HTMLElement {
         });
     }
 
+    _normalizeApplianceOnlyData(applianceData) {
+        return (applianceData || []).map(item => {
+            const sourceDevices = item.devices || [];
+            const applianceDevices = sourceDevices.filter(device => this._isExplicitApplianceDevice(device));
+
+            const devices = applianceDevices.map(device => {
+                const applianceUsageCarbon = device.appliance_usage_carbon ?? device.usage_carbon ?? 0;
+                const appliancePredictedCarbon = device.appliance_predicted_carbon ?? device.predicted_carbon ?? 0;
+
+                return {
+                    ...device,
+                    embodied_carbon: 0,
+                    usage_carbon: 0,
+                    appliance_usage_carbon: applianceUsageCarbon,
+                    predicted_carbon: 0,
+                    appliance_predicted_carbon: appliancePredictedCarbon,
+                    total_carbon: applianceUsageCarbon,
+                };
+            });
+
+            const applianceUsageCarbon = devices.reduce((sum, device) => sum + (device.appliance_usage_carbon || 0), 0);
+            const appliancePredictedCarbon = devices.reduce((sum, device) => sum + (device.appliance_predicted_carbon || 0), 0);
+
+            return {
+                ...item,
+                embodied_carbon: 0,
+                usage_carbon: 0,
+                appliance_usage_carbon: applianceUsageCarbon,
+                predicted_carbon: 0,
+                appliance_predicted_carbon: appliancePredictedCarbon,
+                total_carbon: applianceUsageCarbon,
+                devices,
+            };
+        });
+    }
+
+    _isExplicitApplianceDevice(device) {
+        const name = `${device?.name || ''} ${device?.id || ''}`.toLowerCase();
+        return name.includes('appliance') && !name.includes('plug');
+    }
+
     _getFakeDataForCurrentView(data) {
+        if (this._carbonView === 'appliance') {
+            return this._normalizeApplianceOnlyData(data);
+        }
+
         if (!this._showApplianceUsage) {
             return data.map(room => ({
                 ...room,
@@ -1864,6 +1945,9 @@ class CarbonFootprintPanel extends HTMLElement {
             if (this._carbonView === 'embodied') {
                 values = data.map(item => item.embodied_carbon || 0);
                 datasetLabel = 'Embodied Carbon';
+            } else if (this._carbonView === 'appliance') {
+                values = data.map(item => item.appliance_usage_carbon ?? item.usage_carbon ?? 0);
+                datasetLabel = 'Appliance Usage Carbon';
             } else {
                 values = data.map(item => item.usage_carbon || 0);
                 datasetLabel = 'Usage Carbon';
@@ -1983,18 +2067,35 @@ class CarbonFootprintPanel extends HTMLElement {
         const devices = this._selectedRoom.devices;
         const labels = devices.map(d => d.name);
 
-        const minHeight = 300;
-        const heightPerDevice = 40;
-        const newHeight = Math.max(minHeight, devices.length * heightPerDevice);
-
         const canvasContainer = canvas.parentElement;
-        if (canvasContainer) {
-            canvasContainer.style.height = `${newHeight}px`;
-        }
+        const breakdownText = this.querySelector('#device-breakdown-text');
 
         let values;
         let datasetLabel;
         let breakdown = '';
+
+        if (this._carbonView === 'appliance' && devices.length === 0) {
+            if (this._deviceChart) {
+                this._deviceChart.destroy();
+                this._deviceChart = null;
+            }
+            if (breakdownText) {
+                const groupName = this._selectedRoom.room || this._selectedRoom.type || 'this group';
+                breakdownText.textContent = `No appliances found in ${groupName}.`;
+            }
+            if (canvasContainer) {
+                canvasContainer.style.display = 'none';
+            }
+            return;
+        }
+
+        if (canvasContainer) {
+            const minHeight = 300;
+            const heightPerDevice = 40;
+            const newHeight = Math.max(minHeight, devices.length * heightPerDevice);
+            canvasContainer.style.display = '';
+            canvasContainer.style.height = `${newHeight}px`;
+        }
 
         // Calculate breakdown text
         const embodiedTotal = devices.reduce((sum, d) => sum + (d.embodied_carbon || 0), 0);
@@ -2003,11 +2104,10 @@ class CarbonFootprintPanel extends HTMLElement {
         const totalSum = devices.reduce((sum, d) => sum + (d.total_carbon || 0), 0);
 
         breakdown = `Embodied: ${embodiedTotal.toFixed(2)} kgCO₂eq | Total usage: ${usageTotal.toFixed(2)} kgCO₂eq`;
-        if (this._showApplianceUsage) {
+        if (this._showApplianceUsage || this._carbonView === 'appliance') {
             breakdown += ` | Appliance usage: ${applianceUsageTotal.toFixed(2)} kgCO₂eq`;
         }
         breakdown += ` | Total: ${totalSum.toFixed(2)} kgCO₂eq`;
-        const breakdownText = this.querySelector('#device-breakdown-text');
         if (breakdownText) {
             breakdownText.textContent = breakdown;
         }
@@ -2059,6 +2159,17 @@ class CarbonFootprintPanel extends HTMLElement {
                     data: embodiedValues,
                     backgroundColor: 'rgba(76, 175, 80, 0.7)',  // Green
                     borderColor: 'rgb(76, 175, 80)',
+                    borderWidth: 0,
+                }
+            ];
+        } else if (this._carbonView === 'appliance') {
+            const applianceUsageValues = devices.map(d => d.appliance_usage_carbon ?? d.usage_carbon ?? 0);
+            datasets = [
+                {
+                    label: 'Appliance Usage Carbon',
+                    data: applianceUsageValues,
+                    backgroundColor: 'rgba(255, 152, 0, 0.7)',
+                    borderColor: 'rgb(255, 152, 0)',
                     borderWidth: 0,
                 }
             ];
