@@ -3,7 +3,7 @@
  * for testing purposes. We should rewrite it properly later.
  */
 
-import { CarbonUtils } from './frontend/carbon-utils.js';
+import { CarbonUtils } from './frontend/carbon-utils.js?v=1.1';
 import { openFullForm } from './frontend/form-manager.js';
 import { Utils } from './utils.js';
 
@@ -212,13 +212,49 @@ class CarbonFootprintPanel extends HTMLElement {
         });
         const energyData = recResult.devices_consumptions;
         const intensityData = data?.intensity_history || [];
-        const recommendations = await CarbonUtils.getRecommendations(this, {
-            room_data: roomData,
-            yearly_contribution: yearlyCons,
-            usage_history: energyData,
-            intensity_history: intensityData,
-            current_intensity: currentCarbonIntensity,
-        });
+        let recommendations;
+        try {
+            recommendations = await this._hass.callWS({
+                type: 'carbon_footprint/get_recommendations',
+                room_data: roomData,
+                yearly_contribution: yearlyCons,
+                usage_history: energyData,
+                intensity_history: intensityData,
+                current_intensity: currentCarbonIntensity,
+            });
+        } catch (err) {
+            console.error('Error loading recommendations:', err);
+            recommendations = {
+                high_impact_area: {
+                    title: 'No Data Available',
+                    message: "We couldn't determine the high-impact area.",
+                    severity: 'info',
+                },
+                carbon_intensity: {
+                    label: ' ',
+                    message: 'Carbon intensity data unavailable.',
+                    color: '#eeeeee',
+                    emoji: '?',
+                    severity: 'info',
+                },
+                iot_share: {
+                    message: 'IoT share recommendation unavailable.',
+                    emoji: 'i',
+                    severity: 'info',
+                },
+                usage_pattern: {
+                    title: 'Usage Pattern Insight',
+                    message: 'Usage pattern recommendation unavailable.',
+                    color: '#eeeeee',
+                    emoji: 'i',
+                    severity: 'info',
+                },
+                carbon_intensity_info: {
+                    colorClass: 'ci-unknown',
+                    label: ' ',
+                },
+            };
+        }
         const recommendation = recommendations.high_impact_area;
         const intensityRec = recommendations.carbon_intensity;
         const iotShareRec = recommendations.iot_share;
