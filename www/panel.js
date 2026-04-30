@@ -234,19 +234,16 @@ class CarbonFootprintPanel extends HTMLElement {
                     label: ' ',
                     message: 'Carbon intensity data unavailable.',
                     color: '#eeeeee',
-                    emoji: '?',
                     severity: 'info',
                 },
                 iot_share: {
                     message: 'IoT share recommendation unavailable.',
-                    emoji: 'i',
                     severity: 'info',
                 },
                 usage_pattern: {
                     title: 'Usage Pattern Insight',
                     message: 'Usage pattern recommendation unavailable.',
                     color: '#eeeeee',
-                    emoji: 'i',
                     severity: 'info',
                 },
                 carbon_intensity_info: {
@@ -466,7 +463,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                     <div class="recommendation-header"
                                         style="padding: 12px; background-color: ${intensityRec.color}; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;"
                                         onclick="this.parentElement.querySelector('.recommendation-content-2').style.display = this.parentElement.querySelector('.recommendation-content-2').style.display === 'none' ? 'block' : 'none'; this.querySelector('.toggle-icon-2').textContent = this.parentElement.querySelector('.recommendation-content-2').style.display === 'none' ? '▼' : '▲';">
-                                        <strong>${intensityRec.emoji} Optimize Usage Timing (${intensityRec.label})</strong>
+                                        <strong>Optimize Usage Timing (${intensityRec.label})</strong>
                                         <span class="toggle-icon-2" style="font-size: 12px;">▲</span>
                                     </div>
                                     <div class="recommendation-content-2"
@@ -482,7 +479,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                     <div class="recommendation-header"
                                         style="padding: 12px; background-color: ${usagePatternRec.color}; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;"
                                         onclick="this.parentElement.querySelector('.recommendation-content-pattern').style.display = this.parentElement.querySelector('.recommendation-content-pattern').style.display === 'none' ? 'block' : 'none'; this.querySelector('.toggle-icon-pattern').textContent = this.parentElement.querySelector('.recommendation-content-pattern').style.display === 'none' ? '▼' : '▲';">
-                                        <strong>${usagePatternRec.emoji} ${usagePatternRec.title}</strong>
+                                        <strong>${usagePatternRec.title}</strong>
                                         <span class="toggle-icon-pattern" style="font-size: 12px;">▲</span>
                                     </div>
                                     <div class="recommendation-content-pattern"

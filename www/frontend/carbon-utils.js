@@ -78,19 +78,16 @@ export class CarbonUtils {
                     label: ' ',
                     message: 'Carbon intensity data unavailable.',
                     color: '#eeeeee',
-                    emoji: '?',
                     severity: 'info',
                 },
                 iot_share: {
                     message: 'IoT share recommendation unavailable.',
-                    emoji: 'i',
                     severity: 'info',
                 },
                 usage_pattern: {
                     title: 'Usage Pattern Insight',
                     message: 'Usage pattern recommendation unavailable.',
                     color: '#eeeeee',
-                    emoji: 'i',
                     severity: 'info',
                 },
                 carbon_intensity_info: {

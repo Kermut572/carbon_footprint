@@ -49,7 +49,6 @@ def get_high_impact_area_recommendation(room_data: list[dict[str, Any]] | None) 
         return {
             "title": "High-Impact Area Identified",
             "message": f"The room with the highest carbon footprint is {room_name} with a total of {total_carbon:.2f} kg CO2.",
-            "emoji": "!",
             "severity": "warning",
         }
     except Exception:
@@ -71,7 +70,6 @@ def get_carbon_intensity_recommendation(ci: Any) -> dict[str, Any]:
             "label": label,
             "message": "Carbon intensity data unavailable.",
             "color": "#eeeeee",
-            "emoji": "?",
             "severity": "info",
         }
 
@@ -80,7 +78,6 @@ def get_carbon_intensity_recommendation(ci: Any) -> dict[str, Any]:
             "label": label,
             "message": f"The carbon intensity is <b>low ({safe_ci:g} gCO2eq/kWh)</b>. This is a good time to run appliances like washing machines and dishwashers.",
             "color": "#e8f5e9",
-            "emoji": "OK",
             "severity": "good",
         }
 
@@ -89,7 +86,6 @@ def get_carbon_intensity_recommendation(ci: Any) -> dict[str, Any]:
             "label": label,
             "message": f"The carbon intensity is <b>moderate ({safe_ci:g} gCO2eq/kWh)</b>. If possible, shift flexible loads to cleaner hours.",
             "color": "#fff8e1",
-            "emoji": "!",
             "severity": "warning",
         }
 
@@ -97,7 +93,6 @@ def get_carbon_intensity_recommendation(ci: Any) -> dict[str, Any]:
         "label": label,
         "message": f"The carbon intensity is <b>high ({safe_ci:g} gCO2eq/kWh)</b>. Avoid heavy appliance use now and delay non-essential loads.",
         "color": "#ffebee",
-        "emoji": "!",
         "severity": "bad",
     }
 
@@ -108,30 +103,25 @@ def get_iot_share_recommendation(yearly_contribution: Any) -> dict[str, Any]:
     if value == 0:
         return {
             "message": "No IoT consumption share was detected. Add devices to get a more accurate recommendation.",
-            "emoji": "i",
             "severity": "info",
         }
     if value <= 5:
         return {
             "message": f"Your IoT load is low at {value:.1f}% of yearly consumption. Keep optimizing with smart scheduling.",
-            "emoji": "OK",
             "severity": "good",
         }
     if value <= 20:
         return {
             "message": f"Your IoT load is moderate at {value:.1f}%. Review the highest-use devices to reduce waste.",
-            "emoji": "!",
             "severity": "warning",
         }
     if value > 100:
         return {
             "message": "Incoherent value computed, have you set an energy meter or a fallback energy value in the settings?",
-            "emoji": "!",
             "severity": "bad",
         }
     return {
         "message": f"Your IoT load is relatively high at {value:.1f}%. Consider a device audit and smarter controls to cut emissions.",
-        "emoji": "!",
         "severity": "bad",
     }
 
@@ -159,31 +149,26 @@ def get_usage_pattern_recommendation(
                 f"Based on the current grid value, carbon intensity is <b>{safe_intensity:.0f} gCO2eq/kWh</b>."
             )
             severity = "neutral"
-            emoji = "o"
             color = "#fff8e1"
 
             if safe_intensity < 150:
                 message += " That is relatively low, so now is a good moment to run flexible appliances such as a dishwasher, washing machine, dryer, or EV charger."
                 severity = "good"
-                emoji = "OK"
                 color = "#e8f5e9"
             elif safe_intensity < 300:
                 message += " That is a moderate level. If the task is flexible, waiting for a cleaner period could slightly reduce emissions."
-                emoji = "!"
             else:
                 message += " That is high. Try to postpone non-essential, energy-heavy tasks until the grid is cleaner."
                 severity = "warning"
-                emoji = "!"
                 color = "#ffebee"
 
-            return {**result_base, "message": message, "severity": severity, "color": color, "emoji": emoji}
+            return {**result_base, "message": message, "severity": severity, "color": color}
 
         return {
             **result_base,
             "message": "I cannot analyze your usage pattern yet because historical carbon-intensity data is unavailable. Once intensity history is collected, this recommendation can check whether your energy use happens during cleaner or dirtier grid periods.",
             "severity": "neutral",
             "color": "#e8f5e9",
-            "emoji": "i",
         }
 
     if not has_usage_history:
@@ -192,7 +177,6 @@ def get_usage_pattern_recommendation(
             "message": "I have carbon-intensity history, but no usable energy-usage history yet. Once device usage is collected, this recommendation will compare when you consume energy against how clean the grid was at those same times.",
             "severity": "neutral",
             "color": "#e8f5e9",
-            "emoji": "i",
         }
 
     usage_by_timestamp: dict[str, float] = {}
@@ -225,7 +209,6 @@ def get_usage_pattern_recommendation(
             "message": "Usage history exists, but I could not extract any positive consumption values from it. Check that usage points include a timestamp and a numeric value such as <b>usage_kwh</b>, <b>energy</b>, <b>usage</b>, <b>consumption_footprint</b>, or <b>energy_footprint</b>.",
             "severity": "neutral",
             "color": "#e8f5e9",
-            "emoji": "i",
         }
 
     intensity_by_timestamp = {}
@@ -244,7 +227,6 @@ def get_usage_pattern_recommendation(
             "message": "Carbon-intensity history exists, but I could not extract any valid intensity values from it. The recommendation needs timestamped values such as <b>intensity</b>, <b>value</b>, or <b>co2_intensity</b>.",
             "severity": "neutral",
             "color": "#e8f5e9",
-            "emoji": "i",
         }
 
     matched_usage = 0.0
@@ -264,7 +246,6 @@ def get_usage_pattern_recommendation(
             "message": "I found both usage data and carbon-intensity data, but there were not enough matching timestamps to compare them reliably. This usually means the two histories use different time intervals or timestamp formats.",
             "severity": "neutral",
             "color": "#e8f5e9",
-            "emoji": "i",
         }
 
     weighted_intensity = weighted_sum / matched_usage
@@ -287,7 +268,6 @@ def get_usage_pattern_recommendation(
             "message": f"{metrics_message} This suggests a noticeable share of your energy use happened when the grid was dirtier than usual. Try shifting flexible loads, such as laundry, dishwashing, charging, or heating cycles, to lower-carbon hours when possible.",
             "severity": "warning",
             "color": "#ffebee",
-            "emoji": "!",
         }
 
     if weighted_intensity < average_intensity * 0.85:
@@ -296,7 +276,6 @@ def get_usage_pattern_recommendation(
             "message": f"{metrics_message} This is a good pattern: your energy use is already aligned with cleaner grid periods. Keep scheduling flexible appliances during lower-carbon hours to maintain the benefit.",
             "severity": "good",
             "color": "#e8f5e9",
-            "emoji": "OK",
         }
 
     return {
@@ -304,7 +283,6 @@ def get_usage_pattern_recommendation(
         "message": f"{metrics_message} Your timing is close to average, so there is no strong problem signal. You may still reduce emissions by moving flexible, energy-heavy tasks away from higher-carbon periods when convenient.",
         "severity": "neutral",
         "color": "#fff8e1",
-        "emoji": "!",
     }
 
 
