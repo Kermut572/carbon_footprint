@@ -49,6 +49,8 @@ from .utils import (
     utils_round_to_day,
 )
 
+from .recommendations import build_recommendations
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -82,6 +84,7 @@ def async_register_websocket_handlers(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_export_json)
     websocket_api.async_register_command(hass, ws_get_yearly_contribution)
     websocket_api.async_register_command(hass, ws_get_annual_consumption_summary)
+    websocket_api.async_register_command(hass, ws_get_recommendations)
 
 
 @websocket_api.websocket_command(
@@ -1718,3 +1721,47 @@ async def ws_get_annual_consumption_summary(
             "rangeText": range_text,
         },
     )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/get_recommendations",
+        vol.Optional("room_data", default=[]): list,
+        vol.Optional("yearly_contribution", default=0): vol.Any(float, int, str, None),
+        vol.Optional("usage_history", default={}): dict,
+        vol.Optional("intensity_history", default=[]): list,
+        vol.Optional("current_intensity", default=None): vol.Any(float, int, str, None),
+    }
+)
+@websocket_api.async_response
+async def ws_get_recommendations(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return dashboard recommendations computed by the backend."""
+    try:
+        _LOGGER.debug(
+            "Computing recommendations: rooms=%d, usage_devices=%d, intensity_points=%d, current_intensity=%s",
+            len(msg.get("room_data") or []),
+            len(msg.get("usage_history") or {}),
+            len(msg.get("intensity_history") or []),
+            msg.get("current_intensity"),
+        )
+        recommendations = build_recommendations(
+            msg.get("room_data") or [],
+            msg.get("yearly_contribution"),
+            msg.get("usage_history") or {},
+            msg.get("intensity_history") or [],
+            msg.get("current_intensity"),
+        )
+    except Exception as err:
+        _LOGGER.exception("Failed to compute recommendations")
+        connection.send_error(
+            msg["id"],
+            "recommendation_error",
+            f"Failed to compute recommendations: {err}",
+        )
+        return
+
+    connection.send_result(msg["id"], recommendations)

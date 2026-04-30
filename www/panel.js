@@ -6,12 +6,6 @@
 import { CarbonUtils } from './frontend/carbon-utils.js';
 import { openFullForm } from './frontend/form-manager.js';
 import { Utils } from './utils.js';
-import {
-    getHighImpactAreaRecommendation,
-    getCarbonIntensityRecommendation,
-    getIoTShareRecommendation,
-    getUsagePatternRecommendation,
-} from './frontend/recommendation-manager.js';
 
 class CarbonFootprintPanel extends HTMLElement {
 
@@ -199,17 +193,12 @@ class CarbonFootprintPanel extends HTMLElement {
             ? parseFloat(carbonTodayRaw)
             : null;
 
-        // Fetch room data and generate recommendation
+        // Fetch room data and recommendation inputs
         const roomData = await this.getCarbonByRoom();
-        const recommendation = getHighImpactAreaRecommendation(roomData);
 
         const currentCarbonIntensity = data?.co2_intensity_status === 'fallback'
             ? null
             : data?.co2_intensity;
-
-        // Generate carbon intensity recommendation
-        const intensityRec = getCarbonIntensityRecommendation(currentCarbonIntensity);
-        const iotShareRec = getIoTShareRecommendation(yearlyCons);
 
         // Fetch consumption data for usage vs intensity recommendation (last 30 days)
         const recEndTime = new Date();
@@ -223,11 +212,18 @@ class CarbonFootprintPanel extends HTMLElement {
         });
         const energyData = recResult.devices_consumptions;
         const intensityData = data?.intensity_history || [];
-        const usagePatternRec = getUsagePatternRecommendation(
-            energyData,
-            intensityData,
-            currentCarbonIntensity
-        );
+        const recommendations = await CarbonUtils.getRecommendations(this, {
+            room_data: roomData,
+            yearly_contribution: yearlyCons,
+            usage_history: energyData,
+            intensity_history: intensityData,
+            current_intensity: currentCarbonIntensity,
+        });
+        const recommendation = recommendations.high_impact_area;
+        const intensityRec = recommendations.carbon_intensity;
+        const iotShareRec = recommendations.iot_share;
+        const usagePatternRec = recommendations.usage_pattern;
+        const carbonIntensityInfo = recommendations.carbon_intensity_info;
         const annualConsumption = await CarbonUtils.getAnnualConsumptionSummary(this);
 
         this.innerHTML = `
@@ -252,12 +248,8 @@ class CarbonFootprintPanel extends HTMLElement {
                         <ha-card header="Carbon intensity">
                             <div class="card-content" style="font-size: 22px; font-weight: 600;">
                                 ${data?.co2_intensity_status === 'fallback' ? 'Unknown' : `${data?.co2_intensity ?? 'N/A'} gCO₂eq/kWh`}
-                                <span class="ci-indicator ${CarbonUtils.getCarbonColor(
-                                    data?.co2_intensity_status === 'fallback' ? null : data?.co2_intensity
-                                )}"></span>
-                                <span class="ci-label" style="font-size: 14px; font-weight: 500;">${CarbonUtils.getCarbonLabel(
-                                    data?.co2_intensity_status === 'fallback' ? null : data?.co2_intensity
-                                )}</span>
+                                <span class="ci-indicator ${carbonIntensityInfo.colorClass}"></span>
+                                <span class="ci-label" style="font-size: 14px; font-weight: 500;">${carbonIntensityInfo.label}</span>
                                 <div style="font-size: 13px; font-weight: 400; color: #666; margin-top: 6px; line-height: 1.35;">
                                     ${intensityRec.message}
                                 </div>
