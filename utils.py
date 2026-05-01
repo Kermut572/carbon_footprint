@@ -469,9 +469,6 @@ async def utils_get_device_energy_consumption_map(
         {"sum", "state"},
     )
 
-    if is_appliance:
-        _LOGGER.debug("Found following stats for appliance entity: %s", stats)
-
     result = {}
     check_entity = energy_entity if not is_appliance else appliance_entity
     for stat in stats.get(check_entity, []):
@@ -486,6 +483,9 @@ async def utils_get_device_energy_consumption_map(
         if reading is None:
             continue
         result[map_key] = reading
+
+        if is_appliance:
+            _LOGGER.debug("Read value %d from stats for %s", reading, device_id)
 
     return result
 
