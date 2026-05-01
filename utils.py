@@ -454,6 +454,9 @@ async def utils_get_device_energy_consumption_map(
     _LOGGER.debug("No energy entity found for device id %s, skipping", device_id)
     if not energy_entity:
         return None
+    if is_appliance and not appliance_entity:
+        _LOGGER.debug("No appliance entity found for device id %s, skipping", device_id)
+        return None
 
     stats = await recorder.get_instance(hass).async_add_executor_job(
         statistics_during_period,
@@ -463,7 +466,7 @@ async def utils_get_device_energy_consumption_map(
         {energy_entity} if not is_appliance else {appliance_entity},
         granularity,
         None,
-        {"sum"},
+        {"sum", "state"},
     )
 
     if is_appliance:
@@ -477,7 +480,12 @@ async def utils_get_device_energy_consumption_map(
             continue
         dt = dt_util.as_local(dt_util.utc_from_timestamp(start_ts))
         map_key = dt.strftime("%d-%m-%Y-%H")
-        result[map_key] = stat.get("sum", 0)
+        reading = stat.get("sum")
+        if reading is None:
+            reading = stat.get("state")
+        if reading is None:
+            continue
+        result[map_key] = reading
 
     return result
 
