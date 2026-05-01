@@ -706,7 +706,10 @@ async def utils_build_hourly_stamps(
     if not device_info:
         return None
 
-    if device_info.get("history_uploaded", False):
+    if not is_appliance and device_info.get("history_uploaded", False):
+        return None
+
+    if is_appliance and not device_info.get("appliance_history_uploaded", False):
         return None
 
     stamps = await utils_compute_device_consumption_footprint(

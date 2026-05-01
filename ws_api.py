@@ -1837,6 +1837,7 @@ async def ws_reset_sensors(
             device_info["cu_app_entity"] = ""
 
     device_info["history_uploaded"] = False
+    device_info["appliance_history_uploaded"] = False
     hass.async_create_task(cf_store.async_save_data())
 
     recorder.get_instance(hass).async_clear_statistics(sensors_remove)

@@ -343,7 +343,10 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
                 if cf_store and (
                     device_info := cf_store.get_devices_data().get(self._device_id)
                 ):
-                    device_info["history_uploaded"] = True
+                    if not self.is_appliance:
+                        device_info["history_uploaded"] = True
+                    else:
+                        device_info["appliance_history_uploaded"] = True
                     self.hass.async_create_task(cf_store.async_save_data())
 
                 with contextlib.suppress(ValueError, TypeError):
