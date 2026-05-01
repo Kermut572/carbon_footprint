@@ -1809,19 +1809,18 @@ async def ws_reset_sensors(
 
     _LOGGER.debug("Resetting sensor %s for device %s", iot_sensor, device_name)
 
+    sensors_remove = []
     iot_sensor_entry = entity_reg.async_get(iot_sensor)
     if iot_sensor_entry is not None:
         iot_sensor_entity = iot_sensor_entry.entity_id
         if iot_sensor_entity is not None:
             _LOGGER.debug(
-                "Removing %s sensor and history from device %s", iot_sensor, device_name
+                "Queuing %s sensor and history from device %s for removal",
+                iot_sensor,
+                device_name,
             )
-            await recorder.get_instance(hass).async_add_executor_job(
-                statistics.clear_statistics,
-                recorder.get_instance(hass),
-                [iot_sensor_entity],
-            )
-            entity_reg.async_remove(iot_sensor_entity)
+
+            sensors_remove.append(iot_sensor_entity)
             device_info["cu_entity"] = ""
 
     app_sensor_entry = entity_reg.async_get(app_sensor)
@@ -1829,22 +1828,21 @@ async def ws_reset_sensors(
         app_sensor_entity = app_sensor_entry.entity_id
         if app_sensor_entity is not None:
             _LOGGER.debug(
-                "Removing %s sensor and history from device %s", app_sensor, device_name
+                "Queuing %s sensor and history from device %s for removal",
+                app_sensor,
+                device_name,
             )
-            await recorder.get_instance(
-                hass
-            ).async_add_executor_job(
-                statistics.clear_statistics,
-                recorder.get_instance(hass),
-                [
-                    app_sensor_entity
-                ],  # statistic ids of cf sensors are the entity_id as defined in sensor.py
-            )
-            entity_reg.async_remove(app_sensor_entity)
+
+            sensors_remove.append(app_sensor_entity)
             device_info["cu_app_entity"] = ""
 
     device_info["history_uploaded"] = False
     hass.async_create_task(cf_store.async_save_data())
+
+    recorder.get_instance(hass).async_clear_statistics(sensors_remove)
+    for sensor_id in sensors_remove:
+        entity_reg.async_remove(sensor_id)
+
     async_dispatcher_send(
         hass, DEVICE_ADDED_SIGNAL, device_id
     )  # fire device added event to force sensor(s) recreation
