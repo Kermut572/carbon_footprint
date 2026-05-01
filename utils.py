@@ -704,12 +704,24 @@ async def utils_build_hourly_stamps(
     devices = cf_store.get_devices_data()
     device_info = devices.get(device_id, None)
     if not device_info:
+        _LOGGER.debug(
+            "Returning early from building timestamps for device_id %s because device_info is None",
+            device_id,
+        )
         return None
 
     if not is_appliance and device_info.get("history_uploaded", False):
+        _LOGGER.debug(
+            "Returning early from building timestamps for iot device_id %s because history_uploaded is True",
+            device_id,
+        )
         return None
 
     if is_appliance and not device_info.get("appliance_history_uploaded", False):
+        _LOGGER.debug(
+            "Returning early from building timestamps for appliance device_id %s because appliance_history_uploaded is True",
+            device_id,
+        )
         return None
 
     stamps = await utils_compute_device_consumption_footprint(
