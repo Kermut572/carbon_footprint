@@ -1803,7 +1803,7 @@ async def ws_reset_sensors(
         )
         return
 
-    device_name = device_info.get("display_name", "err")
+    device_name = device_info.get("metadata", {}).get("display_name", "err")
     iot_sensor = device_info.get("cu_entity", "cf_err_no_device")
     app_sensor = device_info.get("cu_app_entity", "cf_err_no_device")
 

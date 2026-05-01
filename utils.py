@@ -466,6 +466,9 @@ async def utils_get_device_energy_consumption_map(
         {"sum"},
     )
 
+    if is_appliance:
+        _LOGGER.debug("Found following stats for appliance entity: %s", stats)
+
     result = {}
     check_entity = energy_entity if not is_appliance else appliance_entity
     for stat in stats.get(check_entity, []):
@@ -703,17 +706,6 @@ async def utils_build_hourly_stamps(
         if not ts:
             continue
 
-        """ for ref.
-        for row in hourly:
-        running_sum += row["kwh"]
-        stats.append(
-            StatisticData(
-                start=row["datetime"],
-                state=row["kwh"],
-                sum=running_sum,
-            )
-        )
-        """
         stats.append(
             {
                 "start": dt_util.as_utc(datetime.fromisoformat(ts)),
