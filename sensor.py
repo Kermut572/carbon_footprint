@@ -19,6 +19,7 @@ from homeassistant.components import recorder
 from homeassistant.components.recorder.models.statistics import StatisticMeanType
 from homeassistant.components.recorder.statistics import (
     async_import_statistics,
+    get_last_statistics,
     statistics_during_period,
 )
 from homeassistant.components.sensor import (
@@ -32,7 +33,10 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.event import (
+    async_track_state_change_event,
+    async_track_time_interval,
+)
 from homeassistant.helpers.start import async_at_started
 from homeassistant.util import dt as dt_util
 
@@ -44,6 +48,8 @@ from .utils import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+_STATISTICS_RESYNC_INTERVAL = timedelta(minutes=2)
 
 
 async def async_setup_entry(
@@ -239,10 +245,48 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
             "last_em_reading": self._last_em_reading,
         }
 
+    async def async_refresh_total_from_statistics(self) -> None:
+        """Refresh internal total from the latest recorder sum value."""
+        if self._statistic_id is None:
+            return
+
+        last_stats = await recorder.get_instance(self.hass).async_add_executor_job(
+            get_last_statistics,
+            self.hass,
+            1,
+            self._statistic_id,
+            False,
+            {"sum"},
+        )
+        stats_rows = last_stats.get(self._statistic_id)
+        if not stats_rows:
+            return
+
+        latest_sum = stats_rows[0].get("sum")
+        if latest_sum is None:
+            return
+
+        with contextlib.suppress(ValueError, TypeError):
+            new_total = float(latest_sum)
+            if new_total != self._total_carbon_impact:
+                self._total_carbon_impact = new_total
+                self.async_write_ha_state()
+
     async def async_added_to_hass(self):
         """Register callback events."""
         await super().async_added_to_hass()
         self._statistic_id = self.entity_id
+
+        async def _statistics_resync_listener(_now: datetime) -> None:
+            """Keep the sensor state aligned with recorder stat edits."""
+            await self.async_refresh_total_from_statistics()
+
+        self.async_on_remove(
+            async_track_time_interval(
+                self.hass, _statistics_resync_listener, _STATISTICS_RESYNC_INTERVAL
+            )
+        )
+
         last_state = await self.async_get_last_state()
         if last_state is not None:
             with contextlib.suppress(ValueError, TypeError):
@@ -423,5 +467,7 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
             with contextlib.suppress(ValueError):
                 val = float(state.state)
             self._last_energy_reading = val
+
+        await self.async_refresh_total_from_statistics()
 
         self.async_write_ha_state()

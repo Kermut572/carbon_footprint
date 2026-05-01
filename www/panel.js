@@ -657,7 +657,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.13'; // :skull:
+        link.href = '/api/carbon_footprint/style.css?version=1.20'; // :skull:
         this.appendChild(link);
     }
 
@@ -839,7 +839,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                                     data-device-id="${device_id}"
                                                     data-device-name="${info.metadata?.display_name || device_id}"
                                                     title="Reset sensors">
-                                                    ⟳
+                                                    ↻
                                                 </button>
                                                 ` : ''}
                                                 <button
@@ -895,7 +895,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.18'; // :skull:
+        link.href = '/api/carbon_footprint/style.css?version=1.20'; // :skull:
         this.appendChild(link);
     }
 
