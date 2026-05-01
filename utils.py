@@ -451,8 +451,8 @@ async def utils_get_device_energy_consumption_map(
     energy_entity, appliance_entity, _ = utils_find_energy_entity_for_device(
         hass, device_id
     )
+    _LOGGER.debug("No energy entity found for device id %s, skipping", device_id)
     if not energy_entity:
-        _LOGGER.debug("No energy entity found for device id %s, skipping", device_id)
         return None
     if is_appliance and not appliance_entity:
         _LOGGER.debug("No appliance entity found for device id %s, skipping", device_id)
@@ -466,7 +466,7 @@ async def utils_get_device_energy_consumption_map(
         {energy_entity} if not is_appliance else {appliance_entity},
         granularity,
         None,
-        {"change", "state"},
+        {"sum", "state"},
     )
 
     result = {}
@@ -477,12 +477,12 @@ async def utils_get_device_energy_consumption_map(
             continue
         dt = dt_util.as_local(dt_util.utc_from_timestamp(start_ts))
         map_key = dt.strftime("%d-%m-%Y-%H")
-        reading = stat.get("change")
+        reading = stat.get("sum")
         if reading is None:
             reading = stat.get("state")
         if reading is None:
             continue
-        result[map_key] = float(reading)
+        result[map_key] = reading
 
         if is_appliance:
             _LOGGER.debug("Read value %d from stats for %s", reading, device_id)
@@ -518,13 +518,32 @@ async def utils_compute_device_consumption_footprint(
 
     energy_store = entries[0].runtime_data.energy_store.data
 
+    last_value = None
+    delta = None
+    delta_energy_dict = {}
+    for key in sorted(
+        energy_consumption_map.keys(), key=lambda k: datetime.strptime(k, "%d-%m-%Y-%H")
+    ):
+        value = energy_consumption_map[key]
+
+        if last_value is None:
+            last_value = value
+            continue
+
+        delta = value - last_value
+
+        if delta < 0:
+            last_value = value
+            continue
+
+        delta_energy_dict[key] = max(delta, 0)
+
+        last_value = value
+
     results = []
     match granularity:
         case "hour":
-            for key, value in sorted(
-                energy_consumption_map.items(),
-                key=lambda item: datetime.strptime(item[0], "%d-%m-%Y-%H"),
-            ):
+            for key, value in delta_energy_dict.items():
                 data_time = dt_util.as_local(datetime.strptime(key, "%d-%m-%Y-%H"))
                 if data_time > end_time or data_time < start_time:
                     continue
@@ -541,10 +560,7 @@ async def utils_compute_device_consumption_footprint(
             cumulated_fp = 0
             days = 0
 
-            for key, value in sorted(
-                energy_consumption_map.items(),
-                key=lambda item: datetime.strptime(item[0], "%d-%m-%Y-%H"),
-            ):
+            for key, value in delta_energy_dict.items():
                 data_time = dt_util.as_local(datetime.strptime(key, "%d-%m-%Y-%H"))
                 if data_time > end_time or data_time < start_time:
                     continue
@@ -578,10 +594,7 @@ async def utils_compute_device_consumption_footprint(
             cumulated_fp = 0
             days = 0
 
-            for key, value in sorted(
-                energy_consumption_map.items(),
-                key=lambda item: datetime.strptime(item[0], "%d-%m-%Y-%H"),
-            ):
+            for key, value in delta_energy_dict.items():
                 data_time = dt_util.as_local(datetime.strptime(key, "%d-%m-%Y-%H"))
                 if data_time > end_time or data_time < start_time:
                     continue
