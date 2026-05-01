@@ -210,7 +210,7 @@ async def utils_get_device_install_date(
         return None, False
 
     lookup_device_metadata = lookup_device.get("metadata", {})
-    install_date = lookup_device_metadata.get("install_date", None)
+    install_date = lookup_device_metadata.get("install_dt", None)
     if install_date is not None:
         ts = dt_util.parse_datetime(install_date)
         return dt_util.as_local(ts), False
@@ -236,7 +236,7 @@ async def utils_get_device_install_date(
     fp = series[0]
     start_ts = fp.get("start")
     start_utc = dt_util.utc_from_timestamp(start_ts)
-    lookup_device_metadata["install_date"] = start_utc.isoformat()
+    lookup_device_metadata["install_dt"] = start_utc.isoformat()
 
     return dt_util.as_local(start_utc), True
 
@@ -361,7 +361,7 @@ def utils_find_energy_entity_for_device(
 
     appliance_entity = sensors[1].entity_id
     for sensor in sensors[1:]:
-        if "daily" in sensor.entity_id or "daily" in (
+        if "today" in sensor.entity_id or "today" in (
             sensor.original_name or sensor.name
         ):
             appliance_entity = sensor.entity_id

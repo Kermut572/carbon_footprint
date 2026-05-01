@@ -737,9 +737,11 @@ async def ws_get_embodied_carbon_time_interval(
             # _LOGGER.debug("Could not find energy entity for device %s", device_id)
             continue
 
-        install_date, id_store_updated = await utils_get_device_install_date(
-            hass, energy_entity, device_id
-        )
+        install_date, id_store_updated = (
+            await utils_get_device_install_date(hass, energy_entity, device_id)
+            if appliance_entity is None
+            else await utils_get_device_install_date(hass, appliance_entity, device_id)
+        )  # favor appliance_entity if it exists because it was 100% installed before powercalc
         if not install_date:
             # _LOGGER.debug("Could not find install date for device %s", device_id)
             continue
@@ -988,7 +990,7 @@ async def ws_get_carbon_by_room_with_usage(
 
         predicted_usage_carbon_value = 0.0
         lifetime_days = device_info.get("lifetime_years", 5) * 365
-        install_date_str = metadata.get("install_date", None)
+        install_date_str = metadata.get("install_dt", None)
         install_dt = None
         if install_date_str:
             install_dt = dt_util.parse_datetime(install_date_str)
@@ -1229,7 +1231,7 @@ async def ws_get_carbon_by_type_with_usage(
 
         predicted_usage_carbon_value = 0.0
         lifetime_days = device_info.get("lifetime_years", 5) * 365
-        install_date_str = metadata.get("install_date", None)
+        install_date_str = metadata.get("install_dt", None)
         install_dt = None
         if install_date_str:
             install_dt = dt_util.parse_datetime(install_date_str)
