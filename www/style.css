@@ -88,6 +88,7 @@ li {
     line-height: 1.6;
 }
 
+.reset-sensor-btn,
 .extend-btn,
 .delete-btn {
     flex-shrink: 0;
@@ -110,6 +111,26 @@ li {
 
 .delete-btn:hover {
     background-color: var(--error-color, #db4437);
+    color: var(--text-primary-color);
+    opacity: 1;
+}
+
+.reset-sensor-btn {
+    background-color: transparent;
+    color: var(--error-color, #e4c228);
+    border: 1px solid var(--divider-color);
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: bold;
+    min-width: 32px;
+    height: 32px;
+}
+
+
+.reset-sensor-btn:hover {
+    background-color: var(--error-color, #e4c228);
     color: var(--text-primary-color);
     opacity: 1;
 }

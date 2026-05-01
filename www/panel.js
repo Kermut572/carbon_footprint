@@ -657,7 +657,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.12'; // :skull:
+        link.href = '/api/carbon_footprint/style.css?version=1.13'; // :skull:
         this.appendChild(link);
     }
 
@@ -832,6 +832,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                                         Total Energy Consumed: ${info.metadata?.total_energy || 'N/A'}<br>
                                                     </div>
                                                 </div>
+                                                ${info.cu_entity ? `
                                                 <button
                                                     type="button"
                                                     class="reset-sensor-btn"
@@ -840,6 +841,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                                     title="Reset sensors">
                                                     ⟳
                                                 </button>
+                                                ` : ''}
                                                 <button
                                                     type="button"
                                                     class="extend-btn"
@@ -2493,14 +2495,15 @@ class CarbonFootprintPanel extends HTMLElement {
             })
         })
 
-        const resetSensorButtons = this.querySelectorAll('reset-sensor-btn');
+        const resetSensorButtons = this.querySelectorAll('.reset-sensor-btn');
         resetSensorButtons.forEach(btn => {
             btn.addEventListener('click', async (e) => {
                 const deviceId = e.currentTarget.dataset.deviceId;
                 const deviceName = e.currentTarget.dataset.deviceName;
 
-                if (!confirm(`Reset sensors for ${deviceName}?`))
+                if (!confirm(`Reset sensors for ${deviceName}?`)) {
                     return;
+                }
 
                 try {
                     await this._hass.callWS({
