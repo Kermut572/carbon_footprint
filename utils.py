@@ -464,12 +464,6 @@ async def utils_get_device_energy_consumption_map(
             device_id,
             appliance_entity,
         )
-    else:
-        _LOGGER.debug(
-            "Pulling stats for iot energy for device id %s, iot energy entity %s",
-            device_id,
-            energy_entity,
-        )
 
     stats = await recorder.get_instance(hass).async_add_executor_job(
         statistics_during_period,

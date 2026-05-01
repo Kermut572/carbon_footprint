@@ -296,6 +296,9 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
             if isinstance(restored_last, (int, float)):
                 self._last_energy_reading = float(restored_last)
 
+        if self.is_appliance:
+            _LOGGER.debug("Building appliance stats for %s", self._device_name)
+
         now = dt_util.now()
         stats = await utils_build_hourly_stamps(
             self.hass,
@@ -304,6 +307,11 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
             now.isoformat(),
             self.is_appliance,
         )
+
+        if self.is_appliance:
+            _LOGGER.debug(
+                "Found stats %s for appliance from device %s", stats, self._device_name
+            )
 
         entries = self.hass.config_entries.async_entries(DOMAIN)
         cf_store = None
