@@ -1807,11 +1807,11 @@ async def ws_reset_sensors(
     iot_sensor = device_info.get("cu_entity", "cf_err_no_device")
     app_sensor = device_info.get("cu_app_entity", "cf_err_no_device")
 
+    _LOGGER.debug("Resetting sensor %s for device %s", iot_sensor, device_name)
+
     iot_sensor_entry = entity_reg.async_get(iot_sensor)
     if iot_sensor_entry is not None:
-        iot_sensor_entity = entity_reg.async_get_entity_id(
-            "sensor", DOMAIN, iot_sensor_entry.entity_id
-        )
+        iot_sensor_entity = iot_sensor_entry.entity_id
         if iot_sensor_entity is not None:
             _LOGGER.debug(
                 "Removing %s sensor and history from device %s", iot_sensor, device_name
@@ -1826,9 +1826,7 @@ async def ws_reset_sensors(
 
     app_sensor_entry = entity_reg.async_get(app_sensor)
     if app_sensor_entry is not None:
-        app_sensor_entity = entity_reg.async_get_entity_id(
-            "sensor", DOMAIN, app_sensor_entry.entity_id
-        )
+        app_sensor_entity = app_sensor_entry.entity_id
         if app_sensor_entity is not None:
             _LOGGER.debug(
                 "Removing %s sensor and history from device %s", app_sensor, device_name
