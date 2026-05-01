@@ -513,6 +513,7 @@ async def utils_compute_device_consumption_footprint(
         is_appliance,
     )
     if not energy_consumption_map:
+        _LOGGER.debug("Consumption map is None, returning early")
         return None
 
     entries = hass.config_entries.async_entries(DOMAIN)
@@ -717,7 +718,7 @@ async def utils_build_hourly_stamps(
         )
         return None
 
-    if is_appliance and not device_info.get("appliance_history_uploaded", False):
+    if is_appliance and device_info.get("appliance_history_uploaded", False):
         _LOGGER.debug(
             "Returning early from building timestamps for appliance device_id %s because appliance_history_uploaded is True",
             device_id,
