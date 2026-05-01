@@ -404,8 +404,8 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
                     async_import_statistics(self.hass, metadata, stats)
                     _LOGGER.debug("Imported current stat for %s", self._device_name)
                 except Exception:
-                    _LOGGER.exception(
-                        "Failed to import current statistics for %s",
+                    _LOGGER.debug(
+                        "Failed to import current statistics for %s, tag probably already exists",
                         self._device_name,
                     )
 

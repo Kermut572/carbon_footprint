@@ -22,6 +22,7 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fi
 import voluptuous as vol
 
 from homeassistant.components import recorder, websocket_api
+from homeassistant.components.recorder import statistics
 from homeassistant.components.recorder.statistics import statistics_during_period
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import _LOGGER, HomeAssistant, callback
@@ -35,6 +36,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.util import dt as dt_util
 
 from .const import BLOCKS_FOOTPRINTS, DEVICE_ADDED_SIGNAL, DOMAIN
+from .recommendations import build_recommendations
 from .utils import (
     ProviderError,
     utils_build_cfdb_device,
@@ -48,8 +50,6 @@ from .utils import (
     utils_local_type_matching,
     utils_round_to_day,
 )
-
-from .recommendations import build_recommendations
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -85,6 +85,7 @@ def async_register_websocket_handlers(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_yearly_contribution)
     websocket_api.async_register_command(hass, ws_get_annual_consumption_summary)
     websocket_api.async_register_command(hass, ws_get_recommendations)
+    websocket_api.async_register_command(hass, ws_reset_sensors)
 
 
 @websocket_api.websocket_command(
@@ -1765,3 +1766,85 @@ async def ws_get_recommendations(
         return
 
     connection.send_result(msg["id"], recommendations)
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/reset_sensors", vol.Required("device_id"): str}
+)
+@websocket_api.async_response
+async def ws_reset_sensors(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Reset and rebuild a sensor's history."""
+    entry = _get_loaded_entry(hass)
+    if not entry:
+        _LOGGER.exception("No config entry found")
+        connection.send_error(
+            msg["id"], "config_entry_not_found", "Uh oh, no config entry found :-("
+        )
+        return
+
+    entity_reg = er.async_get(hass)
+
+    device_id = msg["device_id"]
+    cf_store = entry.runtime_data.cf_store
+    devices = cf_store.get_devices_data()
+    device_info = devices.get(device_id, None)
+    if device_info is None:
+        _LOGGER.warning(
+            "Device with id %s is not in the carbon footprint store", device_id
+        )
+        connection.send_error(
+            msg["id"],
+            "err_no_device_found",
+            f"Device with id {device_id} does not exist in the CF store",
+        )
+        return
+
+    device_name = device_info.get("display_name", "err")
+    iot_sensor = device_info.get("cu_entity", None)
+    app_sensor = device_info.get("cu_app_entity", None)
+
+    iot_sensor_entity = None
+    if iot_sensor is not None:
+        iot_sensor_entity = entity_reg.async_get_entity_id("sensor", DOMAIN, iot_sensor)
+        if iot_sensor_entity is not None:
+            _LOGGER.debug(
+                "Removing %s sensor and history from device %s", iot_sensor, device_name
+            )
+            await recorder.get_instance(hass).async_add_executor_job(
+                statistics.clear_statistics,
+                recorder.get_instance(hass),
+                [iot_sensor_entity],
+            )
+            entity_reg.async_remove(iot_sensor_entity)
+            device_info["cu_entity"] = ""
+
+    app_sensor_entity = None
+    if app_sensor is not None:
+        app_sensor_entity = entity_reg.async_get_entity_id("sensor", DOMAIN, app_sensor)
+        if app_sensor_entity is not None:
+            _LOGGER.debug(
+                "Removing %s sensor and history from device %s", app_sensor, device_name
+            )
+            await recorder.get_instance(
+                hass
+            ).async_add_executor_job(
+                statistics.clear_statistics,
+                recorder.get_instance(hass),
+                [
+                    app_sensor_entity
+                ],  # statistic ids of cf sensors are the entity_id as defined in sensor.py
+            )
+            entity_reg.async_remove(app_sensor_entity)
+            device_info["cu_app_entity"] = ""
+
+    device_info["history_uploaded"] = False
+    hass.async_create_task(cf_store.async_save_data())
+    async_dispatcher_send(
+        hass, DEVICE_ADDED_SIGNAL, device_id
+    )  # fire device added event to force sensor(s) recreation
+
+    connection.send_result(msg["id"], {"success": True})

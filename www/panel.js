@@ -834,6 +834,14 @@ class CarbonFootprintPanel extends HTMLElement {
                                                 </div>
                                                 <button
                                                     type="button"
+                                                    class="reset-sensor-btn"
+                                                    data-device-id="${device_id}"
+                                                    data-device-name="${info.metadata?.display_name || device_id}"
+                                                    title="Reset sensors">
+                                                    ⟳
+                                                </button>
+                                                <button
+                                                    type="button"
                                                     class="extend-btn"
                                                     title="More information">
                                                     ▼
@@ -2484,6 +2492,29 @@ class CarbonFootprintPanel extends HTMLElement {
                 }
             })
         })
+
+        const resetSensorButtons = this.querySelectorAll('reset-sensor-btn');
+        resetSensorButtons.forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const deviceId = e.currentTarget.dataset.deviceId;
+                const deviceName = e.currentTarget.dataset.deviceName;
+
+                if (!confirm(`Reset sensors for ${deviceName}?`))
+                    return;
+
+                try {
+                    await this._hass.callWS({
+                        type: 'carbon_footprint/reset_sensors',
+                        device_id: deviceId,
+                    });
+
+                    Utils.showToast(this, `Successfully reset sensors for ${deviceName}`);
+                } catch (error) {
+                    console.error('Failed to reset sensors: ', error);
+                    alert(`Error resetting sensors: ${error.message}`);
+                }
+            });
+        });
 
         const deleteButtons = this.querySelectorAll('.delete-btn');
         deleteButtons.forEach(btn => {
