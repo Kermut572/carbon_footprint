@@ -822,7 +822,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                                     <h2><b>${info.metadata?.display_name || device_id}</b></h2><br>
                                                     <div class="device-extended">
                                                         Type: ${info.type || 'Unknown'}<br>
-                                                        Area: ${info.metadata?.area_id || 'N/A'} <br>
+                                                        Area: ${info.metadata?.area_name || info.metadata?.area_id || 'N/A'} <br>
                                                         Carbon: ${info.carbon_footprint || 0} kgCO₂eq <br>
                                                         Manfucturer: ${info.metadata?.manufacturer || 'N/A'}<br>
                                                         Model: ${info.metadata?.model || 'N/A'}<br>

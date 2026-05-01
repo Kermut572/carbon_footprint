@@ -272,22 +272,40 @@ def ws_get_carbon_data(
     device_reg = dr.async_get(hass)
     devices = cf_store.get_devices_data()
 
-    updated_name = False
+    updated_metadata = False
+    area_reg = ar.async_get(hass)
     for device_id, device_info in devices.items():
         device_entry = device_reg.devices.get(device_id)
         if not device_entry:
             continue
 
+        metadata = device_info.setdefault("metadata", {})
+
         updated_device_name = (
             device_reg.devices.get(device_id).name_by_user
             or device_reg.devices.get(device_id).name
         )
-        curr_device_name = device_info.get("metadata", {}).get("display_name", "")
+        curr_device_name = metadata.get("display_name", "")
         if updated_device_name != curr_device_name:
-            updated_name = True
-            device_info.get("metadata", {})["display_name"] = updated_device_name
+            updated_metadata = True
+            metadata["display_name"] = updated_device_name
 
-    if updated_name:
+        updated_area_id = device_entry.area_id or "undefined"
+        if metadata.get("area_id") != updated_area_id:
+            updated_metadata = True
+            metadata["area_id"] = updated_area_id
+
+        updated_area_name = "N/A"
+        if device_entry.area_id and (
+            area_entry := area_reg.async_get_area(device_entry.area_id)
+        ):
+            updated_area_name = area_entry.name
+
+        if metadata.get("area_name") != updated_area_name:
+            updated_metadata = True
+            metadata["area_name"] = updated_area_name
+
+    if updated_metadata:
         hass.async_create_task(cf_store.async_save_data())
 
     intensity_history = []
@@ -374,6 +392,10 @@ async def ws_set_device(
     # all metadata we can add: https://developers.home-assistant.io/docs/device_registry_index/
     if register:
         metadata["area_id"] = register.area_id or "undefined"
+        metadata["area_name"] = "N/A"
+        area_entry = ar.async_get(hass).async_get_area(register.area_id)
+        if register.area_id and area_entry:
+            metadata["area_name"] = area_entry.name
         metadata["manufacturer"] = register.manufacturer
         metadata["model"] = register.model
         metadata["model_id"] = register.model_id
