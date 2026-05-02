@@ -30,6 +30,10 @@ class CarbonFootprintPanel extends HTMLElement {
         this._currentType = null;
         this._currentCarbonValue = 0.0;
 
+        this._deviceFilterSearch = '';
+        this._deviceFilterAreas = '';
+        this._deviceFilterTypes = '';
+
         this._hiddenDeviceIndices = new Set();
 
         this._chartGranularity = {
@@ -814,9 +818,21 @@ class CarbonFootprintPanel extends HTMLElement {
                     <ha-card header="Configured Devices">
                         <div class="card-content device-list-container">
                             ${hasDevices ? `
-                                <ul>
+                                <div style="margin-bottom: 20px; display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+                                    <div style="flex: 1; min-width: 200px;">
+                                        <ha-selector id="device_search_selector"></ha-selector>
+                                    </div>
+                                    <div style="flex: 1; min-width: 200px;">
+                                        <ha-selector id="device_area_selector"></ha-selector>
+                                    </div>
+                                    <div style="flex: 1; min-width: 200px;">
+                                        <ha-selector id="device_type_filter_selector"></ha-selector>
+                                    </div>
+                                    <button id="clear_filters_btn" style="padding: 8px 16px; background-color: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;">Clear Filters</button>
+                                </div>
+                                <ul id="device_list">
                                     ${Object.entries(data.devices).map(([device_id, info]) => `
-                                        <li>
+                                        <li class="device-item" data-device-id="${device_id}" data-device-name="${(info.metadata?.display_name || device_id).toLowerCase()}" data-device-area="${(info.metadata?.area_name || info.metadata?.area_id || '').toLowerCase()}" data-device-type="${(info.type || '').toLowerCase()}">
                                             <div class="device-info">
                                                 <div class="device-header">
                                                     <h2><b>${info.metadata?.display_name || device_id}</b></h2><br>
@@ -873,6 +889,10 @@ class CarbonFootprintPanel extends HTMLElement {
                 const newData = await this.getCarbonData();
                 await this.render(newData);
             });
+        }
+
+        if (data.devices && Object.keys(data.devices).length > 0) {
+            this.attachDeviceFilters(data.devices);
         }
 
         const sortSelect = this.querySelector('#sort-mode');
@@ -2317,6 +2337,124 @@ class CarbonFootprintPanel extends HTMLElement {
                         }
                     }
                 },
+            }
+        });
+    }
+
+    attachDeviceFilters(devices) {
+        const areas = new Set();
+        const types = new Set();
+
+        Object.values(devices).forEach(info => {
+            if (info.metadata?.area_name) {
+                areas.add(info.metadata.area_name);
+            }
+            if (info.type) {
+                types.add(info.type);
+            }
+        });
+
+        const sortedAreas = Array.from(areas).sort();
+        const sortedTypes = Array.from(types).sort();
+
+        const searchSelector = this.querySelector('#device_search_selector');
+        if (searchSelector) {
+            try {
+                searchSelector.hass = this._hass;
+                searchSelector.selector = {
+                    text: {
+                        multiline: false
+                    }
+                };
+                searchSelector.label = 'Filter by device name';
+                searchSelector.required = false;
+                searchSelector.value = this._deviceFilterSearch;
+                searchSelector.addEventListener('value-changed', (ev) => {
+                    this._deviceFilterSearch = ev.detail.value;
+                    this.reloadDeviceFilters();
+                });
+            } catch (err) {
+                console.debug('Failed to init device search selector', err);
+            }
+        }
+
+        const areaSelector = this.querySelector('#device_area_selector');
+        if (areaSelector) {
+            try {
+                areaSelector.hass = this._hass;
+                areaSelector.selector = {
+                    select: {
+                        options: sortedAreas,
+                    }
+                };
+                areaSelector.required = false;
+                areaSelector.label = 'Filter by room name';
+                areaSelector.value = this._deviceFilterAreas;
+                areaSelector.addEventListener('value-changed', (ev) => {
+                    this._deviceFilterAreas = ev.detail.value || '';
+                    areaSelector.value = this._deviceFilterAreas;
+                    this.reloadDeviceFilters();
+                });
+            } catch (err) {
+                console.debug('Failed to init device area selector', err);
+            }
+        }
+
+        const typeSelector = this.querySelector('#device_type_filter_selector');
+        if (typeSelector) {
+            try {
+                typeSelector.hass = this._hass;
+                typeSelector.selector = {
+                    select: {
+                        options: sortedTypes,
+                    }
+                };
+                typeSelector.label = 'Filter by device type';
+                typeSelector.required = false;
+                typeSelector.value = this._deviceFilterTypes;
+                typeSelector.addEventListener('value-changed', (ev) => {
+                    this._deviceFilterTypes = ev.detail.value || '';
+                    typeSelector.value = this._deviceFilterTypes;
+                    this.reloadDeviceFilters();
+                });
+            } catch (err) {
+                console.debug('Failed to init device type selector', err);
+            }
+        }
+
+        const clearBtn = this.querySelector('#clear_filters_btn');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                this._deviceFilterSearch = '';
+                this._deviceFilterAreas = '';
+                this._deviceFilterTypes = '';
+                if (searchSelector) searchSelector.value = '';
+                if (areaSelector) areaSelector.value = '';
+                if (typeSelector) typeSelector.value = '';
+                this.reloadDeviceFilters();
+            });
+        }
+    }
+
+    reloadDeviceFilters() {
+        const deviceItems = this.querySelectorAll('.device-item');
+
+        deviceItems.forEach(item => {
+            const deviceName = item.dataset.deviceName || '';
+            const deviceArea = item.dataset.deviceArea || '';
+            const deviceType = item.dataset.deviceType || '';
+
+            //if no filter then it is a match
+            const searchMatch = !this._deviceFilterSearch || deviceName.includes(this._deviceFilterSearch.toLowerCase());
+
+            const areaMatch = !this._deviceFilterAreas ||  deviceArea.includes(this._deviceFilterAreas.toLowerCase());
+
+            const typeMatch = !this._deviceFilterTypes ||  deviceType.includes(this._deviceFilterTypes.toLowerCase());
+
+            if (searchMatch && areaMatch && typeMatch) {
+                item.style.display = '';
+            } else {
+                item.style.display = 'none';
             }
         });
     }
