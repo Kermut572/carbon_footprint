@@ -295,9 +295,9 @@ class CarbonFootprintPanel extends HTMLElement {
                         </ha-card>
                         <ha-card header="Quick actions">
                             <div class="card-content">
-                                <div class="button-group" style="display: flex; gap: 8px; flex-wrap: wrap;">
-                                    <button type="button" id="detect-devices-btn"><div class="loader" id="loader"></div>Automatic Setup</button>
-                                    <button type="button" id="export-json-btn">Export to JSON</button>
+                                <div class="button-group" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; width: 100%;">
+                                    <button type="button" id="detect-devices-btn" style="width: 100%; min-height: 72px; font-size: 15px;"><div class="loader" id="loader"></div>Automatic Setup</button>
+                                    <button type="button" id="export-json-btn" style="width: 100%; min-height: 72px; font-size: 15px;">Export to JSON</button>
                                 </div>
                             </div>
                         </ha-card>
