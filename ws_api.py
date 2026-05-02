@@ -1750,7 +1750,7 @@ async def ws_get_annual_consumption_summary(
         msg["id"],
         {
             "kgCO2eq": total_grams / 1000,
-            "carKm": total_grams / 21.8,
+            "carKm": total_grams / 218,
             "rangeText": range_text,
         },
     )
