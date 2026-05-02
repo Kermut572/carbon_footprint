@@ -64,7 +64,7 @@ REGEX_MATCHER = [
     ),
     (
         re.compile(
-            r"\b(air|smoke|carbon dioxide|carbon monoxide|oxygen)\b",
+            r"\b(air|carbon monoxide|oxygen)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
         "Air quality sensor",
@@ -131,6 +131,27 @@ REGEX_MATCHER = [
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
         "Light bulb",
+    ),
+    (
+        re.compile(
+            r"\b(switch|relay)\b",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "Switch",
+    ),
+    (
+        re.compile(
+            r"\b(smoke|carbon dioxide)\b",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "Smoke detector",
+    ),
+    (
+        re.compile(
+            r"\b(router|wifi|hub|connectivity)\b",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "Router",
     ),
 ]
 

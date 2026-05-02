@@ -846,6 +846,8 @@ class CarbonFootprintPanel extends HTMLElement {
                                                         Class: ${info.metadata?.device_classes || 'N/A'}<br>
                                                         HA ID: ${device_id || 'UNKNOWN'} <br>
                                                         Total Energy Consumed: ${info.metadata?.total_energy || 'N/A'}<br>
+                                                        ${info.cu_entity ? `<a href="/history?entity_id=${encodeURIComponent(info.cu_entity)}" target="_blank" rel="noopener noreferrer">Self usage sensor: ${info.cu_entity}</a><br>` : ``}
+                                                        ${info.cu_app_entity ? `<a href="/history?entity_id=${encodeURIComponent(info.cu_app_entity)}" target="_blank" rel="noopener noreferrer">Appliance usage sensor: ${info.cu_app_entity}</a><br>` : ``}
                                                     </div>
                                                 </div>
                                                 ${info.cu_entity ? `
@@ -2385,6 +2387,7 @@ class CarbonFootprintPanel extends HTMLElement {
                 areaSelector.selector = {
                     select: {
                         options: sortedAreas,
+                        mode: 'dropdown'
                     }
                 };
                 areaSelector.required = false;
@@ -2407,6 +2410,7 @@ class CarbonFootprintPanel extends HTMLElement {
                 typeSelector.selector = {
                     select: {
                         options: sortedTypes,
+                        mode: 'dropdown'
                     }
                 };
                 typeSelector.label = 'Filter by device type';
@@ -2477,6 +2481,9 @@ class CarbonFootprintPanel extends HTMLElement {
             "TV",
             "Refrigerator",
             "Dishwasher",
+            "Switch",
+            "Smoke detector",
+            "Router"
         ];
 
         const carbonSelector = this.querySelector('#device_carbon_footprint');

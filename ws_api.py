@@ -169,6 +169,11 @@ def ws_get_devices_to_add(
         if device.entry_type is not None:
             continue
 
+        if device.model is None:  # most integrations/services do not have a model
+            continue
+
+        # TODO check stuff agains blacklist here
+
         device_name = (
             device.name_by_user or device.name
         )  # just in case device.name_by_user is not defined, which can happen quite a lot
@@ -1348,6 +1353,9 @@ async def ws_llm_detection(
         "TV",
         "Refrigerator",
         "Dishwasher",
+        "Switch",
+        "Smoke detector",
+        "Router",
     ]
 
     matched_device_types, devices_to_match = utils_local_type_matching(devices)
