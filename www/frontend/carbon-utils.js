@@ -3,20 +3,6 @@
  */
 
 export class CarbonUtils {
-    static getCarbonColor(ci) {
-        if (!ci || isNaN(ci)) return 'ci-unknown';
-        if (ci < 150) return 'ci-low';
-        if (ci < 300) return 'ci-medium';
-        return 'ci-high';
-    }
-
-    static getCarbonLabel(ci) {
-        if (!ci || isNaN(ci)) return ' ';
-        if (ci < 150) return 'Good';
-        if (ci < 300) return 'Moderate';
-        return 'High';
-    }
-
     /**
      * Fetch carbon footprint data
      * @param {CarbonFootprintPanel} instance - The component instance
@@ -56,6 +42,59 @@ export class CarbonUtils {
             });
         } catch (err) {
             console.error("Error updating devices energy:", err);
+        }
+    }
+
+    static async getAnnualConsumptionSummary(instance) {
+        try {
+            return await instance._hass.callWS({
+                type: 'carbon_footprint/get_annual_consumption_summary',
+            });
+        } catch (err) {
+            console.error('Error loading annual consumption summary:', err);
+            return {
+                kgCO2eq: null,
+                carKm: null,
+                rangeText: 'Annual carbon consumption data is unavailable.',
+            };
+        }
+    }
+
+    static async getRecommendations(instance, payload) {
+        try {
+            return await instance._hass.callWS({
+                type: 'carbon_footprint/get_recommendations',
+                ...payload,
+            });
+        } catch (err) {
+            console.error('Error loading recommendations:', err);
+            return {
+                high_impact_area: {
+                    title: 'No Data Available',
+                    message: "We couldn't determine the high-impact area.",
+                    severity: 'info',
+                },
+                carbon_intensity: {
+                    label: ' ',
+                    message: 'Carbon intensity data unavailable.',
+                    color: '#eeeeee',
+                    severity: 'info',
+                },
+                iot_share: {
+                    message: 'IoT share recommendation unavailable.',
+                    severity: 'info',
+                },
+                usage_pattern: {
+                    title: 'Usage Pattern Insight',
+                    message: 'Usage pattern recommendation unavailable.',
+                    color: '#eeeeee',
+                    severity: 'info',
+                },
+                carbon_intensity_info: {
+                    colorClass: 'ci-unknown',
+                    label: ' ',
+                },
+            };
         }
     }
 

@@ -3,15 +3,9 @@
  * for testing purposes. We should rewrite it properly later.
  */
 
-import { CarbonUtils } from './frontend/carbon-utils.js';
+import { CarbonUtils } from './frontend/carbon-utils.js?v=1.1';
 import { openFullForm } from './frontend/form-manager.js';
 import { Utils } from './utils.js';
-import {
-    getHighImpactAreaRecommendation,
-    getCarbonIntensityRecommendation,
-    getIoTShareRecommendation,
-    getUsagePatternRecommendation,
-} from './frontend/recommendation-manager.js';
 
 class CarbonFootprintPanel extends HTMLElement {
 
@@ -35,6 +29,11 @@ class CarbonFootprintPanel extends HTMLElement {
         this._currentDevice = null;
         this._currentType = null;
         this._currentCarbonValue = 0.0;
+
+        this._deviceFilterSearch = '';
+        this._deviceFilterAreas = '';
+        this._deviceFilterTypes = '';
+        this._configuredDevices = {};
 
         this._hiddenDeviceIndices = new Set();
 
@@ -199,13 +198,12 @@ class CarbonFootprintPanel extends HTMLElement {
             ? parseFloat(carbonTodayRaw)
             : null;
 
-        // Fetch room data and generate recommendation
+        // Fetch room data and recommendation inputs
         const roomData = await this.getCarbonByRoom();
-        const recommendation = getHighImpactAreaRecommendation(roomData);
 
-        // Generate carbon intensity recommendation
-        const intensityRec = getCarbonIntensityRecommendation(data?.co2_intensity);
-        const iotShareRec = getIoTShareRecommendation(yearlyCons);
+        const currentCarbonIntensity = data?.co2_intensity_status === 'fallback'
+            ? null
+            : data?.co2_intensity;
 
         // Fetch consumption data for usage vs intensity recommendation (last 30 days)
         const recEndTime = new Date();
@@ -219,11 +217,52 @@ class CarbonFootprintPanel extends HTMLElement {
         });
         const energyData = recResult.devices_consumptions;
         const intensityData = data?.intensity_history || [];
-        const usagePatternRec = getUsagePatternRecommendation(
-            energyData,
-            intensityData,
-            data?.co2_intensity
-        );
+        let recommendations;
+        try {
+            recommendations = await this._hass.callWS({
+                type: 'carbon_footprint/get_recommendations',
+                room_data: roomData,
+                yearly_contribution: yearlyCons,
+                usage_history: energyData,
+                intensity_history: intensityData,
+                current_intensity: currentCarbonIntensity,
+            });
+        } catch (err) {
+            console.error('Error loading recommendations:', err);
+            recommendations = {
+                high_impact_area: {
+                    title: 'No Data Available',
+                    message: "We couldn't determine the high-impact area.",
+                    severity: 'info',
+                },
+                carbon_intensity: {
+                    label: ' ',
+                    message: 'Carbon intensity data unavailable.',
+                    color: '#eeeeee',
+                    severity: 'info',
+                },
+                iot_share: {
+                    message: 'IoT share recommendation unavailable.',
+                    severity: 'info',
+                },
+                usage_pattern: {
+                    title: 'Usage Pattern Insight',
+                    message: 'Usage pattern recommendation unavailable.',
+                    color: '#eeeeee',
+                    severity: 'info',
+                },
+                carbon_intensity_info: {
+                    colorClass: 'ci-unknown',
+                    label: ' ',
+                },
+            };
+        }
+        const recommendation = recommendations.high_impact_area;
+        const intensityRec = recommendations.carbon_intensity;
+        const iotShareRec = recommendations.iot_share;
+        const usagePatternRec = recommendations.usage_pattern;
+        const carbonIntensityInfo = recommendations.carbon_intensity_info;
+        const annualConsumption = await CarbonUtils.getAnnualConsumptionSummary(this);
 
         this.innerHTML = `
             <ha-app-layout>
@@ -233,24 +272,41 @@ class CarbonFootprintPanel extends HTMLElement {
                 </header>
 
                 <div class="content" slot="content">
+                    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px;">
+                        <ha-card header="Annual consumption">
+                            <div class="card-content" style="font-size: 22px; font-weight: 600;">
+                                ${annualConsumption.kgCO2eq === null ? 'N/A' : annualConsumption.kgCO2eq.toFixed(2)} kgCO₂eq
+                                <div style="font-size: 13px; font-weight: 400; color: #666; margin-top: 6px;">${annualConsumption.rangeText}</div>
+                                <div style="font-size: 13px; font-weight: 400; color: #666; margin-top: 6px;">
+                                    which is equivalent to riding ${annualConsumption.carKm === null ? 'N/A' : annualConsumption.carKm.toFixed(1)} km by car
+                                    <span title="According to the ImpactCO2 framework of the French Republic. Considering a gasoline-powered car. More informations: https://impactco2.fr/outils/transport" style="display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; border: 1px solid #777; color: #555; font-size: 11px; font-weight: 600; cursor: help; margin-left: 4px;">i</span>
+                                </div>
+                            </div>
+                        </ha-card>
+                        <ha-card header="Carbon intensity">
+                            <div class="card-content" style="font-size: 22px; font-weight: 600;">
+                                ${data?.co2_intensity_status === 'fallback' ? 'Unknown' : `${data?.co2_intensity ?? 'N/A'} gCO₂eq/kWh`}
+                                <span class="ci-indicator ${carbonIntensityInfo.colorClass}"></span>
+                                <span class="ci-label" style="font-size: 14px; font-weight: 500;">${carbonIntensityInfo.label}</span>
+                                <div style="font-size: 13px; font-weight: 400; color: #666; margin-top: 6px; line-height: 1.35;">
+                                    ${intensityRec.message}
+                                </div>
+                            </div>
+                        </ha-card>
+                        <ha-card header="Quick actions">
+                            <div class="card-content">
+                                <div class="button-group" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; width: 100%;">
+                                    <button type="button" id="detect-devices-btn" style="width: 100%; min-height: 72px; font-size: 15px;"><div class="loader" id="loader"></div>Automatic Setup</button>
+                                    <button type="button" id="export-json-btn" style="width: 100%; min-height: 72px; font-size: 15px;">Export to JSON</button>
+                                </div>
+                            </div>
+                        </ha-card>
+                    </div>
+
                     <ha-card header="Energy Consumption Footprint">
                         <div class="card-content">
-                            <p>Current Energy CO₂ Intensity:
-                                <span class="ci-value">
-                                    <b>${data?.co2_intensity_status === 'fallback'
-                                        ? 'Unknown'
-                                        : (data?.co2_intensity ?? 'N/A')}</b>
-                                </span>
-                                ${data?.co2_intensity_status === 'fallback' ? '' : 'gCO₂eq/kWh'}
-                                <span class="ci-indicator ${CarbonUtils.getCarbonColor(
-                                    data?.co2_intensity_status === 'fallback' ? null : data?.co2_intensity
-                                )}"></span>
-                                <span class="ci-label">${CarbonUtils.getCarbonLabel(
-                                    data?.co2_intensity_status === 'fallback' ? null : data?.co2_intensity
-                                )}</span>
-                            </p>
                             <p style="font-size: 12px; color: #666; margin-top: 8px; margin-bottom: 16px;">
-                                <em>Devices energy consumption footprint over time (in grams CO₂ equivalent)</em>
+                                <em>Devices energy consumption footprint over time (in kg CO₂ equivalent)</em>
                             </p>
                             <div class="histogram-controls">
                                 <label for="granularity-select">Granularity:</label>
@@ -410,28 +466,12 @@ class CarbonFootprintPanel extends HTMLElement {
                                     </div>
                                 </div>
 
-                                <!-- Carbon intensity usage -->
-                                <div style="border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
-                                    <div class="recommendation-header"
-                                        style="padding: 12px; background-color: ${intensityRec.color}; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;"
-                                        onclick="this.parentElement.querySelector('.recommendation-content-2').style.display = this.parentElement.querySelector('.recommendation-content-2').style.display === 'none' ? 'block' : 'none'; this.querySelector('.toggle-icon-2').textContent = this.parentElement.querySelector('.recommendation-content-2').style.display === 'none' ? '▼' : '▲';">
-                                        <strong>${intensityRec.emoji} Optimize Usage Timing (${intensityRec.label})</strong>
-                                        <span class="toggle-icon-2" style="font-size: 12px;">▲</span>
-                                    </div>
-                                    <div class="recommendation-content-2"
-                                        style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
-                                        <p style="margin: 0; font-size: 13px; color: #555;">
-                                            ${intensityRec.message}
-                                        </p>
-                                    </div>
-                                </div>
-
                                 <!-- Usage Pattern Insight -->
                                 <div style="border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
                                     <div class="recommendation-header"
                                         style="padding: 12px; background-color: ${usagePatternRec.color}; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;"
                                         onclick="this.parentElement.querySelector('.recommendation-content-pattern').style.display = this.parentElement.querySelector('.recommendation-content-pattern').style.display === 'none' ? 'block' : 'none'; this.querySelector('.toggle-icon-pattern').textContent = this.parentElement.querySelector('.recommendation-content-pattern').style.display === 'none' ? '▼' : '▲';">
-                                        <strong>${usagePatternRec.emoji} ${usagePatternRec.title}</strong>
+                                        <strong>${usagePatternRec.title}</strong>
                                         <span class="toggle-icon-pattern" style="font-size: 12px;">▲</span>
                                     </div>
                                     <div class="recommendation-content-pattern"
@@ -555,6 +595,8 @@ class CarbonFootprintPanel extends HTMLElement {
             });
         }
 
+        this.attachQuickActionHandlers();
+
         const groupBySelect = this.querySelector('#group-by-select');
         if (groupBySelect) {
             groupBySelect.addEventListener('change', async (e) => {
@@ -625,7 +667,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.12'; // :skull:
+        link.href = '/api/carbon_footprint/style.css?version=1.21'; // :skull:
         this.appendChild(link);
     }
 
@@ -724,8 +766,6 @@ class CarbonFootprintPanel extends HTMLElement {
                 <div class="button-group">
                     <button type="button" id="compute-footprint-btn">Compute Footprint</button>
                     <button type="submit">Add Device</button>
-                    <button type="button" id="detect-devices-btn"><div class="loader" id="loader"></div>Automatic Setup</button>
-                    <button type="button" id="export-json-btn">Export to JSON</button>
                 </div>
             </form>
         `;
@@ -756,10 +796,43 @@ class CarbonFootprintPanel extends HTMLElement {
         `;
     }
 
+    getDeviceTypeSuggestions() {
+        return [
+            "Temperature/humidity sensor",
+            "Motion sensor",
+            "Luminosity sensor",
+            "Air quality sensor",
+            "Camera",
+            "Speaker",
+            "Light bulb",
+            "Smart plug",
+            "Smart lock",
+            "Window/door sensor",
+            "Thermostat",
+            "Energy monitor",
+            "Washing machine",
+            "TV",
+            "Refrigerator",
+            "Dishwasher",
+            "Switch",
+            "Smoke detector",
+            "Router"
+        ];
+    }
+
+    escapeAttribute(value) {
+        return String(value ?? '')
+            .replaceAll('&', '&amp;')
+            .replaceAll('"', '&quot;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;');
+    }
+
     async renderSettingsPage(data) {
         const devicesResp = await this._hass.callWS({ type: 'carbon_footprint/get_devices_to_add' });
         const devicesArray = devicesResp.device_names || [];
         const hasDevices = data && data.devices && Object.keys(data.devices).length > 0;
+        this._configuredDevices = data?.devices || {};
 
         const allDevicesEnergyResp = await this.getAllDevicesEnergy();
         const energyDevices = allDevicesEnergyResp.devices_energy || [];
@@ -782,15 +855,29 @@ class CarbonFootprintPanel extends HTMLElement {
                     <ha-card header="Configured Devices">
                         <div class="card-content device-list-container">
                             ${hasDevices ? `
-                                <ul>
+                                <div style="margin-bottom: 20px; display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start;">
+                                    <div style="flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 4px;">
+                                        <ha-selector id="device_search_selector"></ha-selector>
+                                    </div>
+                                    <div style="flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 4px;">
+                                        <ha-selector id="device_area_selector"></ha-selector>
+                                    </div>
+                                    <div style="flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 4px;">
+                                        <ha-selector id="device_type_filter_selector"></ha-selector>
+                                    </div>
+                                    <div style="display: flex; flex-direction: column; justify-content: flex-start;">
+                                        <button id="clear_filters_btn" style="padding: 8px 16px; background-color: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; margin-top: 24px;">Clear Filters</button>
+                                    </div>
+                                </div>
+                                <ul id="device_list">
                                     ${Object.entries(data.devices).map(([device_id, info]) => `
-                                        <li>
+                                        <li class="device-item" data-device-id="${device_id}" data-device-name="${(info.metadata?.display_name || device_id).toLowerCase()}" data-device-area="${(info.metadata?.area_name || info.metadata?.area_id || '').toLowerCase()}" data-device-type="${(info.type || '').toLowerCase()}">
                                             <div class="device-info">
                                                 <div class="device-header">
                                                     <h2><b>${info.metadata?.display_name || device_id}</b></h2><br>
                                                     <div class="device-extended">
                                                         Type: ${info.type || 'Unknown'}<br>
-                                                        Area: ${info.metadata?.area_id || 'N/A'} <br>
+                                                        Area: ${info.metadata?.area_name || info.metadata?.area_id || 'N/A'} <br>
                                                         Carbon: ${info.carbon_footprint || 0} kgCO₂eq <br>
                                                         Manfucturer: ${info.metadata?.manufacturer || 'N/A'}<br>
                                                         Model: ${info.metadata?.model || 'N/A'}<br>
@@ -798,13 +885,32 @@ class CarbonFootprintPanel extends HTMLElement {
                                                         Class: ${info.metadata?.device_classes || 'N/A'}<br>
                                                         HA ID: ${device_id || 'UNKNOWN'} <br>
                                                         Total Energy Consumed: ${info.metadata?.total_energy || 'N/A'}<br>
+                                                        ${info.cu_entity ? `<a href="/history?entity_id=${encodeURIComponent(info.cu_entity)}" target="_blank" rel="noopener noreferrer">Self usage sensor: ${info.cu_entity}</a><br>` : ``}
+                                                        ${info.cu_app_entity ? `<a href="/history?entity_id=${encodeURIComponent(info.cu_app_entity)}" target="_blank" rel="noopener noreferrer">Appliance usage sensor: ${info.cu_app_entity}</a><br>` : ``}
                                                     </div>
                                                 </div>
+                                                ${info.cu_entity ? `
+                                                <button
+                                                    type="button"
+                                                    class="reset-sensor-btn"
+                                                    data-device-id="${device_id}"
+                                                    data-device-name="${info.metadata?.display_name || device_id}"
+                                                    title="Reset sensors">
+                                                    ↻
+                                                </button>
+                                                ` : ''}
                                                 <button
                                                     type="button"
                                                     class="extend-btn"
                                                     title="More information">
                                                     ▼
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    class="modify-btn"
+                                                    data-device-id="${device_id}"
+                                                    title="Modify device">
+                                                    ✎
                                                 </button>
                                                 <button
                                                     type="button"
@@ -833,6 +939,10 @@ class CarbonFootprintPanel extends HTMLElement {
             });
         }
 
+        if (data.devices && Object.keys(data.devices).length > 0) {
+            this.attachDeviceFilters(data.devices);
+        }
+
         const sortSelect = this.querySelector('#sort-mode');
         const tableContainer = this.querySelector('#energy-table-container');
 
@@ -853,7 +963,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.18'; // :skull:
+        link.href = '/api/carbon_footprint/style.css?version=1.21'; // :skull:
         this.appendChild(link);
     }
 
@@ -1002,9 +1112,15 @@ class CarbonFootprintPanel extends HTMLElement {
         finally {
             this.hideLoadingOverlay();
             detectBtn.disabled = false;
-            loaderAnim.style.display = 'none';
+            if (loaderAnim) {
+                loaderAnim.style.display = 'none';
+            }
             const updatedData = await this.getCarbonData();
-            await this.renderSettingsPage(updatedData);
+            if (this._currentPage === 'settings') {
+                await this.renderSettingsPage(updatedData);
+            } else {
+                await this.render(updatedData);
+            }
             if (unmatchedDevices.length != 0) {
                 Utils.showToast(this, `Could not detect device type for devices ${unmatchedDevices.toString()}`);
                 console.log(`Could not detect device type for devices ${unmatchedDevices.toString()}`);
@@ -1020,6 +1136,35 @@ class CarbonFootprintPanel extends HTMLElement {
         if (!canvas) {
             return;
         }
+        const canvasContainer = canvas.parentElement;
+        const showEmptyConsumptionChartMessage = (message) => {
+            if (this._consumptionChart) {
+                this._consumptionChart.destroy();
+                this._consumptionChart = null;
+            }
+            if (canvasContainer) {
+                canvasContainer.style.display = 'none';
+                let emptyMessage = canvasContainer.nextElementSibling;
+                if (!emptyMessage || emptyMessage.id !== 'consumption-empty-message') {
+                    emptyMessage = document.createElement('p');
+                    emptyMessage.id = 'consumption-empty-message';
+                    emptyMessage.style.margin = '16px 0';
+                    emptyMessage.style.color = '#666';
+                    canvasContainer.insertAdjacentElement('afterend', emptyMessage);
+                }
+                emptyMessage.textContent = message;
+                emptyMessage.style.display = 'block';
+            }
+        };
+        const hideEmptyConsumptionChartMessage = () => {
+            if (canvasContainer) {
+                canvasContainer.style.display = '';
+                const emptyMessage = canvasContainer.nextElementSibling;
+                if (emptyMessage?.id === 'consumption-empty-message') {
+                    emptyMessage.style.display = 'none';
+                }
+            }
+        };
 
         const { startTime, endTime } = this._getConsumptionHistogramTimeRange();
 
@@ -1109,6 +1254,15 @@ class CarbonFootprintPanel extends HTMLElement {
         if (this._ecView == 'total' || this._ecView == 'usage' || this._ecView === 'appliance') procData(consumptionData, `consumption`);
         procData(embodiedData, `embodied`);
         const sortedTimestamps = Object.keys(aggData).sort();
+        const hasConsumptionData = sortedTimestamps.some(ts => {
+            const devices = aggData[ts] || {};
+            return Object.values(devices).some(deviceData => (deviceData.consumption || 0) > 0);
+        });
+        if (this._ecView === 'appliance' && !hasConsumptionData) {
+            showEmptyConsumptionChartMessage('No appliances available for the selected period.');
+            return;
+        }
+        hideEmptyConsumptionChartMessage();
 
         const labels = sortedTimestamps.map(ts => {
             const date = new Date(ts);
@@ -1136,10 +1290,11 @@ class CarbonFootprintPanel extends HTMLElement {
             const devices = aggData[ts] || {};
             return Object.values(devices).reduce((sum, deviceData) => sum + (deviceData[type] || 0), 0);
         };
-        const formatKgCO2 = grams => `${(grams / 1000).toFixed(3)} kgCO₂eq`;
+        const gramsToKg = grams => grams / 1000;
+        const formatKgCO2 = kg => `${kg.toFixed(3)} kgCO₂eq`;
 
         if (this._ecView === 'total' || this._ecView === 'embodied') {
-            const embodiedDataPoints = sortedTimestamps.map(ts => sumByTimestamp(ts, 'embodied'));
+            const embodiedDataPoints = sortedTimestamps.map(ts => gramsToKg(sumByTimestamp(ts, 'embodied')));
             datasets.push({
                 label: 'Embodied Carbon',
                 data: embodiedDataPoints,
@@ -1150,7 +1305,7 @@ class CarbonFootprintPanel extends HTMLElement {
         }
 
         if (this._ecView === 'total' || this._ecView === 'usage' || this._ecView === 'appliance') {
-            const usageData = sortedTimestamps.map(ts => sumByTimestamp(ts, 'consumption'));
+            const usageData = sortedTimestamps.map(ts => gramsToKg(sumByTimestamp(ts, 'consumption')));
             datasets.push({
                 label: this._ecView === 'appliance' ? 'Appliance Usage Carbon' : 'Usage Carbon',
                 data: usageData,
@@ -1213,7 +1368,7 @@ class CarbonFootprintPanel extends HTMLElement {
                     },
                     title: {
                         display: true,
-                        text: 'Energy Consumption Footprint (gCO₂eq)',
+                        text: 'Energy Consumption Footprint (kgCO₂eq)',
                     },
                     tooltip: {
                         callbacks: {
@@ -1233,7 +1388,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                 if (deviceBreakdown.length) {
                                     lines.push('Devices:');
                                     deviceBreakdown.forEach(item => {
-                                        lines.push(`${item.name}: ${formatKgCO2(item.value)}`);
+                                        lines.push(`${item.name}: ${formatKgCO2(gramsToKg(item.value))}`);
                                     });
                                 }
                                 return lines;
@@ -1250,7 +1405,7 @@ class CarbonFootprintPanel extends HTMLElement {
                         beginAtZero: true,
                         title: {
                             display: true,
-                            text: 'gCO₂eq'
+                            text: 'kgCO₂eq'
                         }
                     }
                 }
@@ -1654,9 +1809,7 @@ class CarbonFootprintPanel extends HTMLElement {
                 devices: [
                     { name: 'Fridge plug', embodied_carbon: 50, usage_carbon: 30, appliance_usage_carbon: 24, total_carbon: 80, predicted_carbon: 100, appliance_predicted_carbon: 82 },
                     { name: 'Oven plug', embodied_carbon: 40, usage_carbon: 25, appliance_usage_carbon: 18, total_carbon: 65, predicted_carbon: 85, appliance_predicted_carbon: 61 },
-                    { name: 'Dishwasher plug', embodied_carbon: 30, usage_carbon: 25, appliance_usage_carbon: 20, total_carbon: 55, predicted_carbon: 75, appliance_predicted_carbon: 60 },
-                    { id: 'Kitchen Air Fryer', name: 'Kitchen Air Fryer appliance', embodied_carbon: 0, usage_carbon: 0, appliance_usage_carbon: 35, total_carbon: 0, predicted_carbon: 0, appliance_predicted_carbon: 105 },
-                ]
+                    { name: 'Dishwasher plug', embodied_carbon: 30, usage_carbon: 25, appliance_usage_carbon: 20, total_carbon: 55, predicted_carbon: 75, appliance_predicted_carbon: 60 },                ]
             },
             {
                 room: 'Bedroom',
@@ -1782,6 +1935,20 @@ class CarbonFootprintPanel extends HTMLElement {
             if (container) {
                 const groupLabel = this._groupBy === 'type' ? 'type' : 'room';
                 container.innerHTML = `<p>No ${groupLabel} data available</p>`;
+            }
+            return;
+        }
+
+        const hasApplianceDevices = data.some(item => (item.devices || []).length > 0);
+        const hasApplianceCarbon = data.some(item => (item.appliance_usage_carbon ?? item.usage_carbon ?? 0) > 0);
+        if (this._carbonView === 'appliance' && (!hasApplianceDevices || !hasApplianceCarbon)) {
+            const container = this.querySelector('#room-chart-view');
+            if (this._roomChart) {
+                this._roomChart.destroy();
+                this._roomChart = null;
+            }
+            if (container) {
+                container.innerHTML = '<p>No appliances available.</p>';
             }
             return;
         }
@@ -2229,25 +2396,311 @@ class CarbonFootprintPanel extends HTMLElement {
         });
     }
 
+    attachDeviceFilters(devices) {
+        const areas = new Set();
+        const types = new Set();
+
+        Object.values(devices).forEach(info => {
+            if (info.metadata?.area_name) {
+                areas.add(info.metadata.area_name);
+            }
+            if (info.type) {
+                types.add(info.type);
+            }
+        });
+
+        const sortedAreas = Array.from(areas).sort();
+        const sortedTypes = Array.from(types).sort();
+
+        const searchSelector = this.querySelector('#device_search_selector');
+        if (searchSelector) {
+            try {
+                searchSelector.hass = this._hass;
+                searchSelector.selector = {
+                    text: {
+                        multiline: false
+                    }
+                };
+                searchSelector.label = 'Filter by device name';
+                searchSelector.required = false;
+                searchSelector.value = this._deviceFilterSearch;
+                searchSelector.addEventListener('value-changed', (ev) => {
+                    this._deviceFilterSearch = ev.detail.value;
+                    this.reloadDeviceFilters();
+                });
+            } catch (err) {
+                console.debug('Failed to init device search selector', err);
+            }
+        }
+
+        const areaSelector = this.querySelector('#device_area_selector');
+        if (areaSelector) {
+            try {
+                areaSelector.hass = this._hass;
+                areaSelector.selector = {
+                    select: {
+                        options: sortedAreas,
+                        mode: 'dropdown'
+                    }
+                };
+                areaSelector.required = false;
+                areaSelector.label = 'Filter by room name';
+                areaSelector.value = this._deviceFilterAreas;
+                areaSelector.addEventListener('value-changed', (ev) => {
+                    this._deviceFilterAreas = ev.detail.value || '';
+                    areaSelector.value = this._deviceFilterAreas;
+                    this.reloadDeviceFilters();
+                });
+            } catch (err) {
+                console.debug('Failed to init device area selector', err);
+            }
+        }
+
+        const typeSelector = this.querySelector('#device_type_filter_selector');
+        if (typeSelector) {
+            try {
+                typeSelector.hass = this._hass;
+                typeSelector.selector = {
+                    select: {
+                        options: sortedTypes,
+                        mode: 'dropdown'
+                    }
+                };
+                typeSelector.label = 'Filter by device type';
+                typeSelector.required = false;
+                typeSelector.value = this._deviceFilterTypes;
+                typeSelector.addEventListener('value-changed', (ev) => {
+                    this._deviceFilterTypes = ev.detail.value || '';
+                    typeSelector.value = this._deviceFilterTypes;
+                    this.reloadDeviceFilters();
+                });
+            } catch (err) {
+                console.debug('Failed to init device type selector', err);
+            }
+        }
+
+        const clearBtn = this.querySelector('#clear_filters_btn');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                this._deviceFilterSearch = '';
+                this._deviceFilterAreas = '';
+                this._deviceFilterTypes = '';
+                if (searchSelector) searchSelector.value = '';
+                if (areaSelector) areaSelector.value = '';
+                if (typeSelector) typeSelector.value = '';
+                this.reloadDeviceFilters();
+            });
+        }
+    }
+
+    reloadDeviceFilters() {
+        const deviceItems = this.querySelectorAll('.device-item');
+
+        deviceItems.forEach(item => {
+            const deviceName = item.dataset.deviceName || '';
+            const deviceArea = item.dataset.deviceArea || '';
+            const deviceType = item.dataset.deviceType || '';
+
+            //if no filter then it is a match
+            const searchMatch = !this._deviceFilterSearch || deviceName.includes(this._deviceFilterSearch.toLowerCase());
+
+            const areaMatch = !this._deviceFilterAreas ||  deviceArea.includes(this._deviceFilterAreas.toLowerCase());
+
+            const typeMatch = !this._deviceFilterTypes ||  deviceType.includes(this._deviceFilterTypes.toLowerCase());
+
+            if (searchMatch && areaMatch && typeMatch) {
+                item.style.display = '';
+            } else {
+                item.style.display = 'none';
+            }
+        });
+    }
+
+    attachQuickActionHandlers() {
+        const detectBtn = this.querySelector('#detect-devices-btn');
+        const loaderAnim = this.querySelector('#loader');
+        if (detectBtn) {
+            detectBtn.addEventListener('click', async () => {
+                this.detectDevicesType(detectBtn, loaderAnim);
+                detectBtn.disabled = true;
+                if (loaderAnim) {
+                    loaderAnim.style.display = 'inline-block';
+                }
+            });
+        }
+
+        const exportBtn = this.querySelector('#export-json-btn');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', async () => {
+                let jsonArray = await this._hass.callWS({ type: 'carbon_footprint/export_json' });
+
+                const array = JSON.stringify(jsonArray.json_array);
+                const uploaded = jsonArray.uploaded;
+                if (uploaded === 'yes') {
+                    Utils.showToast(this, "Devices have been uploaded to the db interface!");
+                }
+                else {
+                    navigator.clipboard.writeText(array);
+                    Utils.showToast(this, "Devices have been copied to the clipboard! If you wanted to upload to the interface, please make sure db_ip and cfdb_token are correct and set.");
+                }
+            });
+        }
+    }
+
+    toggleDeviceDetails(deviceInfo) {
+        const extendedDiv = deviceInfo?.querySelector('.device-extended');
+        const extendBtn = deviceInfo?.querySelector('.extend-btn');
+
+        if (!extendedDiv) {
+            return;
+        }
+
+        const isHidden = extendedDiv.style.display === 'none' || !extendedDiv.style.display;
+        extendedDiv.style.display = isHidden ? 'block' : 'none';
+
+        if (extendBtn) {
+            extendBtn.textContent = isHidden ? '▲' : '▼';
+        }
+    }
+
+    showEditDeviceDialog(deviceId) {
+        const deviceInfo = this._configuredDevices?.[deviceId];
+        if (!deviceInfo) {
+            Utils.showToast(this, 'Could not find this device.');
+            return;
+        }
+
+        const metadata = deviceInfo.metadata || {};
+        const attr = value => this.escapeAttribute(value);
+        const deviceClasses = Array.isArray(metadata.device_classes)
+            ? metadata.device_classes.join(', ')
+            : (metadata.device_classes || '');
+        const typeOptions = this.getDeviceTypeSuggestions()
+            .map(type => `<option value="${type}"></option>`)
+            .join('');
+
+        const dialog = document.createElement('dialog');
+        dialog.classList.add('ha-dialog', 'edit-device-dialog');
+        dialog.innerHTML = `
+            <form class="dialog-content" id="edit-device-form">
+                <h2>Modify Device</h2>
+                <div class="edit-device-grid">
+                    <label>
+                        Device name
+                        <input name="display_name" type="text" value="${attr(metadata.display_name || deviceId)}">
+                    </label>
+                    <label>
+                        Device type
+                        <input name="device_type" type="text" list="edit-device-type-options" value="${attr(deviceInfo.type || '')}" required>
+                        <datalist id="edit-device-type-options">${typeOptions}</datalist>
+                    </label>
+                    <label>
+                        Carbon footprint (kgCO₂eq)
+                        <input name="carbon_footprint" type="number" min="0" step="0.01" value="${attr(deviceInfo.carbon_footprint || 0)}" required>
+                    </label>
+                    <label>
+                        Area name
+                        <input name="area_name" type="text" value="${attr(metadata.area_name || '')}">
+                    </label>
+                    <label>
+                        Area ID
+                        <input name="area_id" type="text" value="${attr(metadata.area_id || '')}">
+                    </label>
+                    <label>
+                        Manufacturer
+                        <input name="manufacturer" type="text" value="${attr(metadata.manufacturer || '')}">
+                    </label>
+                    <label>
+                        Model
+                        <input name="model" type="text" value="${attr(metadata.model || '')}">
+                    </label>
+                    <label>
+                        Model ID
+                        <input name="model_id" type="text" value="${attr(metadata.model_id || '')}">
+                    </label>
+                    <label>
+                        Device classes
+                        <input name="device_classes" type="text" value="${attr(deviceClasses)}">
+                    </label>
+                    <label>
+                        Total energy consumed
+                        <input name="total_energy" type="number" min="0" step="0.001" value="${attr(metadata.total_energy ?? '')}">
+                    </label>
+                    <label>
+                        HA ID
+                        <input type="text" value="${attr(deviceId)}" readonly>
+                    </label>
+                </div>
+                <div class="dialog-actions">
+                    <button type="button" id="cancel-edit-device">Cancel</button>
+                    <button type="submit">Done</button>
+                </div>
+            </form>
+        `;
+
+        const closeDialog = () => {
+            dialog.close();
+            dialog.remove();
+        };
+
+        dialog.querySelector('#cancel-edit-device')?.addEventListener('click', closeDialog);
+        dialog.addEventListener('click', (event) => {
+            if (event.target === dialog) {
+                closeDialog();
+            }
+        });
+
+        dialog.querySelector('#edit-device-form')?.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const formData = new FormData(event.currentTarget);
+            const updatedMetadata = {
+                ...metadata,
+                manual_metadata: true,
+                display_name: formData.get('display_name') || deviceId,
+                area_name: formData.get('area_name') || '',
+                area_id: formData.get('area_id') || '',
+                manufacturer: formData.get('manufacturer') || '',
+                model: formData.get('model') || '',
+                model_id: formData.get('model_id') || '',
+                device_classes: (formData.get('device_classes') || '')
+                    .split(',')
+                    .map(item => item.trim())
+                    .filter(Boolean),
+            };
+
+            const totalEnergy = formData.get('total_energy');
+            if (totalEnergy === '' || totalEnergy === null) {
+                delete updatedMetadata.total_energy;
+            } else {
+                updatedMetadata.total_energy = Number(totalEnergy);
+            }
+
+            try {
+                await this._hass.callWS({
+                    type: 'carbon_footprint/set_device',
+                    device_id: deviceId,
+                    device_type: formData.get('device_type'),
+                    carbon_footprint: Number(formData.get('carbon_footprint')),
+                    metadata: updatedMetadata,
+                    refresh_metadata: false,
+                });
+
+                closeDialog();
+                const newData = await this.getCarbonData();
+                Utils.showToast(this, 'Successfully modified device!');
+                await this.renderSettingsPage(newData);
+            } catch (error) {
+                console.error('Failed to modify device:', error);
+                alert(`Error modifying device: ${error.message}`);
+            }
+        });
+
+        this.appendChild(dialog);
+        dialog.showModal();
+    }
+
     attachFormHandler() {
-        const suggestions = [
-            "Temperature/humidity sensor",
-            "Motion sensor",
-            "Luminosity sensor",
-            "Air quality sensor",
-            "Camera",
-            "Speaker",
-            "Light bulb",
-            "Smart plug",
-            "Smart lock",
-            "Window/door sensor",
-            "Thermostat",
-            "Energy monitor",
-            "Washing machine",
-            "TV",
-            "Refrigerator",
-            "Dishwasher",
-        ];
+        const suggestions = this.getDeviceTypeSuggestions();
 
         const carbonSelector = this.querySelector('#device_carbon_footprint');
         if (carbonSelector) {
@@ -2356,33 +2809,6 @@ class CarbonFootprintPanel extends HTMLElement {
             });
         }
 
-        const detectBtn = this.querySelector('#detect-devices-btn');
-        const loaderAnim = this.querySelector('#loader');
-        if (detectBtn) {
-            detectBtn.addEventListener('click', async () => {
-                this.detectDevicesType(detectBtn, loaderAnim)
-                detectBtn.disabled = true;
-                loaderAnim.style.display = 'inline-block';
-            });
-        }
-
-        const exportBtn = this.querySelector('#export-json-btn');
-        if (exportBtn) {
-            exportBtn.addEventListener('click', async () => {
-                let jsonArray = await this._hass.callWS({ type: 'carbon_footprint/export_json' });
-
-                const array = JSON.stringify(jsonArray.json_array);
-                const uploaded = jsonArray.uploaded
-                if (uploaded === 'yes') {
-                    Utils.showToast(this, "Devices have been uploaded to the db interface!");
-                }
-                else {
-                    navigator.clipboard.writeText(array);
-                    Utils.showToast(this, "Devices have been copied to the clipboard! If you wanted to upload to the interface, please make sure db_ip and cfdb_token are correct and set.");
-                }
-            })
-        }
-
         const computeBtn = this.querySelector('#compute-footprint-btn');
         if (computeBtn) {
             computeBtn.addEventListener('click', () => this.showHardwareDialogAndCompute());
@@ -2391,21 +2817,59 @@ class CarbonFootprintPanel extends HTMLElement {
         const extendButtons = this.querySelectorAll('.extend-btn');
         extendButtons.forEach(btn => {
             btn.addEventListener('click', (e) => {
-                const deviceInfo = e.currentTarget.closest('.device-info');
-                const extendedDiv = deviceInfo.querySelector('.device-extended');
-
-                if (extendedDiv) {
-                    const isHidden = extendedDiv.style.display === 'none' || !extendedDiv.style.display;
-                    extendedDiv.style.display = isHidden ? 'block' : 'none';
-
-                    e.currentTarget.textContent = isHidden ? '▲' : '▼';
-                }
+                e.stopPropagation();
+                this.toggleDeviceDetails(e.currentTarget.closest('.device-info'));
             })
         })
+
+        const deviceCards = this.querySelectorAll('.device-info');
+        deviceCards.forEach(card => {
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('button, a, input, select, textarea, ha-selector, label')) {
+                    return;
+                }
+
+                this.toggleDeviceDetails(e.currentTarget);
+            });
+        });
+
+        const modifyButtons = this.querySelectorAll('.modify-btn');
+        modifyButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.showEditDeviceDialog(e.currentTarget.dataset.deviceId);
+            });
+        });
+
+        const resetSensorButtons = this.querySelectorAll('.reset-sensor-btn');
+        resetSensorButtons.forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const deviceId = e.currentTarget.dataset.deviceId;
+                const deviceName = e.currentTarget.dataset.deviceName;
+
+                if (!confirm(`Reset sensors for ${deviceName}?`)) {
+                    return;
+                }
+
+                try {
+                    await this._hass.callWS({
+                        type: 'carbon_footprint/reset_sensors',
+                        device_id: deviceId,
+                    });
+
+                    Utils.showToast(this, `Successfully reset sensors for ${deviceName}`);
+                } catch (error) {
+                    console.error('Failed to reset sensors: ', error);
+                    alert(`Error resetting sensors: ${error.message}`);
+                }
+            });
+        });
 
         const deleteButtons = this.querySelectorAll('.delete-btn');
         deleteButtons.forEach(btn => {
             btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
                 const entityId = e.currentTarget.dataset.entityId;
 
                 if (!confirm(`Remove ${entityId} from tracking?`)) {

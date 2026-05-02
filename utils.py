@@ -64,7 +64,7 @@ REGEX_MATCHER = [
     ),
     (
         re.compile(
-            r"\b(air|smoke|carbon dioxide|carbon monoxide|oxygen)\b",
+            r"\b(air|carbon monoxide|oxygen)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
         "Air quality sensor",
@@ -131,6 +131,27 @@ REGEX_MATCHER = [
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
         "Light bulb",
+    ),
+    (
+        re.compile(
+            r"\b(switch|relay)\b",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "Switch",
+    ),
+    (
+        re.compile(
+            r"\b(smoke|carbon dioxide)\b",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "Smoke detector",
+    ),
+    (
+        re.compile(
+            r"\b(router|wifi|hub|connectivity)\b",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "Router",
     ),
 ]
 
@@ -210,7 +231,7 @@ async def utils_get_device_install_date(
         return None, False
 
     lookup_device_metadata = lookup_device.get("metadata", {})
-    install_date = lookup_device_metadata.get("install_date", None)
+    install_date = lookup_device_metadata.get("install_dt", None)
     if install_date is not None:
         ts = dt_util.parse_datetime(install_date)
         return dt_util.as_local(ts), False
@@ -236,7 +257,7 @@ async def utils_get_device_install_date(
     fp = series[0]
     start_ts = fp.get("start")
     start_utc = dt_util.utc_from_timestamp(start_ts)
-    lookup_device_metadata["install_date"] = start_utc.isoformat()
+    lookup_device_metadata["install_dt"] = start_utc.isoformat()
 
     return dt_util.as_local(start_utc), True
 
@@ -361,7 +382,7 @@ def utils_find_energy_entity_for_device(
 
     appliance_entity = sensors[1].entity_id
     for sensor in sensors[1:]:
-        if "daily" in sensor.entity_id or "daily" in (
+        if "today" in sensor.entity_id or "today" in (
             sensor.original_name or sensor.name
         ):
             appliance_entity = sensor.entity_id
@@ -451,9 +472,19 @@ async def utils_get_device_energy_consumption_map(
     energy_entity, appliance_entity, _ = utils_find_energy_entity_for_device(
         hass, device_id
     )
-    _LOGGER.debug("No energy entity found for device id %s, skipping", device_id)
     if not energy_entity:
+        _LOGGER.debug("No energy entity found for device id %s, skipping", device_id)
         return None
+    if is_appliance and not appliance_entity:
+        _LOGGER.debug("No appliance entity found for device id %s, skipping", device_id)
+        return None
+
+    if is_appliance:
+        _LOGGER.debug(
+            "Pulling stats for appliance for device id %s, appliance entity %s",
+            device_id,
+            appliance_entity,
+        )
 
     stats = await recorder.get_instance(hass).async_add_executor_job(
         statistics_during_period,
@@ -463,7 +494,7 @@ async def utils_get_device_energy_consumption_map(
         {energy_entity} if not is_appliance else {appliance_entity},
         granularity,
         None,
-        {"sum"},
+        {"sum", "state"},
     )
 
     result = {}
@@ -474,7 +505,15 @@ async def utils_get_device_energy_consumption_map(
             continue
         dt = dt_util.as_local(dt_util.utc_from_timestamp(start_ts))
         map_key = dt.strftime("%d-%m-%Y-%H")
-        result[map_key] = stat.get("sum", 0)
+        reading = stat.get("sum")
+        if reading is None:
+            reading = stat.get("state")
+        if reading is None:
+            continue
+        result[map_key] = reading
+
+        if is_appliance:
+            _LOGGER.debug("Read value %d from stats for %s", reading, device_id)
 
     return result
 
@@ -495,6 +534,7 @@ async def utils_compute_device_consumption_footprint(
         is_appliance,
     )
     if not energy_consumption_map:
+        _LOGGER.debug("Consumption map is None, returning early")
         return None
 
     entries = hass.config_entries.async_entries(DOMAIN)
@@ -686,9 +726,24 @@ async def utils_build_hourly_stamps(
     devices = cf_store.get_devices_data()
     device_info = devices.get(device_id, None)
     if not device_info:
+        _LOGGER.debug(
+            "Returning early from building timestamps for device_id %s because device_info is None",
+            device_id,
+        )
         return None
 
-    if device_info.get("history_uploaded", False):
+    if not is_appliance and device_info.get("history_uploaded", False):
+        _LOGGER.debug(
+            "Returning early from building timestamps for iot device_id %s because history_uploaded is True",
+            device_id,
+        )
+        return None
+
+    if is_appliance and device_info.get("appliance_history_uploaded", False):
+        _LOGGER.debug(
+            "Returning early from building timestamps for appliance device_id %s because appliance_history_uploaded is True",
+            device_id,
+        )
         return None
 
     stamps = await utils_compute_device_consumption_footprint(
@@ -703,17 +758,6 @@ async def utils_build_hourly_stamps(
         if not ts:
             continue
 
-        """ for ref.
-        for row in hourly:
-        running_sum += row["kwh"]
-        stats.append(
-            StatisticData(
-                start=row["datetime"],
-                state=row["kwh"],
-                sum=running_sum,
-            )
-        )
-        """
         stats.append(
             {
                 "start": dt_util.as_utc(datetime.fromisoformat(ts)),

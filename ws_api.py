@@ -22,6 +22,7 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fi
 import voluptuous as vol
 
 from homeassistant.components import recorder, websocket_api
+from homeassistant.components.recorder import statistics
 from homeassistant.components.recorder.statistics import statistics_during_period
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import _LOGGER, HomeAssistant, callback
@@ -35,6 +36,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.util import dt as dt_util
 
 from .const import BLOCKS_FOOTPRINTS, DEVICE_ADDED_SIGNAL, DOMAIN
+from .recommendations import build_recommendations
 from .utils import (
     ProviderError,
     utils_build_cfdb_device,
@@ -81,6 +83,9 @@ def async_register_websocket_handlers(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_db_matching)
     websocket_api.async_register_command(hass, ws_export_json)
     websocket_api.async_register_command(hass, ws_get_yearly_contribution)
+    websocket_api.async_register_command(hass, ws_get_annual_consumption_summary)
+    websocket_api.async_register_command(hass, ws_get_recommendations)
+    websocket_api.async_register_command(hass, ws_reset_sensors)
 
 
 @websocket_api.websocket_command(
@@ -163,6 +168,11 @@ def ws_get_devices_to_add(
         # The type of entry. Possible values are None and DeviceEntryType enum members (only service). <- we don't care about services
         if device.entry_type is not None:
             continue
+
+        if device.model is None:  # most integrations/services do not have a model
+            continue
+
+        # TODO check stuff agains blacklist here
 
         device_name = (
             device.name_by_user or device.name
@@ -267,22 +277,42 @@ def ws_get_carbon_data(
     device_reg = dr.async_get(hass)
     devices = cf_store.get_devices_data()
 
-    updated_name = False
+    updated_metadata = False
+    area_reg = ar.async_get(hass)
     for device_id, device_info in devices.items():
         device_entry = device_reg.devices.get(device_id)
         if not device_entry:
+            continue
+
+        metadata = device_info.setdefault("metadata", {})
+        if metadata.get("manual_metadata"):
             continue
 
         updated_device_name = (
             device_reg.devices.get(device_id).name_by_user
             or device_reg.devices.get(device_id).name
         )
-        curr_device_name = device_info.get("metadata", {}).get("display_name", "")
+        curr_device_name = metadata.get("display_name", "")
         if updated_device_name != curr_device_name:
-            updated_name = True
-            device_info.get("metadata", {})["display_name"] = updated_device_name
+            updated_metadata = True
+            metadata["display_name"] = updated_device_name
 
-    if updated_name:
+        updated_area_id = device_entry.area_id or "undefined"
+        if metadata.get("area_id") != updated_area_id:
+            updated_metadata = True
+            metadata["area_id"] = updated_area_id
+
+        updated_area_name = "N/A"
+        if device_entry.area_id and (
+            area_entry := area_reg.async_get_area(device_entry.area_id)
+        ):
+            updated_area_name = area_entry.name
+
+        if metadata.get("area_name") != updated_area_name:
+            updated_metadata = True
+            metadata["area_name"] = updated_area_name
+
+    if updated_metadata:
         hass.async_create_task(cf_store.async_save_data())
 
     intensity_history = []
@@ -328,6 +358,7 @@ def ws_get_carbon_data(
         vol.Required("device_type"): str,
         vol.Required("carbon_footprint"): vol.Coerce(float),
         vol.Optional("metadata", default={}): dict,
+        vol.Optional("refresh_metadata", default=True): bool,
     }
 )
 @websocket_api.async_response
@@ -367,8 +398,12 @@ async def ws_set_device(
             break
 
     # all metadata we can add: https://developers.home-assistant.io/docs/device_registry_index/
-    if register:
+    if register and msg["refresh_metadata"]:
         metadata["area_id"] = register.area_id or "undefined"
+        metadata["area_name"] = "N/A"
+        area_entry = ar.async_get(hass).async_get_area(register.area_id)
+        if register.area_id and area_entry:
+            metadata["area_name"] = area_entry.name
         metadata["manufacturer"] = register.manufacturer
         metadata["model"] = register.model
         metadata["model_id"] = register.model_id
@@ -732,9 +767,11 @@ async def ws_get_embodied_carbon_time_interval(
             # _LOGGER.debug("Could not find energy entity for device %s", device_id)
             continue
 
-        install_date, id_store_updated = await utils_get_device_install_date(
-            hass, energy_entity, device_id
-        )
+        install_date, id_store_updated = (
+            await utils_get_device_install_date(hass, energy_entity, device_id)
+            if appliance_entity is None
+            else await utils_get_device_install_date(hass, appliance_entity, device_id)
+        )  # favor appliance_entity if it exists because it was 100% installed before powercalc
         if not install_date:
             # _LOGGER.debug("Could not find install date for device %s", device_id)
             continue
@@ -983,7 +1020,7 @@ async def ws_get_carbon_by_room_with_usage(
 
         predicted_usage_carbon_value = 0.0
         lifetime_days = device_info.get("lifetime_years", 5) * 365
-        install_date_str = metadata.get("install_date", None)
+        install_date_str = metadata.get("install_dt", None)
         install_dt = None
         if install_date_str:
             install_dt = dt_util.parse_datetime(install_date_str)
@@ -1224,7 +1261,7 @@ async def ws_get_carbon_by_type_with_usage(
 
         predicted_usage_carbon_value = 0.0
         lifetime_days = device_info.get("lifetime_years", 5) * 365
-        install_date_str = metadata.get("install_date", None)
+        install_date_str = metadata.get("install_dt", None)
         install_dt = None
         if install_date_str:
             install_dt = dt_util.parse_datetime(install_date_str)
@@ -1319,6 +1356,9 @@ async def ws_llm_detection(
         "TV",
         "Refrigerator",
         "Dishwasher",
+        "Switch",
+        "Smoke detector",
+        "Router",
     ]
 
     matched_device_types, devices_to_match = utils_local_type_matching(devices)
@@ -1621,3 +1661,226 @@ async def ws_get_yearly_contribution(
         msg["id"],
         {"yearly_contribution": yearly_contrib},
     )
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/get_annual_consumption_summary"}
+)
+@websocket_api.async_response
+async def ws_get_annual_consumption_summary(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return annual/available-period carbon consumption summary for dashboard cards."""
+    entry = _get_loaded_entry(hass)
+    if not entry:
+        _LOGGER.exception("No config entry found")
+        connection.send_error(
+            msg["id"], "config_entry_not_found", "Uh oh, no config entry found :-("
+        )
+        return
+
+    end_time = dt_util.now()
+    start_time = end_time - relativedelta(years=1)
+
+    cf_store = entry.runtime_data.cf_store
+    devices = cf_store.get_devices_data()
+    carbon_usage_entities = {
+        device_info.get("cu_entity")
+        for device_info in devices.values()
+        if device_info.get("cu_entity")
+    }
+
+    if not carbon_usage_entities:
+        connection.send_result(
+            msg["id"],
+            {
+                "kgCO2eq": 0,
+                "carKm": 0,
+                "rangeText": "No carbon consumption data available yet.",
+            },
+        )
+        return
+
+    stats = await recorder.get_instance(hass).async_add_executor_job(
+        statistics_during_period,
+        hass,
+        dt_util.as_utc(start_time),
+        dt_util.as_utc(end_time),
+        carbon_usage_entities,
+        "day",
+        None,
+        {"change"},
+    )
+
+    total_grams = 0.0
+    first_data_time = None
+    for entity_stats in stats.values():
+        for datapoint in entity_stats:
+            reading = datapoint.get("change")
+            start_ts = datapoint.get("start")
+            if not reading or not start_ts:
+                continue
+
+            total_grams += float(reading)
+            datapoint_time = dt_util.as_local(dt_util.utc_from_timestamp(start_ts))
+            if first_data_time is None or datapoint_time < first_data_time:
+                first_data_time = datapoint_time
+
+    if first_data_time is None:
+        connection.send_result(
+            msg["id"],
+            {
+                "kgCO2eq": 0,
+                "carKm": 0,
+                "rangeText": "No carbon consumption data available yet.",
+            },
+        )
+        return
+
+    has_full_year = first_data_time <= start_time
+    range_text = (
+        "Based on the last 12 months of available data."
+        if has_full_year
+        else (
+            f"This data is from {first_data_time.date().isoformat()} to today; "
+            "no further data available."
+        )
+    )
+
+    connection.send_result(
+        msg["id"],
+        {
+            "kgCO2eq": total_grams / 1000,
+            "carKm": total_grams / 218,
+            "rangeText": range_text,
+        },
+    )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/get_recommendations",
+        vol.Optional("room_data", default=[]): list,
+        vol.Optional("yearly_contribution", default=0): vol.Any(float, int, str, None),
+        vol.Optional("usage_history", default={}): dict,
+        vol.Optional("intensity_history", default=[]): list,
+        vol.Optional("current_intensity", default=None): vol.Any(float, int, str, None),
+    }
+)
+@websocket_api.async_response
+async def ws_get_recommendations(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return dashboard recommendations computed by the backend."""
+    try:
+        _LOGGER.debug(
+            "Computing recommendations: rooms=%d, usage_devices=%d, intensity_points=%d, current_intensity=%s",
+            len(msg.get("room_data") or []),
+            len(msg.get("usage_history") or {}),
+            len(msg.get("intensity_history") or []),
+            msg.get("current_intensity"),
+        )
+        recommendations = build_recommendations(
+            msg.get("room_data") or [],
+            msg.get("yearly_contribution"),
+            msg.get("usage_history") or {},
+            msg.get("intensity_history") or [],
+            msg.get("current_intensity"),
+        )
+    except Exception as err:
+        _LOGGER.exception("Failed to compute recommendations")
+        connection.send_error(
+            msg["id"],
+            "recommendation_error",
+            f"Failed to compute recommendations: {err}",
+        )
+        return
+
+    connection.send_result(msg["id"], recommendations)
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/reset_sensors", vol.Required("device_id"): str}
+)
+@websocket_api.async_response
+async def ws_reset_sensors(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Reset and rebuild a sensor's history."""
+    entry = _get_loaded_entry(hass)
+    if not entry:
+        _LOGGER.exception("No config entry found")
+        connection.send_error(
+            msg["id"], "config_entry_not_found", "Uh oh, no config entry found :-("
+        )
+        return
+
+    entity_reg = er.async_get(hass)
+
+    device_id = msg["device_id"]
+    cf_store = entry.runtime_data.cf_store
+    devices = cf_store.get_devices_data()
+    device_info = devices.get(device_id, None)
+    if device_info is None:
+        _LOGGER.warning(
+            "Device with id %s is not in the carbon footprint store", device_id
+        )
+        connection.send_error(
+            msg["id"],
+            "err_no_device_found",
+            f"Device with id {device_id} does not exist in the CF store",
+        )
+        return
+
+    device_name = device_info.get("metadata", {}).get("display_name", "err")
+    iot_sensor = device_info.get("cu_entity", "cf_err_no_device")
+    app_sensor = device_info.get("cu_app_entity", "cf_err_no_device")
+
+    _LOGGER.debug("Resetting sensor %s for device %s", iot_sensor, device_name)
+
+    sensors_remove = []
+    iot_sensor_entry = entity_reg.async_get(iot_sensor)
+    if iot_sensor_entry is not None:
+        iot_sensor_entity = iot_sensor_entry.entity_id
+        if iot_sensor_entity is not None:
+            _LOGGER.debug(
+                "Queuing %s sensor and history from device %s for removal",
+                iot_sensor,
+                device_name,
+            )
+
+            sensors_remove.append(iot_sensor_entity)
+            device_info["cu_entity"] = ""
+
+    app_sensor_entry = entity_reg.async_get(app_sensor)
+    if app_sensor_entry is not None:
+        app_sensor_entity = app_sensor_entry.entity_id
+        if app_sensor_entity is not None:
+            _LOGGER.debug(
+                "Queuing %s sensor and history from device %s for removal",
+                app_sensor,
+                device_name,
+            )
+
+            sensors_remove.append(app_sensor_entity)
+            device_info["cu_app_entity"] = ""
+
+    device_info["history_uploaded"] = False
+    device_info["appliance_history_uploaded"] = False
+    hass.async_create_task(cf_store.async_save_data())
+
+    recorder.get_instance(hass).async_clear_statistics(sensors_remove)
+    for sensor_id in sensors_remove:
+        entity_reg.async_remove(sensor_id)
+
+    async_dispatcher_send(
+        hass, DEVICE_ADDED_SIGNAL, device_id
+    )  # fire device added event to force sensor(s) recreation
+
+    connection.send_result(msg["id"], {"success": True})

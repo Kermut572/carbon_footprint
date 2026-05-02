@@ -76,6 +76,11 @@ class CFStore:
             history_uploaded = curr_device_info.get("history_uploaded", False)
             entity_info["history_uploaded"] = history_uploaded
 
+            appliance_history_uploaded = curr_device_info.get(
+                "appliance_history_uploaded", False
+            )
+            entity_info["appliance_history_uploaded"] = appliance_history_uploaded
+
         self.data[device_id] = entity_info
         await self.async_save_data()
 
