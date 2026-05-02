@@ -49,7 +49,7 @@ from .utils import (
 
 _LOGGER = logging.getLogger(__name__)
 
-_STATISTICS_RESYNC_INTERVAL = timedelta(minutes=45)
+_STATISTICS_RESYNC_INTERVAL = timedelta(minutes=2)
 
 
 async def async_setup_entry(
