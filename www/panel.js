@@ -818,17 +818,19 @@ class CarbonFootprintPanel extends HTMLElement {
                     <ha-card header="Configured Devices">
                         <div class="card-content device-list-container">
                             ${hasDevices ? `
-                                <div style="margin-bottom: 20px; display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
-                                    <div style="flex: 1; min-width: 200px;">
+                                <div style="margin-bottom: 20px; display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start;">
+                                    <div style="flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 4px;">
                                         <ha-selector id="device_search_selector"></ha-selector>
                                     </div>
-                                    <div style="flex: 1; min-width: 200px;">
+                                    <div style="flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 4px;">
                                         <ha-selector id="device_area_selector"></ha-selector>
                                     </div>
-                                    <div style="flex: 1; min-width: 200px;">
+                                    <div style="flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 4px;">
                                         <ha-selector id="device_type_filter_selector"></ha-selector>
                                     </div>
-                                    <button id="clear_filters_btn" style="padding: 8px 16px; background-color: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer;">Clear Filters</button>
+                                    <div style="display: flex; flex-direction: column; justify-content: flex-start;">
+                                        <button id="clear_filters_btn" style="padding: 8px 16px; background-color: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; margin-top: 24px;">Clear Filters</button>
+                                    </div>
                                 </div>
                                 <ul id="device_list">
                                     ${Object.entries(data.devices).map(([device_id, info]) => `
