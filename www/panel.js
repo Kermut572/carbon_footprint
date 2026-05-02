@@ -302,7 +302,7 @@ class CarbonFootprintPanel extends HTMLElement {
                     <ha-card header="Energy Consumption Footprint">
                         <div class="card-content">
                             <p style="font-size: 12px; color: #666; margin-top: 8px; margin-bottom: 16px;">
-                                <em>Devices energy consumption footprint over time (in grams CO₂ equivalent)</em>
+                                <em>Devices energy consumption footprint over time (in kg CO₂ equivalent)</em>
                             </p>
                             <div class="histogram-controls">
                                 <label for="granularity-select">Granularity:</label>
@@ -1240,10 +1240,11 @@ class CarbonFootprintPanel extends HTMLElement {
             const devices = aggData[ts] || {};
             return Object.values(devices).reduce((sum, deviceData) => sum + (deviceData[type] || 0), 0);
         };
-        const formatKgCO2 = grams => `${(grams / 1000).toFixed(3)} kgCO₂eq`;
+        const gramsToKg = grams => grams / 1000;
+        const formatKgCO2 = kg => `${kg.toFixed(3)} kgCO₂eq`;
 
         if (this._ecView === 'total' || this._ecView === 'embodied') {
-            const embodiedDataPoints = sortedTimestamps.map(ts => sumByTimestamp(ts, 'embodied'));
+            const embodiedDataPoints = sortedTimestamps.map(ts => gramsToKg(sumByTimestamp(ts, 'embodied')));
             datasets.push({
                 label: 'Embodied Carbon',
                 data: embodiedDataPoints,
@@ -1254,7 +1255,7 @@ class CarbonFootprintPanel extends HTMLElement {
         }
 
         if (this._ecView === 'total' || this._ecView === 'usage' || this._ecView === 'appliance') {
-            const usageData = sortedTimestamps.map(ts => sumByTimestamp(ts, 'consumption'));
+            const usageData = sortedTimestamps.map(ts => gramsToKg(sumByTimestamp(ts, 'consumption')));
             datasets.push({
                 label: this._ecView === 'appliance' ? 'Appliance Usage Carbon' : 'Usage Carbon',
                 data: usageData,
@@ -1317,7 +1318,7 @@ class CarbonFootprintPanel extends HTMLElement {
                     },
                     title: {
                         display: true,
-                        text: 'Energy Consumption Footprint (gCO₂eq)',
+                        text: 'Energy Consumption Footprint (kgCO₂eq)',
                     },
                     tooltip: {
                         callbacks: {
@@ -1337,7 +1338,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                 if (deviceBreakdown.length) {
                                     lines.push('Devices:');
                                     deviceBreakdown.forEach(item => {
-                                        lines.push(`${item.name}: ${formatKgCO2(item.value)}`);
+                                        lines.push(`${item.name}: ${formatKgCO2(gramsToKg(item.value))}`);
                                     });
                                 }
                                 return lines;
@@ -1354,7 +1355,7 @@ class CarbonFootprintPanel extends HTMLElement {
                         beginAtZero: true,
                         title: {
                             display: true,
-                            text: 'gCO₂eq'
+                            text: 'kgCO₂eq'
                         }
                     }
                 }
@@ -1488,7 +1489,7 @@ class CarbonFootprintPanel extends HTMLElement {
     // ============================================================================
 
     // turn on/off fake data here
-    _useFakeCarbonData = false;
+    _useFakeCarbonData = true;
     _useFakeRoomData = false;  // Toggle for test data (from test_data.py) - doesn't affect real devices
     _useFakeConsumptionData = false; // Toggle for Energy Consumption Footprint chart testing
     _hiddenRoomIndices = new Set();
