@@ -33,6 +33,7 @@ class CarbonFootprintPanel extends HTMLElement {
         this._deviceFilterSearch = '';
         this._deviceFilterAreas = '';
         this._deviceFilterTypes = '';
+        this._configuredDevices = {};
 
         this._hiddenDeviceIndices = new Set();
 
@@ -661,7 +662,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.20'; // :skull:
+        link.href = '/api/carbon_footprint/style.css?version=1.21'; // :skull:
         this.appendChild(link);
     }
 
@@ -792,10 +793,43 @@ class CarbonFootprintPanel extends HTMLElement {
         `;
     }
 
+    getDeviceTypeSuggestions() {
+        return [
+            "Temperature/humidity sensor",
+            "Motion sensor",
+            "Luminosity sensor",
+            "Air quality sensor",
+            "Camera",
+            "Speaker",
+            "Light bulb",
+            "Smart plug",
+            "Smart lock",
+            "Window/door sensor",
+            "Thermostat",
+            "Energy monitor",
+            "Washing machine",
+            "TV",
+            "Refrigerator",
+            "Dishwasher",
+            "Switch",
+            "Smoke detector",
+            "Router"
+        ];
+    }
+
+    escapeAttribute(value) {
+        return String(value ?? '')
+            .replaceAll('&', '&amp;')
+            .replaceAll('"', '&quot;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;');
+    }
+
     async renderSettingsPage(data) {
         const devicesResp = await this._hass.callWS({ type: 'carbon_footprint/get_devices_to_add' });
         const devicesArray = devicesResp.device_names || [];
         const hasDevices = data && data.devices && Object.keys(data.devices).length > 0;
+        this._configuredDevices = data?.devices || {};
 
         const allDevicesEnergyResp = await this.getAllDevicesEnergy();
         const energyDevices = allDevicesEnergyResp.devices_energy || [];
@@ -870,6 +904,13 @@ class CarbonFootprintPanel extends HTMLElement {
                                                 </button>
                                                 <button
                                                     type="button"
+                                                    class="modify-btn"
+                                                    data-device-id="${device_id}"
+                                                    title="Modify device">
+                                                    ✎
+                                                </button>
+                                                <button
+                                                    type="button"
                                                     class="delete-btn"
                                                     data-entity-id="${device_id}"
                                                     title="Remove device">
@@ -919,7 +960,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.20'; // :skull:
+        link.href = '/api/carbon_footprint/style.css?version=1.21'; // :skull:
         this.appendChild(link);
     }
 
@@ -2466,28 +2507,160 @@ class CarbonFootprintPanel extends HTMLElement {
         });
     }
 
+    toggleDeviceDetails(deviceInfo) {
+        const extendedDiv = deviceInfo?.querySelector('.device-extended');
+        const extendBtn = deviceInfo?.querySelector('.extend-btn');
+
+        if (!extendedDiv) {
+            return;
+        }
+
+        const isHidden = extendedDiv.style.display === 'none' || !extendedDiv.style.display;
+        extendedDiv.style.display = isHidden ? 'block' : 'none';
+
+        if (extendBtn) {
+            extendBtn.textContent = isHidden ? '▲' : '▼';
+        }
+    }
+
+    showEditDeviceDialog(deviceId) {
+        const deviceInfo = this._configuredDevices?.[deviceId];
+        if (!deviceInfo) {
+            Utils.showToast(this, 'Could not find this device.');
+            return;
+        }
+
+        const metadata = deviceInfo.metadata || {};
+        const attr = value => this.escapeAttribute(value);
+        const deviceClasses = Array.isArray(metadata.device_classes)
+            ? metadata.device_classes.join(', ')
+            : (metadata.device_classes || '');
+        const typeOptions = this.getDeviceTypeSuggestions()
+            .map(type => `<option value="${type}"></option>`)
+            .join('');
+
+        const dialog = document.createElement('dialog');
+        dialog.classList.add('ha-dialog', 'edit-device-dialog');
+        dialog.innerHTML = `
+            <form class="dialog-content" id="edit-device-form">
+                <h2>Modify Device</h2>
+                <div class="edit-device-grid">
+                    <label>
+                        Device name
+                        <input name="display_name" type="text" value="${attr(metadata.display_name || deviceId)}">
+                    </label>
+                    <label>
+                        Device type
+                        <input name="device_type" type="text" list="edit-device-type-options" value="${attr(deviceInfo.type || '')}" required>
+                        <datalist id="edit-device-type-options">${typeOptions}</datalist>
+                    </label>
+                    <label>
+                        Carbon footprint (kgCO₂eq)
+                        <input name="carbon_footprint" type="number" min="0" step="0.01" value="${attr(deviceInfo.carbon_footprint || 0)}" required>
+                    </label>
+                    <label>
+                        Area name
+                        <input name="area_name" type="text" value="${attr(metadata.area_name || '')}">
+                    </label>
+                    <label>
+                        Area ID
+                        <input name="area_id" type="text" value="${attr(metadata.area_id || '')}">
+                    </label>
+                    <label>
+                        Manufacturer
+                        <input name="manufacturer" type="text" value="${attr(metadata.manufacturer || '')}">
+                    </label>
+                    <label>
+                        Model
+                        <input name="model" type="text" value="${attr(metadata.model || '')}">
+                    </label>
+                    <label>
+                        Model ID
+                        <input name="model_id" type="text" value="${attr(metadata.model_id || '')}">
+                    </label>
+                    <label>
+                        Device classes
+                        <input name="device_classes" type="text" value="${attr(deviceClasses)}">
+                    </label>
+                    <label>
+                        Total energy consumed
+                        <input name="total_energy" type="number" min="0" step="0.001" value="${attr(metadata.total_energy ?? '')}">
+                    </label>
+                    <label>
+                        HA ID
+                        <input type="text" value="${attr(deviceId)}" readonly>
+                    </label>
+                </div>
+                <div class="dialog-actions">
+                    <button type="button" id="cancel-edit-device">Cancel</button>
+                    <button type="submit">Done</button>
+                </div>
+            </form>
+        `;
+
+        const closeDialog = () => {
+            dialog.close();
+            dialog.remove();
+        };
+
+        dialog.querySelector('#cancel-edit-device')?.addEventListener('click', closeDialog);
+        dialog.addEventListener('click', (event) => {
+            if (event.target === dialog) {
+                closeDialog();
+            }
+        });
+
+        dialog.querySelector('#edit-device-form')?.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const formData = new FormData(event.currentTarget);
+            const updatedMetadata = {
+                ...metadata,
+                manual_metadata: true,
+                display_name: formData.get('display_name') || deviceId,
+                area_name: formData.get('area_name') || '',
+                area_id: formData.get('area_id') || '',
+                manufacturer: formData.get('manufacturer') || '',
+                model: formData.get('model') || '',
+                model_id: formData.get('model_id') || '',
+                device_classes: (formData.get('device_classes') || '')
+                    .split(',')
+                    .map(item => item.trim())
+                    .filter(Boolean),
+            };
+
+            const totalEnergy = formData.get('total_energy');
+            if (totalEnergy === '' || totalEnergy === null) {
+                delete updatedMetadata.total_energy;
+            } else {
+                updatedMetadata.total_energy = Number(totalEnergy);
+            }
+
+            try {
+                await this._hass.callWS({
+                    type: 'carbon_footprint/set_device',
+                    device_id: deviceId,
+                    device_type: formData.get('device_type'),
+                    carbon_footprint: Number(formData.get('carbon_footprint')),
+                    metadata: updatedMetadata,
+                    refresh_metadata: false,
+                });
+
+                closeDialog();
+                const newData = await this.getCarbonData();
+                Utils.showToast(this, 'Successfully modified device!');
+                await this.renderSettingsPage(newData);
+            } catch (error) {
+                console.error('Failed to modify device:', error);
+                alert(`Error modifying device: ${error.message}`);
+            }
+        });
+
+        this.appendChild(dialog);
+        dialog.showModal();
+    }
+
     attachFormHandler() {
-        const suggestions = [
-            "Temperature/humidity sensor",
-            "Motion sensor",
-            "Luminosity sensor",
-            "Air quality sensor",
-            "Camera",
-            "Speaker",
-            "Light bulb",
-            "Smart plug",
-            "Smart lock",
-            "Window/door sensor",
-            "Thermostat",
-            "Energy monitor",
-            "Washing machine",
-            "TV",
-            "Refrigerator",
-            "Dishwasher",
-            "Switch",
-            "Smoke detector",
-            "Router"
-        ];
+        const suggestions = this.getDeviceTypeSuggestions();
 
         const carbonSelector = this.querySelector('#device_carbon_footprint');
         if (carbonSelector) {
@@ -2631,21 +2804,34 @@ class CarbonFootprintPanel extends HTMLElement {
         const extendButtons = this.querySelectorAll('.extend-btn');
         extendButtons.forEach(btn => {
             btn.addEventListener('click', (e) => {
-                const deviceInfo = e.currentTarget.closest('.device-info');
-                const extendedDiv = deviceInfo.querySelector('.device-extended');
-
-                if (extendedDiv) {
-                    const isHidden = extendedDiv.style.display === 'none' || !extendedDiv.style.display;
-                    extendedDiv.style.display = isHidden ? 'block' : 'none';
-
-                    e.currentTarget.textContent = isHidden ? '▲' : '▼';
-                }
+                e.stopPropagation();
+                this.toggleDeviceDetails(e.currentTarget.closest('.device-info'));
             })
         })
+
+        const deviceCards = this.querySelectorAll('.device-info');
+        deviceCards.forEach(card => {
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('button, a, input, select, textarea, ha-selector, label')) {
+                    return;
+                }
+
+                this.toggleDeviceDetails(e.currentTarget);
+            });
+        });
+
+        const modifyButtons = this.querySelectorAll('.modify-btn');
+        modifyButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.showEditDeviceDialog(e.currentTarget.dataset.deviceId);
+            });
+        });
 
         const resetSensorButtons = this.querySelectorAll('.reset-sensor-btn');
         resetSensorButtons.forEach(btn => {
             btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
                 const deviceId = e.currentTarget.dataset.deviceId;
                 const deviceName = e.currentTarget.dataset.deviceName;
 
@@ -2670,6 +2856,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const deleteButtons = this.querySelectorAll('.delete-btn');
         deleteButtons.forEach(btn => {
             btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
                 const entityId = e.currentTarget.dataset.entityId;
 
                 if (!confirm(`Remove ${entityId} from tracking?`)) {

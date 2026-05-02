@@ -285,6 +285,8 @@ def ws_get_carbon_data(
             continue
 
         metadata = device_info.setdefault("metadata", {})
+        if metadata.get("manual_metadata"):
+            continue
 
         updated_device_name = (
             device_reg.devices.get(device_id).name_by_user
@@ -356,6 +358,7 @@ def ws_get_carbon_data(
         vol.Required("device_type"): str,
         vol.Required("carbon_footprint"): vol.Coerce(float),
         vol.Optional("metadata", default={}): dict,
+        vol.Optional("refresh_metadata", default=True): bool,
     }
 )
 @websocket_api.async_response
@@ -395,7 +398,7 @@ async def ws_set_device(
             break
 
     # all metadata we can add: https://developers.home-assistant.io/docs/device_registry_index/
-    if register:
+    if register and msg["refresh_metadata"]:
         metadata["area_id"] = register.area_id or "undefined"
         metadata["area_name"] = "N/A"
         area_entry = ar.async_get(hass).async_get_area(register.area_id)
