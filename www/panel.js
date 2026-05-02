@@ -293,9 +293,12 @@ class CarbonFootprintPanel extends HTMLElement {
                                 </div>
                             </div>
                         </ha-card>
-                        <ha-card header="Blablabla">
-                            <div class="card-content" style="font-size: 22px; font-weight: 600;">
-                                N/A
+                        <ha-card header="Quick actions">
+                            <div class="card-content">
+                                <div class="button-group" style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                    <button type="button" id="detect-devices-btn"><div class="loader" id="loader"></div>Automatic Setup</button>
+                                    <button type="button" id="export-json-btn">Export to JSON</button>
+                                </div>
                             </div>
                         </ha-card>
                     </div>
@@ -592,6 +595,8 @@ class CarbonFootprintPanel extends HTMLElement {
             });
         }
 
+        this.attachQuickActionHandlers();
+
         const groupBySelect = this.querySelector('#group-by-select');
         if (groupBySelect) {
             groupBySelect.addEventListener('change', async (e) => {
@@ -761,8 +766,6 @@ class CarbonFootprintPanel extends HTMLElement {
                 <div class="button-group">
                     <button type="button" id="compute-footprint-btn">Compute Footprint</button>
                     <button type="submit">Add Device</button>
-                    <button type="button" id="detect-devices-btn"><div class="loader" id="loader"></div>Automatic Setup</button>
-                    <button type="button" id="export-json-btn">Export to JSON</button>
                 </div>
             </form>
         `;
@@ -1109,9 +1112,15 @@ class CarbonFootprintPanel extends HTMLElement {
         finally {
             this.hideLoadingOverlay();
             detectBtn.disabled = false;
-            loaderAnim.style.display = 'none';
+            if (loaderAnim) {
+                loaderAnim.style.display = 'none';
+            }
             const updatedData = await this.getCarbonData();
-            await this.renderSettingsPage(updatedData);
+            if (this._currentPage === 'settings') {
+                await this.renderSettingsPage(updatedData);
+            } else {
+                await this.render(updatedData);
+            }
             if (unmatchedDevices.length != 0) {
                 Utils.showToast(this, `Could not detect device type for devices ${unmatchedDevices.toString()}`);
                 console.log(`Could not detect device type for devices ${unmatchedDevices.toString()}`);
@@ -2507,6 +2516,37 @@ class CarbonFootprintPanel extends HTMLElement {
         });
     }
 
+    attachQuickActionHandlers() {
+        const detectBtn = this.querySelector('#detect-devices-btn');
+        const loaderAnim = this.querySelector('#loader');
+        if (detectBtn) {
+            detectBtn.addEventListener('click', async () => {
+                this.detectDevicesType(detectBtn, loaderAnim);
+                detectBtn.disabled = true;
+                if (loaderAnim) {
+                    loaderAnim.style.display = 'inline-block';
+                }
+            });
+        }
+
+        const exportBtn = this.querySelector('#export-json-btn');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', async () => {
+                let jsonArray = await this._hass.callWS({ type: 'carbon_footprint/export_json' });
+
+                const array = JSON.stringify(jsonArray.json_array);
+                const uploaded = jsonArray.uploaded;
+                if (uploaded === 'yes') {
+                    Utils.showToast(this, "Devices have been uploaded to the db interface!");
+                }
+                else {
+                    navigator.clipboard.writeText(array);
+                    Utils.showToast(this, "Devices have been copied to the clipboard! If you wanted to upload to the interface, please make sure db_ip and cfdb_token are correct and set.");
+                }
+            });
+        }
+    }
+
     toggleDeviceDetails(deviceInfo) {
         const extendedDiv = deviceInfo?.querySelector('.device-extended');
         const extendBtn = deviceInfo?.querySelector('.extend-btn');
@@ -2767,33 +2807,6 @@ class CarbonFootprintPanel extends HTMLElement {
                     alert(`Error adding device: ${error.message}`);
                 }
             });
-        }
-
-        const detectBtn = this.querySelector('#detect-devices-btn');
-        const loaderAnim = this.querySelector('#loader');
-        if (detectBtn) {
-            detectBtn.addEventListener('click', async () => {
-                this.detectDevicesType(detectBtn, loaderAnim)
-                detectBtn.disabled = true;
-                loaderAnim.style.display = 'inline-block';
-            });
-        }
-
-        const exportBtn = this.querySelector('#export-json-btn');
-        if (exportBtn) {
-            exportBtn.addEventListener('click', async () => {
-                let jsonArray = await this._hass.callWS({ type: 'carbon_footprint/export_json' });
-
-                const array = JSON.stringify(jsonArray.json_array);
-                const uploaded = jsonArray.uploaded
-                if (uploaded === 'yes') {
-                    Utils.showToast(this, "Devices have been uploaded to the db interface!");
-                }
-                else {
-                    navigator.clipboard.writeText(array);
-                    Utils.showToast(this, "Devices have been copied to the clipboard! If you wanted to upload to the interface, please make sure db_ip and cfdb_token are correct and set.");
-                }
-            })
         }
 
         const computeBtn = this.querySelector('#compute-footprint-btn');
