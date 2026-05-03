@@ -155,9 +155,289 @@ REGEX_MATCHER = [
     ),
 ]
 
+DEVICE_BLACKLIST_RULES = [
+    {
+        "name": "Mobile phones",
+        "description": "Personal phones are detected by Home Assistant but are not tracked as home IoT devices. If you want to add new matches:",
+        "match_groups": {
+            "Generic": ["phone", "smartphone", "mobile phone", "Android phone"],
+            "Apple": ["iPhone"],
+            "Google": ["Pixel phone", "Pixel 2+"],
+            "Samsung": ["Galaxy S", "Galaxy Z", "Galaxy Note", "Galaxy A", "Galaxy M", "SM-* phone model IDs"],
+            "Nokia": ["Lumia", "G series", "X series", "C series", "3/4 digit models"],
+            "Huawei": ["P series", "Mate", "Nova", "Y series", "Enjoy"],
+            "Honor": ["Magic", "X series", "Play", "numbered models"],
+            "Xiaomi": ["Mi", "numbered/T series", "Mix", "Note", "Civi"],
+            "Redmi": ["Note", "K series", "numbered models"],
+            "Poco": ["F series", "M series", "X series", "C series"],
+            "OnePlus": ["One", "numbered/R/T/Pro", "Nord", "Open"],
+            "Oppo": ["Find", "Reno", "A series", "F series"],
+            "Vivo": ["X series", "Y series", "V series", "Nex", "iQOO"],
+            "Realme": ["GT", "C series", "Narzo", "numbered models"],
+            "Motorola": ["Moto E/G/X/Z", "Moto G Power/Play/Stylus/Pure/Fast", "Edge", "Razr", "One"],
+            "Sony": ["Xperia"],
+            "Fairphone": ["Fairphone"],
+            "Nothing": ["Phone"],
+            "Asus": ["Zenfone", "ROG Phone"],
+            "HTC": ["One", "Desire", "U series"],
+            "LG": ["G series", "V series", "Velvet", "Wing", "K series", "Q series"],
+            "ZTE": ["Axon", "Blade"],
+            "Nubia": ["Z series", "RedMagic"],
+            "BlackBerry": ["KeyOne", "Key2", "Priv", "Passport", "Classic", "Bold"],
+            "Alcatel": ["OneTouch", "Idol", "numbered models"],
+            "TCL": ["Plex", "numbered models"],
+            "Wiko": ["View", "Y series", "Sunny", "Lenny"],
+        },
+        "keywords": [
+            "phone",
+            "smartphone",
+            "mobile phone",
+            "iPhone",
+            "Android phone",
+            "Google Pixel",
+            "Pixel phone",
+            "Samsung Galaxy S",
+            "Samsung Galaxy Z",
+            "Samsung Galaxy A",
+            "Samsung Galaxy Note",
+            "Nokia Lumia/G/X/C",
+            "Huawei P/Mate/Nova/Y",
+            "Honor Magic/X/Play",
+            "Xiaomi Mi/Redmi/Poco",
+            "OnePlus",
+            "Oppo Find/Reno/A",
+            "Vivo X/Y/V",
+            "Realme",
+            "Motorola Moto/Edge/Razr",
+            "Sony Xperia",
+            "Fairphone",
+            "Nothing Phone",
+            "Asus Zenfone/ROG Phone",
+            "HTC One/U/Desire",
+            "LG G/V/Velvet/Wing",
+            "ZTE Axon/Blade",
+            "Nubia/RedMagic",
+            "BlackBerry",
+            "Alcatel/TCL",
+            "Wiko",
+        ],
+        "regex": re.compile(
+            r"""
+            \b(
+                (smart\s?)?phone
+                | mobile\sphone
+                | android\sphone
+                | iphone
+                | apple\siphone
+                | google\spixel
+                | pixel\s(phone|[2-9]\d*(a|pro|xl)?)
+                | galaxy\s(
+                    s\d{1,2}(\s?(fe|plus|ultra))?
+                    | z\s?(flip|fold)\d*
+                    | note\s?\d*
+                    | a\d{1,2}
+                    | m\d{1,2}
+                )
+                | sm-[a-z]\d{3}[a-z0-9]*
+                | nokia\s(
+                    lumia\s?\d*
+                    | [cgx]\d{1,2}
+                    | \d{3,4}
+                )
+                | huawei\s(
+                    p\d{1,2}(\s?(lite|pro|plus))?
+                    | mate\s?\d{1,2}(\s?(lite|pro|rs))?
+                    | nova\s?\d{1,2}
+                    | y\d{1,2}
+                    | enjoy\s?\d{1,2}
+                )
+                | honor\s(
+                    magic\s?\d*
+                    | x\d{1,2}
+                    | play\s?\d*
+                    | \d{1,3}(\s?(lite|pro))?
+                )
+                | xiaomi\s(
+                    mi\s?\d{1,2}
+                    | \d{1,2}t?(\s?(lite|pro|ultra))?
+                    | mix\s?\d*
+                    | note\s?\d*
+                    | civi\s?\d*
+                )
+                | redmi\s(
+                    note\s?\d{1,2}
+                    | k\d{1,2}
+                    | \d{1,2}[a-z]?
+                )
+                | poco\s([fmx]\d{1,2}|c\d{1,2})
+                | oneplus\s(
+                    one
+                    | \d{1,2}(\s?(r|t|pro))?
+                    | nord(\s?(ce|n)\s?\d*)?
+                    | open
+                )
+                | oppo\s(
+                    find\s?x?\d*
+                    | reno\s?\d*
+                    | a\d{1,2}
+                    | f\d{1,2}
+                )
+                | vivo\s(
+                    x\d{1,3}
+                    | y\d{1,3}
+                    | v\d{1,3}
+                    | nex
+                    | iqoo\s?\d*
+                )
+                | realme\s(
+                    gt\s?\d*
+                    | c\d{1,2}
+                    | narzo\s?\d*
+                    | \d{1,2}(\s?(pro|plus))?
+                )
+                | motorola\s(
+                    moto\s?[egxz]\d{1,2}
+                    | moto\sg\s?(power|play|stylus|pure|fast)
+                    | edge\s?\d*
+                    | razr\s?\d*
+                    | one\s?(action|fusion|vision|zoom)?
+                )
+                | moto\s[egxz]\d{1,2}
+                | moto\sg\s?(power|play|stylus|pure|fast)
+                | sony\sxperia\s?[a-z0-9]+\b
+                | xperia\s?[a-z0-9]+\b
+                | fairphone\s?\d*
+                | nothing\sphone\s?\(?\d*\)?
+                | asus\s(
+                    zenfone\s?\d*
+                    | rog\sphone\s?\d*
+                )
+                | zenfone\s?\d*
+                | rog\sphone\s?\d*
+                | htc\s(
+                    one\s?[a-z0-9]*
+                    | desire\s?\d*
+                    | u\d{1,2}
+                )
+                | lg\s(
+                    g\d
+                    | v\d{2}
+                    | velvet
+                    | wing
+                    | k\d{1,2}
+                    | q\d{1,2}
+                )
+                | zte\s(
+                    axon\s?\d*
+                    | blade\s?[a-z0-9]*
+                )
+                | nubia\s(z\d{1,2}|red\s?magic\s?\d*)
+                | red\s?magic\s?\d*
+                | blackberry\s(
+                    key\s?(one|2)
+                    | priv
+                    | passport
+                    | classic
+                    | bold
+                )
+                | alcatel\s(
+                    one\s?touch
+                    | idol\s?\d*
+                    | \d[svxl]?
+                )
+                | tcl\s(
+                    plex
+                    | \d{2,3}[a-z]?
+                )
+                | wiko\s(
+                    view\s?\d*
+                    | y\d{2}
+                    | sunny\s?\d*
+                    | lenny\s?\d*
+                )
+            )\b
+            """,
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+    },
+]
+
 
 class ProviderError(Exception):
     """Error raised when OpenRouter returns a provider error."""
+
+
+def utils_get_device_blacklist_rules() -> list[dict[str, object]]:
+    """Return the device blacklist rules that are safe to expose to the frontend."""
+    return [
+        {
+            "name": rule["name"],
+            "description": rule["description"],
+            "keywords": rule["keywords"],
+            "match_groups": rule["match_groups"],
+        }
+        for rule in DEVICE_BLACKLIST_RULES
+    ]
+
+
+def utils_build_custom_blacklist_rules(
+    custom_rules: list[dict[str, str]],
+) -> list[dict[str, object]]:
+    """Build frontend-safe custom ignored device rules."""
+    rules = []
+    for custom_rule in custom_rules:
+        brand = custom_rule.get("brand", "").strip()
+        model = custom_rule.get("model", "").strip()
+        if not brand or not model:
+            continue
+
+        rules.append(
+            {
+                "name": f"{brand} {model}",
+                "description": "Custom ignored device added by the user.",
+                "keywords": [brand, model],
+                "match_groups": {brand: [model]},
+                "brand": brand,
+                "model": model,
+                "custom": True,
+            }
+        )
+
+    return rules
+
+
+def utils_get_device_blacklist_match(
+    device_name: str | None,
+    device_model: str | None,
+    device_manufacturer: str | None,
+    custom_rules: list[dict[str, str]] | None = None,
+) -> str | None:
+    """Return the matching blacklist rule name for a device, if any."""
+    device_str = " ".join(
+        str(value)
+        for value in (device_name, device_model, device_manufacturer)
+        if value
+    )
+
+    if not device_str:
+        return None
+
+    for rule in DEVICE_BLACKLIST_RULES:
+        if rule["regex"].search(device_str):
+            return str(rule["name"])
+
+    for rule in custom_rules or []:
+        brand = rule.get("brand", "").strip()
+        model = rule.get("model", "").strip()
+        if not brand or not model:
+            continue
+
+        if re.search(re.escape(brand), device_str, flags=re.IGNORECASE) and re.search(
+            re.escape(model), device_str, flags=re.IGNORECASE
+        ):
+            return f"{brand} {model}"
+
+    return None
 
 
 def utils_get_device_classes(

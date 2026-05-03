@@ -263,6 +263,141 @@ th, td {
     gap: 8px;
 }
 
+.blacklist-card-title {
+    padding: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+    font-size: 1.35rem;
+    font-weight: 400;
+}
+
+.blacklist-card-title:focus {
+    outline: 2px solid var(--primary-color);
+    outline-offset: -2px;
+}
+
+.blacklist-card-content {
+    padding: 0 16px 16px;
+    border-top: 1px solid var(--divider-color);
+}
+
+.blacklist-card-content h3 {
+    margin: 16px 0 8px;
+    font-size: 1rem;
+    font-weight: 500;
+}
+
+.blacklist-match-intro {
+    margin: 0 0 8px;
+    color: var(--secondary-text-color, #666);
+    font-size: 13px;
+}
+
+.blacklist-rule-list li {
+    padding: 10px 0;
+}
+
+.blacklist-rule-row {
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.blacklist-matches-btn {
+    flex-shrink: 0;
+}
+
+.blacklist-add-rule-btn {
+    margin: 4px 0 8px;
+}
+
+.blacklist-device-table {
+    margin-bottom: 0;
+}
+
+.blacklist-add-device-btn {
+    white-space: nowrap;
+}
+
+.blacklist-matches-dialog {
+    max-width: 720px;
+}
+
+.blacklist-match-browser {
+    display: grid;
+    grid-template-columns: minmax(160px, 220px) minmax(0, 1fr);
+    gap: 16px;
+    margin: 12px 0 16px;
+}
+
+.blacklist-brand-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 360px;
+    overflow: auto;
+    padding-right: 4px;
+}
+
+.blacklist-brand-btn {
+    width: 100%;
+    text-align: left;
+}
+
+.blacklist-brand-btn[aria-pressed="true"] {
+    background: var(--primary-color);
+    color: var(--text-primary-color);
+}
+
+.blacklist-model-list {
+    min-width: 0;
+    border-left: 1px solid var(--divider-color);
+    padding-left: 16px;
+}
+
+.blacklist-model-list h3 {
+    margin-top: 0;
+}
+
+.blacklist-match-chips {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 12px 0 16px;
+}
+
+.blacklist-match-chips span {
+    padding: 5px 8px;
+    border: 1px solid var(--divider-color);
+    border-radius: 4px;
+    background: var(--secondary-background-color);
+    font-size: 13px;
+}
+
+.ignore-rule-primary-text {
+    font-size: 18px;
+    line-height: 1.45;
+    font-weight: 500;
+    margin-bottom: 12px;
+}
+
+@media (max-width: 640px) {
+    .blacklist-match-browser {
+        grid-template-columns: 1fr;
+    }
+
+    .blacklist-model-list {
+        border-left: none;
+        border-top: 1px solid var(--divider-color);
+        padding-left: 0;
+        padding-top: 12px;
+    }
+}
+
 button {
     background-color: var(--primary-color);
     color: var(--text-primary-color);

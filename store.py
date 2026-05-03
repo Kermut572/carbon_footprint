@@ -7,6 +7,7 @@ from .const import DOMAIN
 
 STORAGE_VERSION = 1
 STORAGE_KEY = f"{DOMAIN}.data"
+IGNORE_STORAGE_KEY = f"{DOMAIN}.ignored_devices"
 
 
 class CFStore:
@@ -27,16 +28,24 @@ class CFStore:
     def __init__(self, hass: HomeAssistant) -> None:
         """Init CFStore object."""
         self.store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+        self.ignore_store = Store(hass, STORAGE_VERSION, IGNORE_STORAGE_KEY)
         self.data: dict[str, dict] = {}
+        self.ignored_devices: list[dict[str, str]] = []
 
     async def async_load_data(self) -> None:
         """Asynchronously load data."""
         data = await self.store.async_load()
         self.data = data if data is not None else {}
+        ignored_devices = await self.ignore_store.async_load()
+        self.ignored_devices = ignored_devices if ignored_devices is not None else []
 
     async def async_save_data(self) -> None:
         """Asynchronously save data."""
         await self.store.async_save(data=self.data)
+
+    async def async_save_ignored_devices(self) -> None:
+        """Asynchronously save custom ignored device rules."""
+        await self.ignore_store.async_save(data=self.ignored_devices)
 
     async def async_set_device_info(
         self, device_id: str, type: str, carbon_footprint: float, metadata: dict
@@ -92,3 +101,27 @@ class CFStore:
     def get_devices_data(self) -> dict[str, dict]:
         """Get the data from the store."""
         return self.data
+
+    def get_ignored_device_rules(self) -> list[dict[str, str]]:
+        """Get custom ignored device rules."""
+        return self.ignored_devices
+
+    async def async_add_ignored_device_rule(self, brand: str, model: str) -> bool:
+        """Add a custom ignored device rule. Returns False if it already exists."""
+        normalized_brand = brand.strip()
+        normalized_model = model.strip()
+        rule_key = f"{normalized_brand.lower()}::{normalized_model.lower()}"
+
+        for rule in self.ignored_devices:
+            current_key = f"{rule.get('brand', '').lower()}::{rule.get('model', '').lower()}"
+            if current_key == rule_key:
+                return False
+
+        self.ignored_devices.append(
+            {
+                "brand": normalized_brand,
+                "model": normalized_model,
+            }
+        )
+        await self.async_save_ignored_devices()
+        return True

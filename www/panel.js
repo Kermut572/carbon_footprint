@@ -667,7 +667,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.21'; // :skull:
+        link.href = '/api/carbon_footprint/style.css?version=1.29'; // :skull:
         this.appendChild(link);
     }
 
@@ -828,9 +828,99 @@ class CarbonFootprintPanel extends HTMLElement {
             .replaceAll('>', '&gt;');
     }
 
+    escapeHtml(value) {
+        return this.escapeAttribute(value);
+    }
+
+    renderBlacklistCard(ignoredDevices = [], blacklistRules = []) {
+        const rulesContent = blacklistRules.length > 0
+            ? `<ul class="blacklist-rule-list">
+                ${blacklistRules.map(rule => `
+                    <li>
+                        <div class="blacklist-rule-row">
+                            <div>
+                                <strong>${this.escapeHtml(rule.name || 'Unnamed rule')}</strong><br>
+                                <span>${this.escapeHtml(rule.description || '')}</span>
+                            </div>
+                        </div>
+                    </li>
+                `).join('')}
+            </ul>`
+            : `<p>No blacklist rules configured.</p>`;
+        const viewMatchesButton = blacklistRules.length > 0
+            ? `<button
+                type="button"
+                class="blacklist-matches-btn"
+                data-rule-index="0">
+                View matches
+            </button>`
+            : '';
+
+        const devicesContent = ignoredDevices.length > 0
+            ? `<table class="blacklist-device-table">
+                <thead>
+                    <tr>
+                        <th>Device</th>
+                        <th>Reason</th>
+                        <th>Manufacturer</th>
+                        <th>Model</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${ignoredDevices.map(device => `
+                        <tr>
+                            <td>${this.escapeHtml(device.device_name || device.device_id || 'Unknown')}</td>
+                            <td>${this.escapeHtml(device.reason || 'Matched blacklist')}</td>
+                            <td>${this.escapeHtml(device.manufacturer || 'N/A')}</td>
+                            <td>${this.escapeHtml(device.model || 'N/A')}</td>
+                            <td>
+                                <button
+                                    type="button"
+                                    class="blacklist-add-device-btn"
+                                    data-device-id="${this.escapeAttribute(device.device_id || '')}"
+                                    data-device-name="${this.escapeAttribute(device.device_name || device.device_id || 'Unknown')}">
+                                    Add anyway
+                                </button>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>`
+            : `<p>No detected devices currently match the blacklist.</p>`;
+
+        return `
+            <ha-card class="blacklist-card">
+                <div
+                    id="device-blacklist-toggle"
+                    class="blacklist-card-title"
+                    role="button"
+                    tabindex="0"
+                    aria-expanded="false"
+                    aria-controls="device-blacklist-content">
+                    <span>Ignored devices blacklist</span>
+                    <span id="device-blacklist-icon">▼</span>
+                </div>
+                <div id="device-blacklist-content" class="blacklist-card-content" hidden>
+                    <h3>Active rules</h3>
+                    <p class="blacklist-match-intro">The matches are for the following device families and model names.</p>
+                    ${viewMatchesButton}
+                    <p class="blacklist-match-intro">If a device is missing, you can add one with this button:</p>
+                    <button type="button" class="blacklist-add-rule-btn">Add new device to ignore</button>
+                    ${rulesContent}
+                    <h3>Ignored detected devices</h3>
+                    ${devicesContent}
+                </div>
+            </ha-card>
+        `;
+    }
+
     async renderSettingsPage(data) {
         const devicesResp = await this._hass.callWS({ type: 'carbon_footprint/get_devices_to_add' });
         const devicesArray = devicesResp.device_names || [];
+        const ignoredDevices = devicesResp.ignored_devices || [];
+        const blacklistRules = devicesResp.blacklist_rules || [];
+        this._blacklistRules = blacklistRules;
         const hasDevices = data && data.devices && Object.keys(data.devices).length > 0;
         this._configuredDevices = data?.devices || {};
 
@@ -851,7 +941,7 @@ class CarbonFootprintPanel extends HTMLElement {
                             ${this.renderForm(devicesArray)}
                         </div>
                     </ha-card>
-
+                    ${this.renderBlacklistCard(ignoredDevices, blacklistRules)}
                     <ha-card header="Configured Devices">
                         <div class="card-content device-list-container">
                             ${hasDevices ? `
@@ -926,6 +1016,7 @@ class CarbonFootprintPanel extends HTMLElement {
                             ` : `<p>No devices configured yet.</p>`}
                         </div>
                     </ha-card>
+
                 </div>
             </ha-app-layout>
         `;
@@ -959,11 +1050,12 @@ class CarbonFootprintPanel extends HTMLElement {
         }
 
         this.attachFormHandler();
+        this.attachBlacklistCardHandlers();
 
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.21'; // :skull:
+        link.href = '/api/carbon_footprint/style.css?version=1.29'; // :skull:
         this.appendChild(link);
     }
 
@@ -1013,7 +1105,7 @@ class CarbonFootprintPanel extends HTMLElement {
         }
 
         let nbDevices = deviceNames.length;
-        let chunkSize = Math.round(nbDevices / 10);
+        let chunkSize = Math.max(1, Math.ceil(nbDevices / 10));
         let successfulBatches = 0;
 
         const totalRuns = Math.max(1, Math.ceil(nbDevices / chunkSize));
@@ -2692,6 +2784,247 @@ class CarbonFootprintPanel extends HTMLElement {
             } catch (error) {
                 console.error('Failed to modify device:', error);
                 alert(`Error modifying device: ${error.message}`);
+            }
+        });
+
+        this.appendChild(dialog);
+        dialog.showModal();
+    }
+
+    attachBlacklistCardHandlers() {
+        const toggle = this.querySelector('#device-blacklist-toggle');
+        const content = this.querySelector('#device-blacklist-content');
+        const icon = this.querySelector('#device-blacklist-icon');
+
+        if (!toggle || !content) {
+            return;
+        }
+
+        const setExpanded = (expanded) => {
+            content.hidden = !expanded;
+            toggle.setAttribute('aria-expanded', String(expanded));
+            if (icon) {
+                icon.textContent = expanded ? '▲' : '▼';
+            }
+        };
+
+        const toggleExpanded = () => {
+            setExpanded(content.hidden);
+        };
+
+        toggle.addEventListener('click', toggleExpanded);
+        toggle.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') {
+                return;
+            }
+
+            event.preventDefault();
+            toggleExpanded();
+        });
+
+        const matchesButtons = this.querySelectorAll('.blacklist-matches-btn');
+        matchesButtons.forEach(button => {
+            button.addEventListener('click', (event) => {
+                event.stopPropagation();
+                const ruleIndex = Number(event.currentTarget.dataset.ruleIndex);
+                const rule = this._blacklistRules?.[ruleIndex];
+                if (!rule) {
+                    Utils.showToast(this, 'Could not find blacklist matches.');
+                    return;
+                }
+
+                this.showBlacklistMatchesDialog(rule);
+            });
+        });
+
+        const addRuleButtons = this.querySelectorAll('.blacklist-add-rule-btn');
+        addRuleButtons.forEach(button => {
+            button.addEventListener('click', (event) => {
+                event.stopPropagation();
+                this.showAddIgnoredDeviceRuleDialog();
+            });
+        });
+
+        const addButtons = this.querySelectorAll('.blacklist-add-device-btn');
+        addButtons.forEach(button => {
+            button.addEventListener('click', async (event) => {
+                event.stopPropagation();
+                const deviceId = event.currentTarget.dataset.deviceId;
+                const deviceName = event.currentTarget.dataset.deviceName || deviceId;
+
+                if (!deviceId) {
+                    Utils.showToast(this, 'Could not find the ignored device ID.');
+                    return;
+                }
+
+                event.currentTarget.disabled = true;
+                try {
+                    const autoComp = await this._hass.callWS({
+                        type: 'carbon_footprint/get_device_autocomp',
+                        device_id: deviceId,
+                    });
+
+                    await this._hass.callWS({
+                        type: 'carbon_footprint/set_device',
+                        device_id: deviceId,
+                        device_type: autoComp.type || 'Unknown',
+                        carbon_footprint: autoComp.cf || 0,
+                        metadata: {},
+                        ignore_blacklist: true,
+                    });
+
+                    const newData = await this.getCarbonData();
+                    Utils.showToast(this, `Successfully added ${deviceName}.`);
+                    await this.renderSettingsPage(newData);
+                } catch (error) {
+                    console.error('Failed to add ignored device:', error);
+                    event.currentTarget.disabled = false;
+                    alert(`Error adding ignored device: ${error.message}`);
+                }
+            });
+        });
+    }
+
+    showBlacklistMatchesDialog(rule) {
+        const dialog = document.createElement('dialog');
+        dialog.classList.add('ha-dialog', 'blacklist-matches-dialog');
+        const matchGroups = rule.match_groups || {};
+        const brands = Object.keys(matchGroups);
+        dialog.innerHTML = `
+            <div class="dialog-content">
+                <h2>${this.escapeHtml(rule.name || 'Blacklist matches')}</h2>
+                <p class="blacklist-match-intro">Select a brand to see the model families recognised by the blacklist.</p>
+                <div class="blacklist-match-browser">
+                    <div class="blacklist-brand-list">
+                        ${brands.length > 0
+                            ? brands.map((brand, index) => `
+                                <button
+                                    type="button"
+                                    class="blacklist-brand-btn"
+                                    data-brand="${this.escapeAttribute(brand)}"
+                                    aria-pressed="${index === 0 ? 'true' : 'false'}">
+                                    ${this.escapeHtml(brand)}
+                                </button>
+                            `).join('')
+                            : '<span>N/A</span>'}
+                    </div>
+                    <div class="blacklist-model-list" id="blacklist-model-list"></div>
+                </div>
+                <div class="dialog-actions">
+                    <button type="button" id="close-blacklist-matches">Close</button>
+                </div>
+            </div>
+        `;
+
+        const renderModels = (brand) => {
+            const modelList = dialog.querySelector('#blacklist-model-list');
+            if (!modelList) {
+                return;
+            }
+
+            const models = matchGroups[brand] || [];
+            modelList.innerHTML = `
+                <h3>${this.escapeHtml(brand)}</h3>
+                <div class="blacklist-match-chips">
+                    ${models.length > 0
+                        ? models.map(model => `<span>${this.escapeHtml(model)}</span>`).join('')
+                        : '<span>N/A</span>'}
+                </div>
+            `;
+        };
+
+        const closeDialog = () => {
+            dialog.close();
+            dialog.remove();
+        };
+
+        dialog.querySelector('#close-blacklist-matches')?.addEventListener('click', closeDialog);
+        dialog.addEventListener('click', (event) => {
+            if (event.target === dialog) {
+                closeDialog();
+            }
+        });
+
+        this.appendChild(dialog);
+        const brandButtons = dialog.querySelectorAll('.blacklist-brand-btn');
+        brandButtons.forEach(button => {
+            button.addEventListener('click', (event) => {
+                const selectedBrand = event.currentTarget.dataset.brand;
+                brandButtons.forEach(item => item.setAttribute('aria-pressed', 'false'));
+                event.currentTarget.setAttribute('aria-pressed', 'true');
+                renderModels(selectedBrand);
+            });
+        });
+        if (brands.length > 0) {
+            renderModels(brands[0]);
+        }
+        dialog.showModal();
+    }
+
+    showAddIgnoredDeviceRuleDialog() {
+        const dialog = document.createElement('dialog');
+        dialog.classList.add('ha-dialog', 'add-ignore-rule-dialog');
+        dialog.innerHTML = `
+            <form class="dialog-content" id="add-ignore-rule-form">
+                <h2>Add new device to ignore</h2>
+                <p class="ignore-rule-primary-text">Enter the brand and model of the device you want to ignore. Matching is not case-sensitive. Make sure to differentiate the brand (manufacturer) from the model.</p>
+                <p>Examples: </p>
+                <p> An iPhone 12, use brand “Apple” and model “iPhone 12”. </p>
+                <p> A Samsung Galaxy Note, use brand “Samsung” and model “Galaxy Note”.</p>
+                <div class="edit-device-grid">
+                    <label>
+                        Brand
+                        <input name="brand" type="text" required>
+                    </label>
+                    <label>
+                        Model
+                        <input name="model" type="text" required>
+                    </label>
+                </div>
+                <div class="dialog-actions">
+                    <button type="button" id="cancel-add-ignore-rule">Cancel</button>
+                    <button type="submit">Add</button>
+                </div>
+            </form>
+        `;
+
+        const closeDialog = () => {
+            dialog.close();
+            dialog.remove();
+        };
+
+        dialog.querySelector('#cancel-add-ignore-rule')?.addEventListener('click', closeDialog);
+        dialog.addEventListener('click', (event) => {
+            if (event.target === dialog) {
+                closeDialog();
+            }
+        });
+
+        dialog.querySelector('#add-ignore-rule-form')?.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const formData = new FormData(event.currentTarget);
+            const brand = String(formData.get('brand') || '').trim();
+            const model = String(formData.get('model') || '').trim();
+
+            if (!brand || !model) {
+                Utils.showToast(this, 'Please fill out both brand and model.');
+                return;
+            }
+
+            try {
+                const response = await this._hass.callWS({
+                    type: 'carbon_footprint/add_ignored_device_rule',
+                    brand,
+                    model,
+                });
+
+                closeDialog();
+                const newData = await this.getCarbonData();
+                Utils.showToast(this, response.added ? 'Ignored device rule added.' : 'Ignored device rule already exists.');
+                await this.renderSettingsPage(newData);
+            } catch (error) {
+                console.error('Failed to add ignored device rule:', error);
+                alert(`Error adding ignored device rule: ${error.message}`);
             }
         });
 

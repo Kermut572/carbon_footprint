@@ -39,9 +39,12 @@ from .const import BLOCKS_FOOTPRINTS, DEVICE_ADDED_SIGNAL, DOMAIN
 from .recommendations import build_recommendations
 from .utils import (
     ProviderError,
+    utils_build_custom_blacklist_rules,
     utils_build_cfdb_device,
     utils_compute_device_consumption_footprint,
     utils_fetch_electricity_maps_sensor,
+    utils_get_device_blacklist_match,
+    utils_get_device_blacklist_rules,
     utils_find_energy_entity_for_device,
     utils_get_device_classes,
     utils_get_device_install_date,
@@ -67,6 +70,7 @@ def async_register_websocket_handlers(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_type_embodied_footprint)
     websocket_api.async_register_command(hass, ws_set_device)
     websocket_api.async_register_command(hass, ws_remove_device)
+    websocket_api.async_register_command(hass, ws_add_ignored_device_rule)
     websocket_api.async_register_command(hass, ws_compute_footprint)
     websocket_api.async_register_command(hass, ws_get_devices_to_add)
     websocket_api.async_register_command(hass, ws_get_all_devices_energy)
@@ -155,10 +159,21 @@ def ws_get_devices_to_add(
     msg: dict[str, Any],
 ) -> None:
     """Returns all relevant devices' names (and their related models and manufacturers) the user could track. As of now, all devices with empty classes are removed."""
+    #entry = _get_loaded_entry(hass)
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if entries is None:
+        connection.send_error(
+            msg["id"], "config_entry_not_loaded", "Uh oh, no loaded entry found :-("
+        )
+        return
+
+    cf_store = entries[0].runtime_data.cf_store
+    custom_blacklist_rules = cf_store.get_ignored_device_rules()
     device_ids = []
     device_names = []
     device_manufacturers = []
     device_models = []
+    ignored_devices = []
     registry = dr.async_get(hass)
     entity_reg = er.async_get(hass)
     for device in registry.devices.values():
@@ -172,11 +187,27 @@ def ws_get_devices_to_add(
         if device.model is None:  # most integrations/services do not have a model
             continue
 
-        # TODO check stuff agains blacklist here
-
         device_name = (
             device.name_by_user or device.name
         )  # just in case device.name_by_user is not defined, which can happen quite a lot
+
+        blacklist_reason = utils_get_device_blacklist_match(
+            device_name,
+            device.model,
+            device.manufacturer,
+            custom_blacklist_rules,
+        )
+        if blacklist_reason is not None:
+            ignored_devices.append(
+                {
+                    "device_id": device.id,
+                    "device_name": device_name,
+                    "manufacturer": device.manufacturer,
+                    "model": device.model,
+                    "reason": blacklist_reason,
+                }
+            )
+            continue
 
         device_id = device.id
 
@@ -192,6 +223,9 @@ def ws_get_devices_to_add(
             "device_names": device_names,
             "device_manufacturers": device_manufacturers,
             "device_models": device_models,
+            "ignored_devices": ignored_devices,
+            "blacklist_rules": utils_get_device_blacklist_rules()
+            + utils_build_custom_blacklist_rules(custom_blacklist_rules),
         },
     )
 
@@ -359,6 +393,7 @@ def ws_get_carbon_data(
         vol.Required("carbon_footprint"): vol.Coerce(float),
         vol.Optional("metadata", default={}): dict,
         vol.Optional("refresh_metadata", default=True): bool,
+        vol.Optional("ignore_blacklist", default=False): bool,
     }
 )
 @websocket_api.async_response
@@ -396,6 +431,21 @@ async def ws_set_device(
 
             register = device
             break
+
+    if register and not msg["ignore_blacklist"]:
+        blacklist_reason = utils_get_device_blacklist_match(
+            register.name_by_user or register.name or device_name,
+            register.model,
+            register.manufacturer,
+            cf_store.get_ignored_device_rules(),
+        )
+        if blacklist_reason is not None:
+            connection.send_error(
+                msg["id"],
+                "blacklisted_device",
+                f"This device matches the ignored devices blacklist ({blacklist_reason}).",
+            )
+            return
 
     # all metadata we can add: https://developers.home-assistant.io/docs/device_registry_index/
     if register and msg["refresh_metadata"]:
@@ -461,6 +511,45 @@ def ws_remove_device(
     hass.async_create_task(cf_store.async_remove_device_info(msg["device_name"]))
 
     connection.send_result(msg["id"], {"success": True})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/add_ignored_device_rule",
+        vol.Required("brand"): str,
+        vol.Required("model"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_add_ignored_device_rule(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Add a custom ignored device rule."""
+    entry = _get_loaded_entry(hass)
+    if entry is None:
+        connection.send_error(
+            msg["id"], "config_entry_not_loaded", "Uh oh, no loaded entry found :-("
+        )
+        return
+
+    brand = msg["brand"].strip()
+    model = msg["model"].strip()
+    if not brand or not model:
+        connection.send_error(
+            msg["id"],
+            "invalid_ignored_device_rule",
+            "Both brand and model are required.",
+        )
+        return
+
+    added = await entry.runtime_data.cf_store.async_add_ignored_device_rule(
+        brand,
+        model,
+    )
+
+    connection.send_result(msg["id"], {"success": True, "added": added})
 
 
 @websocket_api.websocket_command(
