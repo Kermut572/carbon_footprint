@@ -36,6 +36,8 @@ class CarbonFootprintPanel extends HTMLElement {
         this._configuredDevices = {};
 
         this._hiddenDeviceIndices = new Set();
+        this._lastCarbonData = null;
+        this._dashboardRenderToken = 0;
 
         this._chartGranularity = {
             HOUR: "hour",
@@ -60,9 +62,16 @@ class CarbonFootprintPanel extends HTMLElement {
 
 
     async connectedCallback() {
-        const data = await this.getCarbonData();
-        await this.render(data);
-        this._setup = true
+        if (this._setup) {
+            return;
+        }
+
+        if (!this._hass) {
+            return;
+        }
+
+        this._setup = true;
+        await this.renderDashboardProgressively();
     }
 
     set hass(hass) {
@@ -182,6 +191,628 @@ class CarbonFootprintPanel extends HTMLElement {
             this.renderSettingsPage(data);
             return;
         }
+
+        await this.renderDashboardProgressively(data);
+    }
+
+    loadingVisual(label = 'Loading...') {
+        return `
+            <div class="cf-loading-block" role="status" aria-live="polite">
+                <div class="cf-loading-spinner"></div>
+                <span>${label}</span>
+            </div>
+        `;
+    }
+
+    chartLoadingVisual(label = 'Loading chart...') {
+        return `
+            <div class="cf-chart-loading" role="status" aria-live="polite">
+                <div class="cf-loading-spinner"></div>
+                <span>${label}</span>
+            </div>
+        `;
+    }
+
+    renderDashboardShell() {
+        this.innerHTML = `
+            <ha-app-layout>
+                <header class="ha-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <h1>Carbon Footprint</h1>
+                    <button id="settings-btn" style="position: absolute; right: 20px; top: 15px; padding: 8px 16px; background-color: #03a9f4; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">Settings</button>
+                </header>
+
+                <div class="content" slot="content">
+                    <div class="cf-summary-grid">
+                        <ha-card header="Annual consumption">
+                            <div id="annual-consumption-content" class="card-content">
+                                ${this.loadingVisual('Loading annual consumption...')}
+                            </div>
+                        </ha-card>
+                        <ha-card header="Carbon intensity">
+                            <div id="carbon-intensity-content" class="card-content">
+                                ${this.loadingVisual('Loading carbon intensity...')}
+                            </div>
+                        </ha-card>
+                        <ha-card header="Quick actions">
+                            <div class="card-content">
+                                <div class="button-group" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; width: 100%;">
+                                    <button type="button" id="detect-devices-btn" style="width: 100%; min-height: 72px; font-size: 15px;"><div class="loader" id="loader"></div>Automatic Setup</button>
+                                    <button type="button" id="export-json-btn" style="width: 100%; min-height: 72px; font-size: 15px;">Export to JSON</button>
+                                </div>
+                            </div>
+                        </ha-card>
+                    </div>
+
+                    <ha-card header="Energy Consumption Footprint">
+                        <div class="card-content">
+                            <p style="font-size: 12px; color: #666; margin-top: 8px; margin-bottom: 16px;">
+                                <em>Devices energy consumption footprint over time (in kg CO₂ equivalent)</em>
+                            </p>
+                            <div class="histogram-controls">
+                                <label for="granularity-select">Granularity:</label>
+                                <select id="granularity-select">
+                                    <option value="hour">Hour</option>
+                                    <option value="day">Day</option>
+                                    <option value="month">Month</option>
+                                </select>
+
+                                <label for="time-frame-select">Time Frame:</label>
+                                <select id="time-frame-select">
+                                    <option value="last-week">Last Week</option>
+                                    <option value="last-month">Last Month</option>
+                                    <option value="last-year">Last Year</option>
+                                    <option value="custom">Custom</option>
+                                </select>
+
+                                <div id="custom-time-frame-controls" style="display: ${this._currentTimeFrame === this._timeFrame.CUSTOM ? 'flex' : 'none'}; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                    <label for="custom-start-date">From:</label>
+                                    <input type="date" id="custom-start-date" value="${this._customStartDate}" max="${this._customEndDate}" style="padding: 5px;">
+                                    <label for="custom-end-date">To:</label>
+                                    <input type="date" id="custom-end-date" value="${this._customEndDate}" min="${this._customStartDate}" style="padding: 5px;">
+                                </div>
+
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span>Appliance data:</span>
+                                    <div id="energy-appliance-usage-toggle" role="group" aria-label="Use appliance usage data in energy chart" style="display: inline-flex; border: 1px solid #bdbdbd; border-radius: 4px; overflow: hidden;">
+                                        <button type="button" data-appliance-usage="false" aria-pressed="${!this._showEnergyApplianceUsage}" style="min-width: 44px; padding: 6px 12px; border: none; cursor: pointer;">No</button>
+                                        <button type="button" data-appliance-usage="true" aria-pressed="${this._showEnergyApplianceUsage}" style="min-width: 44px; padding: 6px 12px; border: none; border-left: 1px solid #bdbdbd; cursor: pointer;">Yes</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style="margin-bottom: 12px;">
+                                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                    <label style="display: flex; align-items: center; cursor: pointer;">
+                                        <input type="radio" name="ec-view" value="total" ${this._ecView === 'total' ? 'checked' : ''} style="margin-right: 6px;">
+                                        <span>Total (Stacked)</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; cursor: pointer;">
+                                        <input type="radio" name="ec-view" value="embodied" ${this._ecView === 'embodied' ? 'checked' : ''} style="margin-right: 6px;">
+                                        <span>Embodied Only</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; cursor: pointer;">
+                                        <input type="radio" name="ec-view" value="usage" ${this._ecView === 'usage' ? 'checked' : ''} style="margin-right: 6px;">
+                                        <span>Usage Only</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; cursor: pointer;">
+                                        <input type="radio" name="ec-view" value="appliance" ${this._ecView === 'appliance' ? 'checked' : ''} style="margin-right: 6px;">
+                                        <span>Appliances Only</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div id="consumption-chart-container" style="position: relative; height: 400px; width: 100%;">
+                                ${this.chartLoadingVisual('Loading energy chart...')}
+                                <canvas id="consumption-histogram-chart" hidden></canvas>
+                            </div>
+                        </div>
+                    </ha-card>
+
+                    <ha-card header="Carbon Usage">
+                        <div class="card-content">
+                            <div class="histogram-controls" style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+                                <label for="group-by-select">Group by:</label>
+                                <select id="group-by-select">
+                                    <option value="room" ${this._groupBy === 'room' ? 'selected' : ''}>Room</option>
+                                    <option value="type" ${this._groupBy === 'type' ? 'selected' : ''}>Type</option>
+                                </select>
+
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span>Appliance data:</span>
+                                    <div id="appliance-usage-toggle" role="group" aria-label="Use appliance usage data" style="display: inline-flex; border: 1px solid #bdbdbd; border-radius: 4px; overflow: hidden;">
+                                        <button type="button" data-appliance-usage="false" aria-pressed="${!this._showApplianceUsage}" style="min-width: 44px; padding: 6px 12px; border: none; cursor: pointer;">No</button>
+                                        <button type="button" data-appliance-usage="true" aria-pressed="${this._showApplianceUsage}" style="min-width: 44px; padding: 6px 12px; border: none; border-left: 1px solid #bdbdbd; cursor: pointer;">Yes</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style="margin-bottom: 12px;">
+                                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                    <label style="display: flex; align-items: center; cursor: pointer;">
+                                        <input type="radio" name="carbon-view" value="total" ${this._carbonView === 'total' ? 'checked' : ''} style="margin-right: 6px;">
+                                        <span>Total (Stacked)</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; cursor: pointer;">
+                                        <input type="radio" name="carbon-view" value="embodied" ${this._carbonView === 'embodied' ? 'checked' : ''} style="margin-right: 6px;">
+                                        <span>Embodied Only</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; cursor: pointer;">
+                                        <input type="radio" name="carbon-view" value="usage" ${this._carbonView === 'usage' ? 'checked' : ''} style="margin-right: 6px;">
+                                        <span>Usage Only</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; cursor: pointer;">
+                                        <input type="radio" name="carbon-view" value="appliance" ${this._carbonView === 'appliance' ? 'checked' : ''} style="margin-right: 6px;">
+                                        <span>Appliances Only</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div id="room-chart-view" style="display: block;">
+                                <div id="room-chart-container" style="position: relative; height: 400px; width: 100%;">
+                                    ${this.chartLoadingVisual('Loading carbon usage chart...')}
+                                    <canvas id="room-pie-chart" hidden></canvas>
+                                </div>
+                            </div>
+
+                            <div id="device-detail-view" style="display: none;">
+                                <button id="back-to-rooms-btn" style="margin-bottom: 16px; padding: 8px 16px; background-color: #757575; color: white; border: none; border-radius: 4px; cursor: pointer;">← Back to Chart</button>
+                                <h3 id="selected-room-title"></h3>
+                                <div style="margin-bottom: 16px; padding: 12px; background-color: #f9f9f9; border-radius: 4px; border: 1px solid #ddd; font-size: 13px;">
+                                    <div style="margin-bottom: 8px;"><strong>Carbon Types (kgCO₂eq):</strong></div>
+                                    <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <div style="width: 16px; height: 16px; background-color: rgba(76, 175, 80, 0.7); border: 1px solid rgb(76, 175, 80);"></div>
+                                            <span><strong>Embodied:</strong> Manufacturing, transport, disposal</span>
+                                        </div>
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <div style="width: 16px; height: 16px; background-color: rgba(33, 150, 243, 0.7); border: 1px solid rgb(33, 150, 243);"></div>
+                                            <span><strong>Usage:</strong> Operational energy consumption</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <p id="device-breakdown-text" style="margin-bottom: 12px; font-size: 13px; color: #666;"></p>
+                                <div style="position: relative; height: 300px; width: 100%;">
+                                    <canvas id="device-bar-chart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </ha-card>
+
+                    <ha-card header="Recommendations">
+                        <div id="recommendations-content" class="card-content">
+                            ${this.loadingVisual('Loading recommendations...')}
+                        </div>
+                    </ha-card>
+                </div>
+            </ha-app-layout>
+        `;
+
+        this.attachDashboardHandlers();
+        this.attachQuickActionHandlers();
+        this.ensurePanelStyles();
+    }
+
+    ensurePanelStyles() {
+        if (this.querySelector('link[data-carbon-footprint-style]')) {
+            return;
+        }
+
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.type = 'text/css';
+        link.href = '/api/carbon_footprint/style.css?version=1.30';
+        link.dataset.carbonFootprintStyle = 'true';
+        this.appendChild(link);
+    }
+
+    attachDashboardHandlers() {
+        this.querySelector('#settings-btn')?.addEventListener('click', async () => {
+            this._currentPage = 'settings';
+            const data = this._lastCarbonData || await this.getCarbonData();
+            await this.renderSettingsPage(data);
+        });
+
+        const energyConsumptionRadios = this.querySelectorAll('input[name="ec-view"]');
+        for (const radio of energyConsumptionRadios) {
+            radio.addEventListener('change', async (e) => {
+                this._ecView = e.target.value;
+                await this.refreshConsumptionChart();
+            });
+        }
+
+        const granSelect = this.querySelector('#granularity-select');
+        if (granSelect) {
+            granSelect.value = this._currentChartGranularity;
+            granSelect.addEventListener('change', async (e) => {
+                this._currentChartGranularity = e.target.value;
+                await this.refreshConsumptionChart();
+            });
+        }
+
+        const timeFrameSelect = this.querySelector('#time-frame-select');
+        if (timeFrameSelect) {
+            timeFrameSelect.value = this._currentTimeFrame;
+            timeFrameSelect.addEventListener('change', async (e) => {
+                this._currentTimeFrame = e.target.value;
+                this._updateCustomTimeFrameControls();
+                await this.refreshConsumptionChart();
+            });
+        }
+
+        const customStartDate = this.querySelector('#custom-start-date');
+        const customEndDate = this.querySelector('#custom-end-date');
+        if (customStartDate && customEndDate) {
+            customStartDate.addEventListener('change', async (e) => {
+                this._customStartDate = e.target.value;
+                customEndDate.min = this._customStartDate;
+                if (this._customEndDate < this._customStartDate) {
+                    this._customEndDate = this._customStartDate;
+                    customEndDate.value = this._customEndDate;
+                }
+                await this.refreshConsumptionChart();
+            });
+
+            customEndDate.addEventListener('change', async (e) => {
+                this._customEndDate = e.target.value;
+                customStartDate.max = this._customEndDate;
+                if (this._customStartDate > this._customEndDate) {
+                    this._customStartDate = this._customEndDate;
+                    customStartDate.value = this._customStartDate;
+                }
+                await this.refreshConsumptionChart();
+            });
+        }
+
+        const energyApplianceUsageToggle = this.querySelector('#energy-appliance-usage-toggle');
+        if (energyApplianceUsageToggle) {
+            energyApplianceUsageToggle.addEventListener('click', async (e) => {
+                const button = e.target.closest('button[data-appliance-usage]');
+                if (!button) {
+                    return;
+                }
+
+                this._showEnergyApplianceUsage = button.dataset.applianceUsage === 'true';
+                this._updateSegmentedToggleState('#energy-appliance-usage-toggle', this._showEnergyApplianceUsage);
+                await this.refreshConsumptionChart();
+            });
+        }
+
+        const groupBySelect = this.querySelector('#group-by-select');
+        if (groupBySelect) {
+            groupBySelect.addEventListener('change', async (e) => {
+                this._groupBy = e.target.value;
+                await this.refreshRoomChart();
+            });
+        }
+
+        this.querySelector('#back-to-rooms-btn')?.addEventListener('click', () => {
+            this.showRoomChart();
+        });
+
+        const carbonViewRadios = this.querySelectorAll('input[name="carbon-view"]');
+        for (const radio of carbonViewRadios) {
+            radio.addEventListener('change', async (e) => {
+                this._carbonView = e.target.value;
+                await this.refreshRoomChart();
+
+                const deviceDetailView = this.querySelector('#device-detail-view');
+                if (deviceDetailView && deviceDetailView.style.display !== 'none') {
+                    const data = this._groupBy === 'type'
+                        ? await this.getCarbonByType()
+                        : await this.getCarbonByRoom();
+
+                    const updatedItem = this._findUpdatedSelectedGroup(data);
+                    if (updatedItem) {
+                        this._selectedRoom = updatedItem;
+                        this.renderDeviceChart();
+                    }
+                }
+            });
+        }
+
+        const applianceUsageToggle = this.querySelector('#appliance-usage-toggle');
+        if (applianceUsageToggle) {
+            applianceUsageToggle.addEventListener('click', async (e) => {
+                const button = e.target.closest('button[data-appliance-usage]');
+                if (!button) {
+                    return;
+                }
+
+                this._showApplianceUsage = button.dataset.applianceUsage === 'true';
+                this._updateApplianceUsageToggleState();
+                await this.refreshRoomChart();
+            });
+        }
+
+        this._updateSegmentedToggleState('#energy-appliance-usage-toggle', this._showEnergyApplianceUsage);
+        this._updateApplianceUsageToggleState();
+    }
+
+    async renderDashboardProgressively(data = null) {
+        const token = ++this._dashboardRenderToken;
+        this.renderDashboardShell();
+
+        const dataPromise = data ? Promise.resolve(data) : this.getCarbonData();
+        dataPromise
+            .then(carbonData => {
+                if (token !== this._dashboardRenderToken) return;
+                this._lastCarbonData = carbonData;
+                this.renderCarbonIntensityContent(carbonData, null);
+            })
+            .catch(err => {
+                console.error('Error loading carbon data:', err);
+                if (token === this._dashboardRenderToken) {
+                    this.renderCarbonIntensityContent(null, null);
+                }
+            });
+
+        CarbonUtils.getAnnualConsumptionSummary(this)
+            .then(annualConsumption => {
+                if (token === this._dashboardRenderToken) {
+                    this.renderAnnualConsumptionContent(annualConsumption);
+                }
+            });
+
+        this.refreshRecommendations(dataPromise, token);
+
+        try {
+            await this.ensureChartLibrary();
+        } catch (err) {
+            console.error('Error loading chart library:', err);
+            this.showChartError('#room-chart-container', 'Could not load the carbon usage chart.');
+            this.showChartError('#consumption-chart-container', 'Could not load the energy chart.');
+            return;
+        }
+
+        if (token !== this._dashboardRenderToken) {
+            return;
+        }
+
+        this.refreshRoomChart();
+        this.refreshConsumptionChart();
+    }
+
+    async ensureChartLibrary() {
+        if (typeof Chart !== 'undefined') {
+            return;
+        }
+
+        if (!CarbonFootprintPanel.chartLibraryPromise) {
+            CarbonFootprintPanel.chartLibraryPromise = new Promise((resolve, reject) => {
+                const existingScript = document.querySelector('script[data-carbon-footprint-chartjs]');
+                if (existingScript) {
+                    existingScript.addEventListener('load', resolve, { once: true });
+                    existingScript.addEventListener('error', reject, { once: true });
+                    return;
+                }
+
+                const script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
+                script.dataset.carbonFootprintChartjs = 'true';
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
+        }
+
+        await CarbonFootprintPanel.chartLibraryPromise;
+    }
+
+    renderAnnualConsumptionContent(annualConsumption) {
+        const container = this.querySelector('#annual-consumption-content');
+        if (!container) {
+            return;
+        }
+
+        container.innerHTML = `
+            <div style="font-size: 22px; font-weight: 600;">
+                ${annualConsumption.kgCO2eq === null ? 'N/A' : annualConsumption.kgCO2eq.toFixed(2)} kgCO₂eq
+                <div style="font-size: 13px; font-weight: 400; color: #666; margin-top: 6px;">${annualConsumption.rangeText}</div>
+                <div style="font-size: 13px; font-weight: 400; color: #666; margin-top: 6px;">
+                    which is equivalent to riding ${annualConsumption.carKm === null ? 'N/A' : annualConsumption.carKm.toFixed(1)} km by car
+                    <span title="According to the ImpactCO2 framework of the French Republic. Considering a gasoline-powered car. More informations: https://impactco2.fr/outils/transport" style="display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; border: 1px solid #777; color: #555; font-size: 11px; font-weight: 600; cursor: help; margin-left: 4px;">i</span>
+                </div>
+            </div>
+        `;
+    }
+
+    renderCarbonIntensityContent(data, recommendations) {
+        const container = this.querySelector('#carbon-intensity-content');
+        if (!container) {
+            return;
+        }
+
+        const intensityRec = recommendations?.carbon_intensity || {
+            message: data ? 'Carbon intensity details are still loading.' : 'Carbon intensity data unavailable.',
+        };
+        const carbonIntensityInfo = recommendations?.carbon_intensity_info || {
+            colorClass: 'ci-unknown',
+            label: ' ',
+        };
+
+        container.innerHTML = `
+            <div style="font-size: 22px; font-weight: 600;">
+                ${data?.co2_intensity_status === 'fallback' ? 'Unknown' : `${data?.co2_intensity ?? 'N/A'} gCO₂eq/kWh`}
+                <span class="ci-indicator ${carbonIntensityInfo.colorClass}"></span>
+                <span class="ci-label" style="font-size: 14px; font-weight: 500;">${carbonIntensityInfo.label}</span>
+                <div style="font-size: 13px; font-weight: 400; color: #666; margin-top: 6px; line-height: 1.35;">
+                    ${intensityRec.message}
+                </div>
+            </div>
+        `;
+    }
+
+    async refreshRecommendations(dataPromise, token) {
+        const container = this.querySelector('#recommendations-content');
+        if (container) {
+            container.innerHTML = this.loadingVisual('Loading recommendations...');
+        }
+
+        try {
+            const data = await dataPromise;
+            const yearlyConsCall = await this._hass.callWS({ type: 'carbon_footprint/get_yearly_contribution' });
+            const roomData = await this.getCarbonByRoom();
+            const recEndTime = new Date();
+            const recStartTime = new Date(recEndTime);
+            recStartTime.setDate(recEndTime.getDate() - 30);
+            const recResult = await this._hass.callWS({
+                type: 'carbon_footprint/get_consumption_footprint_time_interval',
+                start_time: recStartTime.toISOString(),
+                end_time: recEndTime.toISOString(),
+                granularity: 'day'
+            });
+            const currentCarbonIntensity = data?.co2_intensity_status === 'fallback'
+                ? null
+                : data?.co2_intensity;
+            const recommendations = await CarbonUtils.getRecommendations(this, {
+                room_data: roomData,
+                yearly_contribution: yearlyConsCall.yearly_contribution,
+                usage_history: recResult.devices_consumptions,
+                intensity_history: data?.intensity_history || [],
+                current_intensity: currentCarbonIntensity,
+            });
+
+            if (token !== this._dashboardRenderToken) {
+                return;
+            }
+
+            this.renderCarbonIntensityContent(data, recommendations);
+            this.renderRecommendationsContent(recommendations);
+        } catch (err) {
+            console.error('Error loading recommendations:', err);
+            if (token === this._dashboardRenderToken && container) {
+                container.innerHTML = '<p style="margin: 0; color: #666;">Recommendations are unavailable right now.</p>';
+            }
+        }
+    }
+
+    renderRecommendationsContent(recommendations) {
+        const container = this.querySelector('#recommendations-content');
+        if (!container) {
+            return;
+        }
+
+        const recommendation = recommendations.high_impact_area;
+        const iotShareRec = recommendations.iot_share;
+        const usagePatternRec = recommendations.usage_pattern;
+
+        container.innerHTML = `
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <div style="border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
+                    <div class="recommendation-header" style="padding: 12px; background-color: #e8f5e9; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;">
+                        <strong>IoT share of consumption</strong>
+                        <span class="toggle-icon-0" style="font-size: 12px;">▲</span>
+                    </div>
+                    <div class="recommendation-content-0" style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
+                        <p style="margin: 0; font-size: 13px; color: #555;">${iotShareRec.message}</p>
+                    </div>
+                </div>
+
+                <div style="border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
+                    <div class="recommendation-header" style="padding: 12px; background-color: ${usagePatternRec.color}; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;">
+                        <strong>${usagePatternRec.title}</strong>
+                        <span class="toggle-icon-pattern" style="font-size: 12px;">▲</span>
+                    </div>
+                    <div class="recommendation-content-pattern" style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
+                        <p style="margin: 0; font-size: 13px; color: #555;">${usagePatternRec.message}</p>
+                    </div>
+                </div>
+
+                <div style="border: 1px solid #e0e0e0; border-radius: 4px; overflow: hidden;">
+                    <div class="recommendation-header" style="padding: 12px; background-color: #fff8e1; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;">
+                        <strong>${recommendation.title}</strong>
+                        <span class="toggle-icon-high-impact" style="font-size: 12px;">▲</span>
+                    </div>
+                    <div class="recommendation-content-high-impact" style="padding: 12px; background-color: #fafafa; border-top: 1px solid #e0e0e0;">
+                        <p style="margin: 0; font-size: 13px; color: #555;">${recommendation.message}</p>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const toggles = [
+            ['.recommendation-content-0', '.toggle-icon-0'],
+            ['.recommendation-content-pattern', '.toggle-icon-pattern'],
+            ['.recommendation-content-high-impact', '.toggle-icon-high-impact'],
+        ];
+        container.querySelectorAll('.recommendation-header').forEach((header, index) => {
+            header.addEventListener('click', () => {
+                const [contentSelector, iconSelector] = toggles[index];
+                const content = container.querySelector(contentSelector);
+                const icon = container.querySelector(iconSelector);
+                if (!content) return;
+
+                const isHidden = content.style.display === 'none';
+                content.style.display = isHidden ? 'block' : 'none';
+                if (icon) {
+                    icon.textContent = isHidden ? '▲' : '▼';
+                }
+            });
+        });
+    }
+
+    resetCanvasContainer(containerSelector, canvasId, loadingLabel) {
+        const container = this.querySelector(containerSelector);
+        if (!container) {
+            if (containerSelector === '#room-chart-container') {
+                const roomChartView = this.querySelector('#room-chart-view');
+                if (roomChartView) {
+                    roomChartView.innerHTML = `
+                        <div id="room-chart-container" style="position: relative; height: 400px; width: 100%;">
+                            ${this.chartLoadingVisual(loadingLabel)}
+                            <canvas id="${canvasId}" hidden></canvas>
+                        </div>
+                    `;
+                }
+            }
+            return;
+        }
+
+        container.innerHTML = `
+            ${this.chartLoadingVisual(loadingLabel)}
+            <canvas id="${canvasId}" hidden></canvas>
+        `;
+    }
+
+    showChartError(containerSelector, message) {
+        const container = this.querySelector(containerSelector);
+        if (container) {
+            container.innerHTML = `<p class="cf-loading-error">${message}</p>`;
+        }
+    }
+
+    async refreshRoomChart() {
+        this.resetCanvasContainer('#room-chart-container', 'room-pie-chart', 'Loading carbon usage chart...');
+        if (this._roomChart) {
+            this._roomChart.destroy();
+            this._roomChart = null;
+        }
+
+        try {
+            await this.ensureChartLibrary();
+            await this.renderRoomChart();
+        } catch (err) {
+            console.error('Error rendering room chart:', err);
+            this.showChartError('#room-chart-container', 'Carbon usage chart is unavailable right now.');
+        }
+    }
+
+    async refreshConsumptionChart() {
+        this.resetCanvasContainer('#consumption-chart-container', 'consumption-histogram-chart', 'Loading energy chart...');
+        if (this._consumptionChart) {
+            this._consumptionChart.destroy();
+            this._consumptionChart = null;
+        }
+
+        try {
+            await this.ensureChartLibrary();
+            await this.renderConsumptionHistogram();
+        } catch (err) {
+            console.error('Error rendering consumption chart:', err);
+            this.showChartError('#consumption-chart-container', 'Energy chart is unavailable right now.');
+        }
+    }
+
+    async renderLegacyDashboard(data) {
 
         const yearlyConsCall = await this._hass.callWS({ type: 'carbon_footprint/get_yearly_contribution' });
         const yearlyCons = yearlyConsCall.yearly_contribution;
@@ -667,7 +1298,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.29'; // :skull:
+        link.href = '/api/carbon_footprint/style.css?version=1.30'; // :skull:
         this.appendChild(link);
     }
 
@@ -1055,7 +1686,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.29'; // :skull:
+        link.href = '/api/carbon_footprint/style.css?version=1.30'; // :skull:
         this.appendChild(link);
     }
 
@@ -1228,7 +1859,9 @@ class CarbonFootprintPanel extends HTMLElement {
         if (!canvas) {
             return;
         }
+        canvas.hidden = false;
         const canvasContainer = canvas.parentElement;
+        canvasContainer?.querySelector('.cf-chart-loading')?.remove();
         const showEmptyConsumptionChartMessage = (message) => {
             if (this._consumptionChart) {
                 this._consumptionChart.destroy();
@@ -2003,6 +2636,8 @@ class CarbonFootprintPanel extends HTMLElement {
         if (!canvas) {
             return;
         }
+        canvas.hidden = false;
+        canvas.parentElement?.querySelector('.cf-chart-loading')?.remove();
 
         let data;
         if (this._useFakeCarbonData) {

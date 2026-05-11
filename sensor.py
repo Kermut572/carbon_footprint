@@ -303,7 +303,7 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
         stats = await utils_build_hourly_stamps(
             self.hass,
             self._device_id,
-            (now - timedelta(days=365)).isoformat(),
+            (now - timedelta(days=180)).isoformat(),
             now.isoformat(),
             self.is_appliance,
         )
