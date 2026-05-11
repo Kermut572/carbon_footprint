@@ -1773,7 +1773,6 @@ async def ws_get_annual_consumption_summary(
 
     end_time = dt_util.now()
     start_time = end_time - relativedelta(years=1)
-    await asyncio.sleep(5)
 
     cf_store = entry.runtime_data.cf_store
     devices = cf_store.get_devices_data()
