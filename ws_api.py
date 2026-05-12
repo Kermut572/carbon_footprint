@@ -71,6 +71,7 @@ def async_register_websocket_handlers(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_get_type_embodied_footprint)
     websocket_api.async_register_command(hass, ws_set_device)
     websocket_api.async_register_command(hass, ws_remove_device)
+    websocket_api.async_register_command(hass, ws_remove_all_devices)
     websocket_api.async_register_command(hass, ws_add_ignored_device_rule)
     websocket_api.async_register_command(hass, ws_compute_footprint)
     websocket_api.async_register_command(hass, ws_get_devices_to_add)
@@ -518,6 +519,30 @@ def ws_remove_device(
     hass.async_create_task(cf_store.async_remove_device_info(msg["device_name"]))
 
     connection.send_result(msg["id"], {"success": True})
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/remove_all_devices"})
+@websocket_api.async_response
+async def ws_remove_all_devices(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Remove all configured devices from the carbon footprint store."""
+    entry = _get_loaded_entry(hass)
+    if entry is None:
+        connection.send_error(
+            msg["id"], "config_entry_not_loaded", "Uh oh, no loaded entry found :-("
+        )
+        return
+
+    cf_store = entry.runtime_data.cf_store
+    devices = cf_store.get_devices_data()
+    removed_count = len(devices)
+    devices.clear()
+    await cf_store.async_save_data()
+
+    connection.send_result(msg["id"], {"success": True, "removed_count": removed_count})
 
 
 @websocket_api.websocket_command(

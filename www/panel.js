@@ -1576,6 +1576,20 @@ class CarbonFootprintPanel extends HTMLElement {
                     <ha-card header="Configured Devices">
                         <div class="card-content device-list-container">
                             ${hasDevices ? `
+                                <div style="margin-bottom: 16px; display: flex; gap: 12px; flex-wrap: wrap;">
+                                    <button
+                                        type="button"
+                                        id="reset-all-sensors-btn"
+                                        style="padding: 8px 16px; background-color: #ff9800; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                        Reset all sensors
+                                    </button>
+                                    <button
+                                        type="button"
+                                        id="delete-all-devices-btn"
+                                        style="padding: 8px 16px; background-color: #d32f2f; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                        Delete all devices
+                                    </button>
+                                </div>
                                 <div style="margin-bottom: 20px; display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start;">
                                     <div style="flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 4px;">
                                         <ha-selector id="device_search_selector"></ha-selector>
@@ -3809,6 +3823,49 @@ class CarbonFootprintPanel extends HTMLElement {
             });
         });
 
+        const resetAllSensorsBtn = this.querySelector('#reset-all-sensors-btn');
+        if (resetAllSensorsBtn) {
+            resetAllSensorsBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const devices = Object.entries(this._configuredDevices || {});
+                if (devices.length === 0) {
+                    Utils.showToast(this, 'No configured devices to reset.');
+                    return;
+                }
+
+                if (!confirm(`Reset sensors for all ${devices.length} configured devices?`)) {
+                    return;
+                }
+
+                resetAllSensorsBtn.disabled = true;
+                this.showLoadingOverlay('Resetting all sensors...');
+                try {
+                    for (const [deviceId] of devices) {
+                        await this._hass.callWS({
+                            type: 'carbon_footprint/reset_sensors',
+                            device_id: deviceId,
+                        });
+                    }
+
+                    Utils.showToast(this, `Successfully reset sensors for ${devices.length} devices.`);
+                } catch (error) {
+                    console.error('Failed to reset all sensors: ', error);
+                    alert(`Error resetting all sensors: ${error.message}`);
+                } finally {
+                    this.hideLoadingOverlay();
+                    resetAllSensorsBtn.disabled = false;
+                }
+            });
+        }
+
+        const deleteAllDevicesBtn = this.querySelector('#delete-all-devices-btn');
+        if (deleteAllDevicesBtn) {
+            deleteAllDevicesBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.showDeleteAllDevicesDialog();
+            });
+        }
+
         const resetSensorButtons = this.querySelectorAll('.reset-sensor-btn');
         resetSensorButtons.forEach(btn => {
             btn.addEventListener('click', async (e) => {
@@ -3860,6 +3917,67 @@ class CarbonFootprintPanel extends HTMLElement {
                 }
             });
         });
+    }
+
+    showDeleteAllDevicesDialog() {
+        const devices = Object.entries(this._configuredDevices || {});
+        if (devices.length === 0) {
+            Utils.showToast(this, 'No configured devices to delete.');
+            return;
+        }
+
+        const dialog = document.createElement('dialog');
+        dialog.classList.add('ha-dialog', 'delete-all-devices-dialog');
+        dialog.innerHTML = `
+            <div class="dialog-content">
+                <h2>Delete all configured devices?</h2>
+                <p>This will remove all ${devices.length} configured devices from Carbon Footprint tracking.</p>
+                <p>The dashboard will have no configured device data until you add devices again or run automatic setup. This does not delete the Home Assistant devices themselves.</p>
+                <p>Sensor history that already exists in Home Assistant is not reset by this action.</p>
+                <div class="dialog-actions">
+                    <button type="button" id="cancel-delete-all-devices">Cancel</button>
+                    <button type="button" id="confirm-delete-all-devices" style="background-color: #d32f2f; color: white;">Delete all devices</button>
+                </div>
+            </div>
+        `;
+
+        const closeDialog = () => {
+            dialog.close();
+            dialog.remove();
+        };
+
+        dialog.querySelector('#cancel-delete-all-devices')?.addEventListener('click', closeDialog);
+        dialog.addEventListener('click', (event) => {
+            if (event.target === dialog) {
+                closeDialog();
+            }
+        });
+
+        dialog.querySelector('#confirm-delete-all-devices')?.addEventListener('click', async (event) => {
+            const confirmBtn = event.currentTarget;
+            confirmBtn.disabled = true;
+            this.showLoadingOverlay('Deleting all configured devices...');
+
+            try {
+                const result = await this._hass.callWS({
+                    type: 'carbon_footprint/remove_all_devices',
+                });
+
+                closeDialog();
+                const newData = await this.getCarbonData();
+                Utils.showToast(this, `Deleted ${result.removed_count ?? devices.length} configured devices.`);
+                await this.renderSettingsPage(newData);
+            } catch (error) {
+                console.error('Failed to delete all devices:', error);
+                confirmBtn.disabled = false;
+                alert(`Error deleting all devices: ${error.message}`);
+            } finally {
+                this.hideLoadingOverlay();
+            }
+        });
+
+        this.appendChild(dialog);
+        dialog.showModal();
     }
 
     attachDeleteHandlers() {
