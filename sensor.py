@@ -268,9 +268,14 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
 
         with contextlib.suppress(ValueError, TypeError):
             new_total = float(latest_sum)
-            if new_total != self._total_carbon_impact:
+            if new_total > self._total_carbon_impact:
                 self._total_carbon_impact = new_total
-                self.async_write_ha_state()
+            elif new_total == 0 and self._total_carbon_impact > 0:
+                _LOGGER.warning(
+                    "Rejecting statistics update to 0 for %s (current: %f)",
+                    self._device_name,
+                    self._total_carbon_impact,
+                )
 
     async def async_added_to_hass(self):
         """Register callback events."""

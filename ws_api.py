@@ -40,13 +40,13 @@ from .const import BLOCKS_FOOTPRINTS, DEVICE_ADDED_SIGNAL, DOMAIN
 from .recommendations import build_recommendations
 from .utils import (
     ProviderError,
-    utils_build_custom_blacklist_rules,
     utils_build_cfdb_device,
+    utils_build_custom_blacklist_rules,
     utils_compute_device_consumption_footprint,
     utils_fetch_electricity_maps_sensor,
+    utils_find_energy_entity_for_device,
     utils_get_device_blacklist_match,
     utils_get_device_blacklist_rules,
-    utils_find_energy_entity_for_device,
     utils_get_device_classes,
     utils_get_device_install_date,
     utils_get_device_total_energy_consumption,
@@ -160,7 +160,7 @@ def ws_get_devices_to_add(
     msg: dict[str, Any],
 ) -> None:
     """Returns all relevant devices' names (and their related models and manufacturers) the user could track. As of now, all devices with empty classes are removed."""
-    #entry = _get_loaded_entry(hass)
+    # entry = _get_loaded_entry(hass)
     entries = hass.config_entries.async_entries(DOMAIN)
     if entries is None:
         connection.send_error(
@@ -186,6 +186,9 @@ def ws_get_devices_to_add(
             continue
 
         if device.model is None:  # most integrations/services do not have a model
+            continue
+
+        if device.manufacturer is None:  # L
             continue
 
         device_name = (
