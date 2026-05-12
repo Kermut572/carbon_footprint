@@ -266,6 +266,14 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
         if latest_sum is None:
             return
 
+        _LOGGER.debug(
+            "Latest recorded sum for %s is %s (previous in-memory total: %s), start: %s",
+            self._device_name,
+            latest_sum,
+            self._total_carbon_impact,
+            stats_rows[0].get("start"),
+        )
+
         with contextlib.suppress(ValueError, TypeError):
             new_total = float(latest_sum)
             if new_total > self._total_carbon_impact:
