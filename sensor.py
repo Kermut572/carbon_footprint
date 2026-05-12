@@ -461,7 +461,7 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
             if not existing_stats.get(self._statistic_id):
                 stats = [
                     {
-                        "start": start_utc,
+                        "start": start_utc + timedelta(hours=1),
                         "state": self._total_carbon_impact,
                         "sum": self._total_carbon_impact,
                     }
