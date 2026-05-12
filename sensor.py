@@ -299,6 +299,7 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
                     "source": "recorder",
                     "name": self._attr_name,
                     "unit_of_measurement": self._attr_native_unit_of_measurement,
+                    "unit_class": None,
                     "has_sum": True,
                     "mean_type": StatisticMeanType.NONE,
                 }
