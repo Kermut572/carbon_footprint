@@ -1046,4 +1046,21 @@ async def utils_build_hourly_stamps(
             }
         )
 
+    if stats:
+        _LOGGER.debug(
+            "utils_build_hourly_stamps for device %s (appliance=%s): built %d rows, first sum=%s, last sum=%s",
+            device_id,
+            is_appliance,
+            len(stats),
+            stats[0].get("sum"),
+            stats[-1].get("sum"),
+        )
+    else:
+        _LOGGER.debug(
+            "utils_build_hourly_stamps for device %s (appliance=%s): returned empty stats (input stamps: %s)",
+            device_id,
+            is_appliance,
+            stamps,
+        )
+
     return stats

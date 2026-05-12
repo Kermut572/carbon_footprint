@@ -349,6 +349,12 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
                 "mean_type": StatisticMeanType.NONE,
             }
             try:
+                _LOGGER.debug(
+                    "Importing %d stats for %s, last sum=%s",
+                    len(stats),
+                    self._device_name,
+                    stats[-1].get("sum") if stats else None,
+                )
                 async_import_statistics(self.hass, metadata, stats)
                 if cf_store and (
                     device_info := cf_store.get_devices_data().get(self._device_id)
@@ -360,9 +366,9 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
                     self.hass.async_create_task(cf_store.async_save_data())
 
                 with contextlib.suppress(ValueError, TypeError):
-                    imported_total = float(stats[-1].get("sum", 0.0))
                     self._total_carbon_impact = max(
-                        self._total_carbon_impact, imported_total
+                        self._total_carbon_impact,
+                        float(stats[-1].get("sum", 0.0)),
                     )
 
                 state = self.hass.states.get(self._energy_entity_id)
