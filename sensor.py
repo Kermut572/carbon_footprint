@@ -268,7 +268,7 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
 
         with contextlib.suppress(ValueError, TypeError):
             new_total = float(latest_sum)
-            if new_total > self._total_carbon_impact:
+            if new_total >= self._total_carbon_impact:
                 self._total_carbon_impact = new_total
             elif new_total == 0 and self._total_carbon_impact > 0:
                 _LOGGER.warning(
@@ -305,11 +305,14 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
             _LOGGER.debug("Building appliance stats for %s", self._device_name)
 
         now = dt_util.now()
+        end_ts = now.replace(minute=0, second=0, microsecond=0) - timedelta(
+            hours=1
+        )  # prevent reset to 0 ?? god's plan
         stats = await utils_build_hourly_stamps(
             self.hass,
             self._device_id,
             (now - timedelta(days=180)).isoformat(),
-            now.isoformat(),
+            end_ts.isoformat(),
             self.is_appliance,
         )
 
