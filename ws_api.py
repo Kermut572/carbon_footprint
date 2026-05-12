@@ -181,6 +181,9 @@ def ws_get_devices_to_add(
         device_entities = er.async_entries_for_device(entity_reg, device.id)
         device_classes = utils_get_device_classes(hass, device_entities)
 
+        if not device_classes:
+            continue
+
         # The type of entry. Possible values are None and DeviceEntryType enum members (only service). <- we don't care about services
         if device.entry_type is not None:
             continue
