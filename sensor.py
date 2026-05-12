@@ -268,7 +268,7 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
 
         with contextlib.suppress(ValueError, TypeError):
             new_total = float(latest_sum)
-            if new_total >= self._total_carbon_impact:
+            if new_total > self._total_carbon_impact:
                 self._total_carbon_impact = new_total
             elif new_total == 0 and self._total_carbon_impact > 0:
                 _LOGGER.warning(
@@ -295,7 +295,9 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
         last_state = await self.async_get_last_state()
         if last_state is not None:
             with contextlib.suppress(ValueError, TypeError):
-                self._total_carbon_impact = float(last_state.state)
+                self._total_carbon_impact = max(
+                    self._total_carbon_impact, float(last_state.state)
+                )
 
             restored_last = last_state.attributes.get("last_energy_reading")
             if isinstance(restored_last, (int, float)):
@@ -358,7 +360,10 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
                     self.hass.async_create_task(cf_store.async_save_data())
 
                 with contextlib.suppress(ValueError, TypeError):
-                    self._total_carbon_impact = float(stats[-1].get("sum", 0.0))
+                    imported_total = float(stats[-1].get("sum", 0.0))
+                    self._total_carbon_impact = max(
+                        self._total_carbon_impact, imported_total
+                    )
 
                 state = self.hass.states.get(self._energy_entity_id)
                 if state and state.state not in ("unknown", "unavailable"):
@@ -445,35 +450,35 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
             self._total_carbon_impact += delta_nrj * em_value
             self._last_energy_reading = new_energy_reading
 
-            existing_stats = await recorder.get_instance(
-                self.hass
-            ).async_add_executor_job(
-                statistics_during_period,
-                self.hass,
-                start_utc,
-                start_utc + timedelta(hours=1),
-                {self._statistic_id},
-                "hour",
-                None,
-                {"sum"},
-            )
-
-            if not existing_stats.get(self._statistic_id):
-                stats = [
-                    {
-                        "start": start_utc + timedelta(hours=1),
-                        "state": self._total_carbon_impact,
-                        "sum": self._total_carbon_impact,
-                    }
-                ]
-                try:
-                    async_import_statistics(self.hass, metadata, stats)
-                    _LOGGER.debug("Imported current stat for %s", self._device_name)
-                except Exception:
-                    _LOGGER.debug(
-                        "Failed to import current statistics for %s, tag probably already exists",
-                        self._device_name,
-                    )
+            # existing_stats = await recorder.get_instance(
+            #    self.hass
+            # ).async_add_executor_job(
+            #    statistics_during_period,
+            #    self.hass,
+            #    start_utc,
+            #    start_utc + timedelta(hours=1),
+            #    {self._statistic_id},
+            #    "hour",
+            #    None,
+            #    {"sum"},
+            # )
+            #
+            # if not existing_stats.get(self._statistic_id):
+            #    stats = [
+            #        {
+            #            "start": start_utc + timedelta(hours=1),
+            #            "state": self._total_carbon_impact,
+            #            "sum": self._total_carbon_impact,
+            #        }
+            #    ]
+            #    try:
+            #        async_import_statistics(self.hass, metadata, stats)
+            #        _LOGGER.debug("Imported current stat for %s", self._device_name)
+            #    except Exception:
+            #        _LOGGER.debug(
+            #            "Failed to import current statistics for %s, tag probably already exists",
+            #            self._device_name,
+            #        )
 
             self.async_write_ha_state()
 
