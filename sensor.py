@@ -278,6 +278,7 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
             new_total = float(latest_sum)
             if new_total > self._total_carbon_impact:
                 self._total_carbon_impact = new_total
+                self.async_write_ha_state()
             elif new_total == 0 and self._total_carbon_impact > 0:
                 _LOGGER.warning(
                     "Rejecting statistics update to 0 for %s (current: %f)",
@@ -315,8 +316,8 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
             _LOGGER.debug("Building appliance stats for %s", self._device_name)
 
         now = dt_util.now()
-        end_ts = now.replace(minute=0, second=0, microsecond=0) - timedelta(
-            hours=1
+        end_ts = now.replace(
+            minute=0, second=0, microsecond=0
         )  # prevent reset to 0 ?? god's plan
         stats = await utils_build_hourly_stamps(
             self.hass,
