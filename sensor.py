@@ -288,10 +288,11 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
             elif (
                 new_total == 0 or new_total < self._total_carbon_impact
             ) and self._total_carbon_impact > 0:
+                new_carbon_total = self._total_carbon_impact
                 _LOGGER.warning(
                     "Database baseline reset somehow for %s. Repairing DB with in-memory total: %f",
                     self._device_name,
-                    self._total_carbon_impact + new_total,
+                    self._total_carbon_impact,
                 )
 
                 metadata = {
@@ -311,8 +312,8 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
                 stats = [
                     {
                         "start": start_dt,
-                        "state": self._total_carbon_impact + new_total,
-                        "sum": self._total_carbon_impact + new_total,
+                        "state": self._total_carbon_impact,
+                        "sum": self._total_carbon_impact,
                     }
                 ]
 
