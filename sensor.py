@@ -277,14 +277,44 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
         with contextlib.suppress(ValueError, TypeError):
             new_total = float(latest_sum)
             if new_total > self._total_carbon_impact:
+                _LOGGER.debug(
+                    "Syncing memory to DB: %s -> %s",
+                    self._total_carbon_impact,
+                    new_total,
+                )
                 self._total_carbon_impact = new_total
                 self.async_write_ha_state()
+
             elif new_total == 0 and self._total_carbon_impact > 0:
                 _LOGGER.warning(
-                    "Rejecting statistics update to 0 for %s (current: %f)",
+                    "Database baseline reset to 0 for %s. Repairing DB with in-memory total: %f",
                     self._device_name,
                     self._total_carbon_impact,
                 )
+
+                metadata = {
+                    "statistic_id": self._statistic_id,
+                    "source": "recorder",
+                    "name": self._attr_name,
+                    "unit_of_measurement": self._attr_native_unit_of_measurement,
+                    "has_sum": True,
+                    "mean_type": StatisticMeanType.NONE,
+                }
+
+                start_dt = stats_rows[0].get("start")
+                if isinstance(start_dt, float):
+                    start_dt = dt_util.utc_from_timestamp(start_dt)
+
+                stats = [
+                    {
+                        "start": start_dt,
+                        "state": self._total_carbon_impact,
+                        "sum": self._total_carbon_impact,
+                    }
+                ]
+
+                # god's plan
+                async_import_statistics(self.hass, metadata, stats)
 
     async def async_added_to_hass(self):
         """Register callback events."""
