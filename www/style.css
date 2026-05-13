@@ -133,6 +133,15 @@ li {
     margin-bottom: 4px;
 }
 
+.device-header a,
+.device-header a:visited,
+.device-header a:hover,
+.device-header a:focus,
+.device-header a:active {
+    color: var(--primary-color, #03a9f4);
+    text-decoration: none;
+}
+
 .device-extended {
     display: none;
     margin-top: 8px;

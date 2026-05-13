@@ -399,7 +399,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.30';
+        link.href = '/api/carbon_footprint/style.css?version=1.31';
         link.dataset.carbonFootprintStyle = 'true';
         this.appendChild(link);
     }
@@ -1298,7 +1298,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.30'; // :skull:
+        link.href = '/api/carbon_footprint/style.css?version=1.31'; // :skull:
         this.appendChild(link);
     }
 
@@ -1609,7 +1609,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                         <li class="device-item" data-device-id="${device_id}" data-device-name="${(info.metadata?.display_name || device_id).toLowerCase()}" data-device-area="${(info.metadata?.area_name || info.metadata?.area_id || '').toLowerCase()}" data-device-type="${(info.type || '').toLowerCase()}">
                                             <div class="device-info">
                                                 <div class="device-header">
-                                                    <h2><b>${info.metadata?.display_name || device_id}</b></h2><br>
+                                                    <h2><b><a href="/config/devices/device/${encodeURIComponent(info.device_id)}" target="_blank" rel="noopener noreferrer">${info.metadata?.display_name || device_id}</a></b></h2><br>
                                                     <div class="device-extended">
                                                         Type: ${info.type || 'Unknown'}<br>
                                                         Area: ${info.metadata?.area_name || info.metadata?.area_id || 'N/A'} <br>
@@ -1700,7 +1700,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.30'; // :skull:
+        link.href = '/api/carbon_footprint/style.css?version=1.31'; // :skull:
         this.appendChild(link);
     }
 
