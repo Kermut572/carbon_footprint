@@ -10,10 +10,10 @@ data.
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timedelta
 import json
 import logging
+import time
 from typing import Any
 
 import aiohttp
@@ -56,6 +56,22 @@ from .utils import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _start_websocket_timer() -> float:
+    """Start a websocket endpoint timer."""
+    return time.monotonic()
+
+
+def _log_websocket_timer(endpoint: str, msg: dict[str, Any], started_at: float) -> None:
+    """Log how long a websocket endpoint took to run."""
+    _LOGGER.warning(
+        "WebSocket endpoint %s (%s, id: %s) took %.3fs",
+        endpoint,
+        msg.get("type", "unknown"),
+        msg.get("id", "unknown"),
+        time.monotonic() - started_at,
+    )
 
 
 def _normalize_device_type(device_type: str | None) -> tuple[str, str]:
@@ -102,6 +118,19 @@ def async_register_websocket_handlers(hass: HomeAssistant) -> None:
 )
 @callback
 def ws_get_device_autocomp(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Get a device's information to autocomplete the form."""
+    started_at = _start_websocket_timer()
+    try:
+        return _ws_get_device_autocomp(hass, connection, msg)
+    finally:
+        _log_websocket_timer("ws_get_device_autocomp", msg, started_at)
+
+
+def _ws_get_device_autocomp(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
@@ -156,6 +185,19 @@ def ws_get_device_autocomp(
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_devices_to_add"})
 @callback
 def ws_get_devices_to_add(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return devices that can be added to the integration."""
+    started_at = _start_websocket_timer()
+    try:
+        return _ws_get_devices_to_add(hass, connection, msg)
+    finally:
+        _log_websocket_timer("ws_get_devices_to_add", msg, started_at)
+
+
+def _ws_get_devices_to_add(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
@@ -258,6 +300,19 @@ def ws_get_type_embodied_footprint(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
+    """Return the embodied footprint for a given device type."""
+    started_at = _start_websocket_timer()
+    try:
+        return _ws_get_type_embodied_footprint(hass, connection, msg)
+    finally:
+        _log_websocket_timer("ws_get_type_embodied_footprint", msg, started_at)
+
+
+def _ws_get_type_embodied_footprint(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
     """Returns the embodied footprint for a given device type."""
     entry = _get_loaded_entry(hass)
     if entry is None:
@@ -288,6 +343,19 @@ def ws_get_type_embodied_footprint(
 )
 @callback
 def ws_get_carbon_data(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Handle get carbon data command."""
+    started_at = _start_websocket_timer()
+    try:
+        return _ws_get_carbon_data(hass, connection, msg)
+    finally:
+        _log_websocket_timer("ws_get_carbon_data", msg, started_at)
+
+
+def _ws_get_carbon_data(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
@@ -411,6 +479,19 @@ async def ws_set_device(
     msg: dict[str, Any],
 ) -> None:
     """Set the device's data."""
+    started_at = _start_websocket_timer()
+    try:
+        return await _ws_set_device(hass, connection, msg)
+    finally:
+        _log_websocket_timer("ws_set_device", msg, started_at)
+
+
+async def _ws_set_device(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Set the device's data."""
 
     entry = _get_loaded_entry(hass)
     if entry is None:
@@ -508,6 +589,19 @@ def ws_remove_device(
     msg: dict[str, Any],
 ) -> None:
     """Remove a device's data."""
+    started_at = _start_websocket_timer()
+    try:
+        return _ws_remove_device(hass, connection, msg)
+    finally:
+        _log_websocket_timer("ws_remove_device", msg, started_at)
+
+
+def _ws_remove_device(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Remove a device's data."""
     entry = _get_loaded_entry(hass)
     if entry is None:
         connection.send_error(
@@ -524,6 +618,19 @@ def ws_remove_device(
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/remove_all_devices"})
 @websocket_api.async_response
 async def ws_remove_all_devices(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Remove all configured devices from the carbon footprint store."""
+    started_at = _start_websocket_timer()
+    try:
+        return await _ws_remove_all_devices(hass, connection, msg)
+    finally:
+        _log_websocket_timer("ws_remove_all_devices", msg, started_at)
+
+
+async def _ws_remove_all_devices(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
@@ -554,6 +661,19 @@ async def ws_remove_all_devices(
 )
 @websocket_api.async_response
 async def ws_add_ignored_device_rule(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Add a custom ignored device rule."""
+    started_at = _start_websocket_timer()
+    try:
+        return await _ws_add_ignored_device_rule(hass, connection, msg)
+    finally:
+        _log_websocket_timer("ws_add_ignored_device_rule", msg, started_at)
+
+
+async def _ws_add_ignored_device_rule(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
@@ -597,6 +717,19 @@ def ws_compute_footprint(
     msg: dict[str, Any],
 ) -> None:
     """Compute footprint of a device using all of the HSL."""
+    started_at = _start_websocket_timer()
+    try:
+        return _ws_compute_footprint(hass, connection, msg)
+    finally:
+        _log_websocket_timer("ws_compute_footprint", msg, started_at)
+
+
+def _ws_compute_footprint(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Compute footprint of a device using all of the HSL."""
     blocks_hsl = msg["hsl_values"]
     values = [0.0, 0.0, 0.0]
 
@@ -615,6 +748,19 @@ def ws_compute_footprint(
 )
 @callback
 def ws_get_all_devices_energy(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return all devices and their total energy consumption."""
+    started_at = _start_websocket_timer()
+    try:
+        return _ws_get_all_devices_energy(hass, connection, msg)
+    finally:
+        _log_websocket_timer("ws_get_all_devices_energy", msg, started_at)
+
+
+def _ws_get_all_devices_energy(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
@@ -651,6 +797,19 @@ def ws_get_all_devices_energy(
 )
 @callback
 def ws_update_devices_energy(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Update the total energy consumed of all registered devices."""
+    started_at = _start_websocket_timer()
+    try:
+        return _ws_update_devices_energy(hass, connection, msg)
+    finally:
+        _log_websocket_timer("ws_update_devices_energy", msg, started_at)
+
+
+def _ws_update_devices_energy(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
@@ -704,6 +863,23 @@ def ws_update_devices_energy(
 )
 @websocket_api.async_response
 async def ws_get_consumption_footprint_time_interval(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Get the history of the consumption footprint for a time interval."""
+    started_at = _start_websocket_timer()
+    try:
+        return await _ws_get_consumption_footprint_time_interval(
+            hass, connection, msg
+        )
+    finally:
+        _log_websocket_timer(
+            "ws_get_consumption_footprint_time_interval", msg, started_at
+        )
+
+
+async def _ws_get_consumption_footprint_time_interval(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
@@ -835,6 +1011,21 @@ async def ws_get_embodied_carbon_time_interval(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
+    """Get embodied carbon footprint over a time interval."""
+    started_at = _start_websocket_timer()
+    try:
+        return await _ws_get_embodied_carbon_time_interval(hass, connection, msg)
+    finally:
+        _log_websocket_timer(
+            "ws_get_embodied_carbon_time_interval", msg, started_at
+        )
+
+
+async def _ws_get_embodied_carbon_time_interval(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
     """Get the repartition of the embodied carbon footprint over a given time interval."""
 
     start_time = dt_util.parse_datetime(msg["start_time"])
@@ -951,6 +1142,19 @@ def ws_get_carbon_by_room(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
+    """Get carbon footprint grouped by room or area."""
+    started_at = _start_websocket_timer()
+    try:
+        return _ws_get_carbon_by_room(hass, connection, msg)
+    finally:
+        _log_websocket_timer("ws_get_carbon_by_room", msg, started_at)
+
+
+def _ws_get_carbon_by_room(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
     """Get carbon footprint grouped by room/area.
 
     Groups all configured devices by their Home Assistant room/area and sums
@@ -1047,6 +1251,19 @@ def ws_get_carbon_by_room(
 )
 @websocket_api.async_response
 async def ws_get_carbon_by_room_with_usage(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Get carbon footprint by room with embodied and usage breakdown."""
+    started_at = _start_websocket_timer()
+    try:
+        return await _ws_get_carbon_by_room_with_usage(hass, connection, msg)
+    finally:
+        _log_websocket_timer("ws_get_carbon_by_room_with_usage", msg, started_at)
+
+
+async def _ws_get_carbon_by_room_with_usage(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
@@ -1218,6 +1435,19 @@ def ws_get_carbon_by_type(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
+    """Get carbon footprint grouped by device type."""
+    started_at = _start_websocket_timer()
+    try:
+        return _ws_get_carbon_by_type(hass, connection, msg)
+    finally:
+        _log_websocket_timer("ws_get_carbon_by_type", msg, started_at)
+
+
+def _ws_get_carbon_by_type(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
     """Get carbon footprint grouped by type.
 
     Groups all configured devices by their type (e.g. smart plug, camera,...) room/area and sums
@@ -1295,6 +1525,19 @@ def ws_get_carbon_by_type(
 )
 @websocket_api.async_response
 async def ws_get_carbon_by_type_with_usage(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Get carbon footprint by type with embodied and usage breakdown."""
+    started_at = _start_websocket_timer()
+    try:
+        return await _ws_get_carbon_by_type_with_usage(hass, connection, msg)
+    finally:
+        _log_websocket_timer("ws_get_carbon_by_type_with_usage", msg, started_at)
+
+
+async def _ws_get_carbon_by_type_with_usage(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
@@ -1450,6 +1693,19 @@ async def ws_llm_detection(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
+    """Call an OpenAI model to determine the user's device types."""
+    started_at = _start_websocket_timer()
+    try:
+        return await _ws_llm_detection(hass, connection, msg)
+    finally:
+        _log_websocket_timer("ws_llm_detection", msg, started_at)
+
+
+async def _ws_llm_detection(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
     """Calls an OpenAI model to determine the type of the user's devices."""
 
     entry = _get_loaded_entry(hass)
@@ -1587,6 +1843,19 @@ async def ws_db_matching(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
+    """Call the database API to match carbon values."""
+    started_at = _start_websocket_timer()
+    try:
+        return await _ws_db_matching(hass, connection, msg)
+    finally:
+        _log_websocket_timer("ws_db_matching", msg, started_at)
+
+
+async def _ws_db_matching(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
     """Calls the DB REST API in order to match carbon values."""
     entry = _get_loaded_entry(hass)
     if entry is None:
@@ -1673,6 +1942,19 @@ async def ws_export_json(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
+    """Export the added devices to a JSON array."""
+    started_at = _start_websocket_timer()
+    try:
+        return await _ws_export_json(hass, connection, msg)
+    finally:
+        _log_websocket_timer("ws_export_json", msg, started_at)
+
+
+async def _ws_export_json(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
     """Export the added devices to a JSON array to upload them on the interface."""
     entry = _get_loaded_entry(hass)
     if entry is None:
@@ -1740,6 +2022,19 @@ async def ws_get_yearly_contribution(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
+    """Return the yearly carbon and energy contribution of HA devices."""
+    started_at = _start_websocket_timer()
+    try:
+        return await _ws_get_yearly_contribution(hass, connection, msg)
+    finally:
+        _log_websocket_timer("ws_get_yearly_contribution", msg, started_at)
+
+
+async def _ws_get_yearly_contribution(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
     """Returns the yearly carbon/energy contribution of HA devices."""
     entries = hass.config_entries.async_entries(DOMAIN)
     if not entries:
@@ -1789,6 +2084,19 @@ async def ws_get_yearly_contribution(
 )
 @websocket_api.async_response
 async def ws_get_annual_consumption_summary(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return annual carbon consumption summary for dashboard cards."""
+    started_at = _start_websocket_timer()
+    try:
+        return await _ws_get_annual_consumption_summary(hass, connection, msg)
+    finally:
+        _log_websocket_timer("ws_get_annual_consumption_summary", msg, started_at)
+
+
+async def _ws_get_annual_consumption_summary(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
@@ -1897,6 +2205,19 @@ async def ws_get_recommendations(
     msg: dict[str, Any],
 ) -> None:
     """Return dashboard recommendations computed by the backend."""
+    started_at = _start_websocket_timer()
+    try:
+        return await _ws_get_recommendations(hass, connection, msg)
+    finally:
+        _log_websocket_timer("ws_get_recommendations", msg, started_at)
+
+
+async def _ws_get_recommendations(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return dashboard recommendations computed by the backend."""
     try:
         _LOGGER.debug(
             "Computing recommendations: rooms=%d, usage_devices=%d, intensity_points=%d, current_intensity=%s",
@@ -1929,6 +2250,19 @@ async def ws_get_recommendations(
 )
 @websocket_api.async_response
 async def ws_reset_sensors(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Reset and rebuild a sensor's history."""
+    started_at = _start_websocket_timer()
+    try:
+        return await _ws_reset_sensors(hass, connection, msg)
+    finally:
+        _log_websocket_timer("ws_reset_sensors", msg, started_at)
+
+
+async def _ws_reset_sensors(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
