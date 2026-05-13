@@ -1609,7 +1609,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                         <li class="device-item" data-device-id="${device_id}" data-device-name="${(info.metadata?.display_name || device_id).toLowerCase()}" data-device-area="${(info.metadata?.area_name || info.metadata?.area_id || '').toLowerCase()}" data-device-type="${(info.type || '').toLowerCase()}">
                                             <div class="device-info">
                                                 <div class="device-header">
-                                                    <h2><b><a href="/config/devices/device/${encodeURIComponent(info.device_id)}" target="_blank" rel="noopener noreferrer">${info.metadata?.display_name || device_id}</a></b></h2><br>
+                                                    <h2><b><a href="/config/devices/device/${encodeURIComponent(device_id)}" target="_blank" rel="noopener noreferrer">${info.metadata?.display_name || device_id}</a></b></h2><br>
                                                     <div class="device-extended">
                                                         Type: ${info.type || 'Unknown'}<br>
                                                         Area: ${info.metadata?.area_name || info.metadata?.area_id || 'N/A'} <br>
