@@ -22,11 +22,42 @@ _LOGGER = logging.getLogger(__name__)
 REGEX_MATCHER = [
     (
         re.compile(
-            r"\b(window(\ssensor)?|door(\ssensor)?)\b",
+            r"\b(refrigerator|fridge)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
-        "Window/door sensor",
+        "Refrigerator",
     ),
+    (
+        re.compile(
+            r"\b(wash(ing)?\smachine|cloth(es)?)\b",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "Washing machine",
+    ),
+    (
+        re.compile(
+            r"\b(dishwasher|dish\swasher)\b",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "Dishwasher",
+    ),
+
+    (
+        re.compile(
+            r"\b(tele(vision)?|tv|oled|qled|mini\sled)\b",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "TV",
+    ),
+
+    (
+        re.compile(
+            r"\b(light\s(sensor|detection)|luminosity|illuminance|lux|sun)\b",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "Luminosity sensor",
+    ),
+
     (
         re.compile(
             r"\b(motion|movement|wildlife|occupancy|radar|presence)\b",
@@ -34,20 +65,15 @@ REGEX_MATCHER = [
         ),
         "Motion sensor",
     ),
+
     (
         re.compile(
-            r"\b(luminosity|sun)\b",
+            r"\b(window|door)\s(sensor|contact|opening|detector)\b|\b(contact\s(sensor)?)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
-        "Luminosity sensor",
+        "Window/door sensor",
     ),
-    (
-        re.compile(
-            r"\b(energy(\smonitor|\scontrol)?)\b",
-            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
-        ),
-        "Energy monitor",
-    ),
+
     (
         re.compile(
             r"\b(thermostat|temp(erature)?\scontrol)\b",
@@ -64,39 +90,12 @@ REGEX_MATCHER = [
     ),
     (
         re.compile(
-            r"\b(air|carbon monoxide|oxygen)\b",
+            r"\b(air\squality|carbon\smonoxide|co\ssensor|oxygen|voc|pm2\.5|pm10)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
         "Air quality sensor",
     ),
-    (
-        re.compile(
-            r"\b(wash(ing)?\smachine|cloth(es)?)\b",
-            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
-        ),
-        "Washing machine",
-    ),
-    (
-        re.compile(
-            r"\b(dish(washer)?|dish(es)?)\b",
-            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
-        ),
-        "Dishwasher",
-    ),
-    (
-        re.compile(
-            r"\b(refrigerator|fridge)\b",
-            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
-        ),
-        "Refrigerator",
-    ),
-    (
-        re.compile(
-            r"\b(tele(vision)?|tv)\b",
-            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
-        ),
-        "TV",
-    ),
+
     (
         re.compile(
             r"\b(camera|video|doorbell|webcam|cctv)\b",
@@ -125,13 +124,17 @@ REGEX_MATCHER = [
         ),
         "Smart lock",
     ),
+
+    # Light bulb after luminosity + TV
+    # Avoid matching "light sensor", "light detection", "mini led"
     (
         re.compile(
-            r"\b(light((\s)?bulb)?|lamp|bulb|led|rgb)\b",
+            r"\b((smart\s)?light\sbulb|bulb|lamp|lightstrip|light\sstrip|hue\sgo|rgb\slight)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
         "Light bulb",
     ),
+
     (
         re.compile(
             r"\b(switch|relay)\b",
@@ -139,19 +142,29 @@ REGEX_MATCHER = [
         ),
         "Switch",
     ),
+
     (
         re.compile(
-            r"\b(smoke|carbon dioxide)\b",
+            r"\b(smoke|carbon dioxide|co2)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
         "Smoke detector",
     ),
+
     (
         re.compile(
-            r"\b(router|wifi|hub|connectivity)\b",
+            r"\b(router|wifi|wi-fi|access\spoint|mesh|gateway|connectivity)\b",
             flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
         ),
         "Router",
+    ),
+
+    (
+        re.compile(
+            r"\b(energy\s(monitor|control|meter)|power\smeter)\b",
+            flags=re.UNICODE | re.IGNORECASE | re.VERBOSE,
+        ),
+        "Energy monitor",
     ),
 ]
 
