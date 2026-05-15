@@ -68,7 +68,7 @@ def get_carbon_intensity_recommendation(ci: Any) -> dict[str, Any]:
     if safe_ci is None:
         return {
             "label": label,
-            "message": "Carbon intensity data unavailable.",
+            "message": "No recommendation can be generated due to missing carbon-intensity information.",
             "color": "#eeeeee",
             "severity": "info",
         }
@@ -76,7 +76,7 @@ def get_carbon_intensity_recommendation(ci: Any) -> dict[str, Any]:
     if safe_ci < 150:
         return {
             "label": label,
-            "message": f"The carbon intensity is <b>low ({safe_ci:g} gCO2eq/kWh)</b>. This is a good time to run appliances like washing machines and dishwashers.",
+            "message": f"The carbon intensity is <b>low ({safe_ci:g} gCO2eq/kWh)</b>. The current electricity mix is relatively low-carbon and suitable for flexible appliance usage.",
             "color": "#e8f5e9",
             "severity": "good",
         }
@@ -84,14 +84,14 @@ def get_carbon_intensity_recommendation(ci: Any) -> dict[str, Any]:
     if safe_ci < 300:
         return {
             "label": label,
-            "message": f"The carbon intensity is <b>moderate ({safe_ci:g} gCO2eq/kWh)</b>. If possible, shift flexible loads to cleaner hours.",
+            "message": f"The carbon intensity is <b>moderate ({safe_ci:g} gCO2eq/kWh)</b>. Reducing or shifting non-essential electricity consumption may help lower the associated carbon footprint.",
             "color": "#fff8e1",
             "severity": "warning",
         }
 
     return {
         "label": label,
-        "message": f"The carbon intensity is <b>high ({safe_ci:g} gCO2eq/kWh)</b>. Avoid heavy appliance use now and delay non-essential loads.",
+        "message": f"The current electricity mix is relatively carbon-intensive and heavy appliance usage should preferably be postponed when possible.",
         "color": "#ffebee",
         "severity": "bad",
     }
