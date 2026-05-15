@@ -1091,6 +1091,38 @@ async def _ws_get_embodied_carbon_time_interval(
             msg["id"], "config_entry_not_loaded", "Uh oh, no loaded entry found :-("
         )
         return
+
+    start_ts = dt_util.as_local(start_time)
+    end_ts = dt_util.as_local(end_time)
+
+    start_ts_cache = (
+        start_ts.replace(minute=0, second=0, microsecond=0).isoformat()
+        if granularity == "hour"
+        else start_ts.date().isoformat()
+    )
+    end_ts_cache = (
+        end_ts.replace(minute=0, second=0, microsecond=0).isoformat()
+        if granularity == "hour"
+        else end_ts.date().isoformat()
+    )
+
+    cache_line = (
+        "embodied_carbon",
+        start_ts_cache,
+        end_ts_cache,
+        granularity,
+    )
+
+    now_ts = dt_util.utcnow()
+    cached_val = entry.runtime_data.ws_cache.get(cache_line)
+
+    if cached_val:
+        cached_ts, cached_ret_val = cached_val
+        if now_ts - cached_ts < timedelta(minutes=5):
+            _LOGGER.debug("Sending cached val for %s", cache_line)
+            connection.send_result(msg["id"], cached_ret_val)
+            return
+
     cf_store = entry.runtime_data.cf_store
     devices = cf_store.get_devices_data()
     response = {}
@@ -1159,11 +1191,14 @@ async def _ws_get_embodied_carbon_time_interval(
         # _LOGGER.debug("PROCESSED DEVICES EMBODIED CARBON: %s", device_id)
         # _LOGGER.debug(results)
 
+    result = {
+        "embodied_carbon": response,
+    }
+    _LOGGER.debug("Sending computed val for %s", cache_line)
+    entry.runtime_data.ws_cache[cache_line] = (now_ts, result)
     connection.send_result(
         msg["id"],
-        {
-            "embodied_carbon": response,
-        },
+        result,
     )
 
 
