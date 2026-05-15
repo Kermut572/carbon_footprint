@@ -428,7 +428,6 @@ def _ws_get_carbon_data(
     intensity_history = []
     energy_store = getattr(entry.runtime_data, "energy_store", None)
     if energy_store is not None:
-        start_ts = dt_util.now() - timedelta(days=45)
         for (
             date_key,
             intensity_value,
@@ -436,9 +435,6 @@ def _ws_get_carbon_data(
             try:
                 timestamp = dt_util.as_local(datetime.strptime(date_key, "%d-%m-%Y-%H"))
             except ValueError:
-                continue
-
-            if timestamp < start_ts:
                 continue
 
             try:
