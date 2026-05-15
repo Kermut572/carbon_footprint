@@ -65,7 +65,7 @@ def _start_websocket_timer() -> float:
 
 def _log_websocket_timer(endpoint: str, msg: dict[str, Any], started_at: float) -> None:
     """Log how long a websocket endpoint took to run."""
-    _LOGGER.warning(
+    _LOGGER.debug(
         "WebSocket endpoint %s (%s, id: %s) took %.3fs",
         endpoint,
         msg.get("type", "unknown"),
@@ -1414,7 +1414,7 @@ async def _ws_get_carbon_by_room_with_usage(
             if not is_appliance
             else device_info.get("cu_app_entity")
         )
-        _LOGGER.debug("USING %s for device %s", cu_entity, device_name)
+        # _LOGGER.debug("USING %s for device %s", cu_entity, device_name)
         if cu_entity:
             state = hass.states.get(cu_entity)
             if state and state.state not in ("unknown", "unavailable"):
