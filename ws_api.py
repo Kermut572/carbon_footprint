@@ -433,7 +433,7 @@ def _ws_get_carbon_data(
             intensity_value,
         ) in energy_store.get_energy_footprint_data().items():
             try:
-                timestamp = dt_util.as_local(datetime.strptime(date_key, "%d-%m-%Y-%H"))
+                timestamp = datetime.strptime(date_key, "%d-%m-%Y-%H")
             except ValueError:
                 continue
 
@@ -918,10 +918,24 @@ async def _ws_get_consumption_footprint_time_interval(
 
     is_appliance = msg.get("is_appliance", False)
 
+    start_ts = dt_util.as_local(start_time)
+    end_ts = dt_util.as_local(end_time)
+
+    start_ts_cache = (
+        start_ts.replace(minute=0, second=0, microsecond=0).isoformat()
+        if granularity == "hour"
+        else start_ts.date().isoformat()
+    )
+    end_ts_cache = (
+        end_ts.replace(minute=0, second=0, microsecond=0).isoformat()
+        if granularity == "hour"
+        else end_ts.date().isoformat()
+    )
+
     cache_line = (
         "consumption_footprint",
-        start_time,
-        end_time,
+        start_ts_cache,
+        end_ts_cache,
         granularity,
         is_appliance,
     )
@@ -932,7 +946,7 @@ async def _ws_get_consumption_footprint_time_interval(
     if cached_val:
         cached_ts, cached_ret_val = cached_val
         if now_ts - cached_ts < timedelta(minutes=5):
-            _LOGGER.debug("Sending cached val %s", cached_ret_val)
+            _LOGGER.debug("Sending cached val for %s", cache_line)
             connection.send_result(msg["id"], cached_ret_val)
             return
 
@@ -1009,7 +1023,7 @@ async def _ws_get_consumption_footprint_time_interval(
         "device_name_map": device_name_map,
     }
 
-    _LOGGER.debug("Sending computed val %s", result)
+    _LOGGER.debug("Sending computed val for %s", cache_line)
     entries[0].runtime_data.ws_cache[cache_line] = (now_ts, result)
     connection.send_result(
         msg["id"],
