@@ -428,6 +428,7 @@ def _ws_get_carbon_data(
     intensity_history = []
     energy_store = getattr(entry.runtime_data, "energy_store", None)
     if energy_store is not None:
+        start_ts = dt_util.now() - timedelta(days=45)
         for (
             date_key,
             intensity_value,
@@ -435,6 +436,9 @@ def _ws_get_carbon_data(
             try:
                 timestamp = datetime.strptime(date_key, "%d-%m-%Y-%H")
             except ValueError:
+                continue
+
+            if timestamp < start_ts:
                 continue
 
             try:
@@ -870,9 +874,7 @@ async def ws_get_consumption_footprint_time_interval(
     """Get the history of the consumption footprint for a time interval."""
     started_at = _start_websocket_timer()
     try:
-        return await _ws_get_consumption_footprint_time_interval(
-            hass, connection, msg
-        )
+        return await _ws_get_consumption_footprint_time_interval(hass, connection, msg)
     finally:
         _log_websocket_timer(
             "ws_get_consumption_footprint_time_interval", msg, started_at
@@ -919,6 +921,22 @@ async def _ws_get_consumption_footprint_time_interval(
         return
 
     is_appliance = msg.get("is_appliance", False)
+
+    cache_line = (
+        "consumption_footprint",
+        start_time,
+        end_time,
+        granularity,
+        is_appliance,
+    )
+
+    now_ts = dt_util.now()
+    cached_val = entries[0].runtime_data.ws_cache.get(cache_line)
+
+    if cached_val:
+        cached_ts, cached_ret_val = cached_val
+        if now_ts - cached_ts < timedelta(minutes=5):
+            connection.send_result(msg["id"], cached_ret_val)
 
     device_name_map = {}
     cf_store = entries[0].runtime_data.cf_store
@@ -988,12 +1006,15 @@ async def _ws_get_consumption_footprint_time_interval(
     # _LOGGER.debug(devices_consumptions)
 
     # response format: {"device_1": [{"ts_1": cf_1, "ts_2":cf_2,...}], "device_2": [], ...}
+    result = {
+        "devices_consumptions": devices_consumptions,
+        "device_name_map": device_name_map,
+    }
+
+    entries[0].runtime_data.ws_cache[cache_line] = (now_ts, result)
     connection.send_result(
         msg["id"],
-        {
-            "devices_consumptions": devices_consumptions,
-            "device_name_map": device_name_map,
-        },
+        result,
     )
 
 
@@ -1016,9 +1037,7 @@ async def ws_get_embodied_carbon_time_interval(
     try:
         return await _ws_get_embodied_carbon_time_interval(hass, connection, msg)
     finally:
-        _log_websocket_timer(
-            "ws_get_embodied_carbon_time_interval", msg, started_at
-        )
+        _log_websocket_timer("ws_get_embodied_carbon_time_interval", msg, started_at)
 
 
 async def _ws_get_embodied_carbon_time_interval(
@@ -2110,8 +2129,15 @@ async def _ws_get_annual_consumption_summary(
         )
         return
 
+    cache_val = entry.runtime_data.ws_cache.get("annual_consumption_summary")
     end_time = dt_util.now()
     start_time = end_time - relativedelta(years=1)
+
+    if cache_val:
+        cache_ts, cache_ret_val = cache_val
+        if end_time - cache_ts < timedelta(minutes=30):
+            connection.send_result(msg["id"], cache_ret_val)
+            return
 
     cf_store = entry.runtime_data.cf_store
     devices = cf_store.get_devices_data()
@@ -2178,13 +2204,17 @@ async def _ws_get_annual_consumption_summary(
         )
     )
 
+    result = {
+        "kgCO2eq": total_grams / 1000,
+        "carKm": total_grams / 218,
+        "rangeText": range_text,
+    }
+
+    entry.runtime_data.ws_cache["annual_consumption_summary"] = (end_time, result)
+
     connection.send_result(
         msg["id"],
-        {
-            "kgCO2eq": total_grams / 1000,
-            "carKm": total_grams / 218,
-            "rangeText": range_text,
-        },
+        result,
     )
 
 

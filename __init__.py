@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import timedelta
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 import logging
 import pathlib
+from typing import Any
 
 from homeassistant.components import panel_custom
 from homeassistant.components.http import StaticPathConfig
@@ -33,6 +34,7 @@ class CarbonFootprintData:
 
     cf_store: CFStore
     energy_store: EnergyStore
+    ws_cache: dict[str, tuple[datetime, dict[str, Any]]] = field(default_factory=dict)
 
 
 _PLATFORMS: list[Platform] = [Platform.SENSOR]
