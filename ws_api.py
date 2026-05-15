@@ -434,7 +434,7 @@ def _ws_get_carbon_data(
             intensity_value,
         ) in energy_store.get_energy_footprint_data().items():
             try:
-                timestamp = datetime.strptime(date_key, "%d-%m-%Y-%H")
+                timestamp = dt_util.as_local(datetime.strptime(date_key, "%d-%m-%Y-%H"))
             except ValueError:
                 continue
 
