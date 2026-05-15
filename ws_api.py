@@ -933,6 +933,7 @@ async def _ws_get_consumption_footprint_time_interval(
         cached_ts, cached_ret_val = cached_val
         if now_ts - cached_ts < timedelta(minutes=5):
             connection.send_result(msg["id"], cached_ret_val)
+            return
 
     device_name_map = {}
     cf_store = entries[0].runtime_data.cf_store
