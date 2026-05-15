@@ -926,12 +926,13 @@ async def _ws_get_consumption_footprint_time_interval(
         is_appliance,
     )
 
-    now_ts = dt_util.now()
+    now_ts = dt_util.utcnow()
     cached_val = entries[0].runtime_data.ws_cache.get(cache_line)
 
     if cached_val:
         cached_ts, cached_ret_val = cached_val
         if now_ts - cached_ts < timedelta(minutes=5):
+            _LOGGER.debug("Sending cached val %s", cached_ret_val)
             connection.send_result(msg["id"], cached_ret_val)
             return
 
@@ -1008,6 +1009,7 @@ async def _ws_get_consumption_footprint_time_interval(
         "device_name_map": device_name_map,
     }
 
+    _LOGGER.debug("Sending computed val %s", result)
     entries[0].runtime_data.ws_cache[cache_line] = (now_ts, result)
     connection.send_result(
         msg["id"],
@@ -2129,10 +2131,11 @@ async def _ws_get_annual_consumption_summary(
     cache_val = entry.runtime_data.ws_cache.get("annual_consumption_summary")
     end_time = dt_util.now()
     start_time = end_time - relativedelta(years=1)
+    cache_now_ts = dt_util.utcnow()
 
     if cache_val:
         cache_ts, cache_ret_val = cache_val
-        if end_time - cache_ts < timedelta(minutes=30):
+        if cache_now_ts - cache_ts < timedelta(minutes=30):
             connection.send_result(msg["id"], cache_ret_val)
             return
 
@@ -2207,7 +2210,7 @@ async def _ws_get_annual_consumption_summary(
         "rangeText": range_text,
     }
 
-    entry.runtime_data.ws_cache["annual_consumption_summary"] = (end_time, result)
+    entry.runtime_data.ws_cache["annual_consumption_summary"] = (cache_now_ts, result)
 
     connection.send_result(
         msg["id"],
