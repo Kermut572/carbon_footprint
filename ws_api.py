@@ -945,7 +945,7 @@ async def _ws_get_consumption_footprint_time_interval(
 
     if cached_val:
         cached_ts, cached_ret_val = cached_val
-        if now_ts - cached_ts < timedelta(minutes=5):
+        if now_ts - cached_ts < timedelta(minutes=2):
             _LOGGER.debug("Sending cached val for %s", cache_line)
             connection.send_result(msg["id"], cached_ret_val)
             return
@@ -1118,7 +1118,7 @@ async def _ws_get_embodied_carbon_time_interval(
 
     if cached_val:
         cached_ts, cached_ret_val = cached_val
-        if now_ts - cached_ts < timedelta(minutes=5):
+        if now_ts - cached_ts < timedelta(minutes=2):
             _LOGGER.debug("Sending cached val for %s", cache_line)
             connection.send_result(msg["id"], cached_ret_val)
             return
@@ -2184,7 +2184,7 @@ async def _ws_get_annual_consumption_summary(
 
     if cache_val:
         cache_ts, cache_ret_val = cache_val
-        if cache_now_ts - cache_ts < timedelta(minutes=30):
+        if cache_now_ts - cache_ts < timedelta(minutes=5):
             connection.send_result(msg["id"], cache_ret_val)
             return
 
