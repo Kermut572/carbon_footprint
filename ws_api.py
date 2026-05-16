@@ -1139,15 +1139,15 @@ async def _ws_get_embodied_carbon_time_interval(
         ) = await hass.async_add_executor_job(
             utils_find_energy_entity_for_device, hass, device_id
         )
-
-        install_sensor = appliance_entity or energy_entity
-        if not install_sensor:
+        if not energy_entity:
+            # _LOGGER.debug("Could not find energy entity for device %s", device_id)
             continue
 
-        install_date, id_store_updated = await utils_get_device_install_date(
-            hass, install_sensor, device_id
-        )
-
+        install_date, id_store_updated = (
+            await utils_get_device_install_date(hass, energy_entity, device_id)
+            if appliance_entity is None
+            else await utils_get_device_install_date(hass, appliance_entity, device_id)
+        )  # favor appliance_entity if it exists because it was 100% installed before powercalc
         if not install_date:
             # _LOGGER.debug("Could not find install date for device %s", device_id)
             continue
@@ -2122,9 +2122,8 @@ async def _ws_get_yearly_contribution(
         if energy_meter and device_id == energy_meter:
             continue
 
-        if not (
-            device_stats.get("energy_entity") or device_stats.get("appliance_entity")
-        ):
+        device_energy_entity = device_stats.get("energy_entity", None)
+        if device_energy_entity is None:
             continue
 
         device_metadata = device_stats.get("metadata", {})
@@ -2185,7 +2184,7 @@ async def _ws_get_annual_consumption_summary(
 
     if cache_val:
         cache_ts, cache_ret_val = cache_val
-        if cache_now_ts - cache_ts < timedelta(minutes=7):
+        if cache_now_ts - cache_ts < timedelta(minutes=30):
             connection.send_result(msg["id"], cache_ret_val)
             return
 

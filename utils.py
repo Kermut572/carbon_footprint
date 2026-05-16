@@ -41,6 +41,7 @@ REGEX_MATCHER = [
         ),
         "Dishwasher",
     ),
+
     (
         re.compile(
             r"\b(tele(vision)?|tv|oled|qled|mini\sled)\b",
@@ -48,6 +49,7 @@ REGEX_MATCHER = [
         ),
         "TV",
     ),
+
     (
         re.compile(
             r"\b(light\s(sensor|detection)|luminosity|illuminance|lux|sun)\b",
@@ -55,6 +57,7 @@ REGEX_MATCHER = [
         ),
         "Luminosity sensor",
     ),
+
     (
         re.compile(
             r"\b(motion|movement|wildlife|occupancy|radar|presence)\b",
@@ -62,6 +65,7 @@ REGEX_MATCHER = [
         ),
         "Motion sensor",
     ),
+
     (
         re.compile(
             r"\b(window|door)\s(sensor|contact|opening|detector)\b|\b(contact\s(sensor)?)\b",
@@ -69,6 +73,7 @@ REGEX_MATCHER = [
         ),
         "Window/door sensor",
     ),
+
     (
         re.compile(
             r"\b(thermostat|temp(erature)?\scontrol)\b",
@@ -90,6 +95,7 @@ REGEX_MATCHER = [
         ),
         "Air quality sensor",
     ),
+
     (
         re.compile(
             r"\b(camera|video|doorbell|webcam|cctv)\b",
@@ -118,6 +124,7 @@ REGEX_MATCHER = [
         ),
         "Smart lock",
     ),
+
     # Light bulb after luminosity + TV
     # Avoid matching "light sensor", "light detection", "mini led"
     (
@@ -127,6 +134,7 @@ REGEX_MATCHER = [
         ),
         "Light bulb",
     ),
+
     (
         re.compile(
             r"\b(switch|relay)\b",
@@ -134,6 +142,7 @@ REGEX_MATCHER = [
         ),
         "Switch",
     ),
+
     (
         re.compile(
             r"\b(smoke|carbon dioxide|co2)\b",
@@ -141,6 +150,7 @@ REGEX_MATCHER = [
         ),
         "Smoke detector",
     ),
+
     (
         re.compile(
             r"\b(router|wifi|wi-fi|access\spoint|mesh|gateway|connectivity)\b",
@@ -148,6 +158,7 @@ REGEX_MATCHER = [
         ),
         "Router",
     ),
+
     (
         re.compile(
             r"\b(energy\s(monitor|control|meter)|power\smeter)\b",
@@ -165,14 +176,7 @@ DEVICE_BLACKLIST_RULES = [
             "Generic": ["phone", "smartphone", "mobile phone", "Android phone"],
             "Apple": ["iPhone"],
             "Google": ["Pixel phone", "Pixel 2+"],
-            "Samsung": [
-                "Galaxy S",
-                "Galaxy Z",
-                "Galaxy Note",
-                "Galaxy A",
-                "Galaxy M",
-                "SM-* phone model IDs",
-            ],
+            "Samsung": ["Galaxy S", "Galaxy Z", "Galaxy Note", "Galaxy A", "Galaxy M", "SM-* phone model IDs"],
             "Nokia": ["Lumia", "G series", "X series", "C series", "3/4 digit models"],
             "Huawei": ["P series", "Mate", "Nova", "Y series", "Enjoy"],
             "Honor": ["Magic", "X series", "Play", "numbered models"],
@@ -183,13 +187,7 @@ DEVICE_BLACKLIST_RULES = [
             "Oppo": ["Find", "Reno", "A series", "F series"],
             "Vivo": ["X series", "Y series", "V series", "Nex", "iQOO"],
             "Realme": ["GT", "C series", "Narzo", "numbered models"],
-            "Motorola": [
-                "Moto E/G/X/Z",
-                "Moto G Power/Play/Stylus/Pure/Fast",
-                "Edge",
-                "Razr",
-                "One",
-            ],
+            "Motorola": ["Moto E/G/X/Z", "Moto G Power/Play/Stylus/Pure/Fast", "Edge", "Razr", "One"],
             "Sony": ["Xperia"],
             "Fairphone": ["Fairphone"],
             "Nothing": ["Phone"],
@@ -653,8 +651,7 @@ def utils_find_energy_entity_for_device(
     ):
         return energy_entity, appliance_entity, False
 
-    powercalc_sensor = None
-    app_sensors = []
+    sensors = []
     for entry in registry.entities.values():
         if entry.device_id != device_id:
             continue
@@ -665,26 +662,25 @@ def utils_find_energy_entity_for_device(
             state.attributes.get("device_class") == SensorDeviceClass.ENERGY
             and state.attributes.get("state_class") == SensorStateClass.TOTAL_INCREASING
         ):
-            if entry.platform.lower() == "powercalc":
-                powercalc_sensor = entry.entity_id
-                continue
+            sensors.append(entry)
 
-            app_sensors.append(entry)
+    if not sensors:
+        return None, None, False
 
-    energy_entity = powercalc_sensor
+    sensors.sort(key=lambda entry: entry.platform.lower() != "powercalc")
+    energy_entity = sensors[0].entity_id
     lookup_device["energy_entity"] = energy_entity
 
     appliance_entity = None
-    if len(app_sensors) == 0:
+    if len(sensors) == 1:
         return energy_entity, None, True
 
-    appliance_entity = app_sensors[0].entity_id
-    for sensor in app_sensors:
+    appliance_entity = sensors[1].entity_id
+    for sensor in sensors[1:]:
         if "today" in sensor.entity_id or "today" in (
             sensor.original_name or sensor.name
         ):
             appliance_entity = sensor.entity_id
-            break
     lookup_device["appliance_entity"] = appliance_entity
 
     return energy_entity, appliance_entity, True
@@ -771,14 +767,11 @@ async def utils_get_device_energy_consumption_map(
     energy_entity, appliance_entity, _ = utils_find_energy_entity_for_device(
         hass, device_id
     )
-
-    check_entity = energy_entity if not is_appliance else appliance_entity
-    if not check_entity:
-        _LOGGER.debug(
-            "No %s energy entity found for device id %s, skipping",
-            "powercalc" if not is_appliance else "appliance",
-            device_id,
-        )
+    if not energy_entity:
+        _LOGGER.debug("No energy entity found for device id %s, skipping", device_id)
+        return None
+    if is_appliance and not appliance_entity:
+        _LOGGER.debug("No appliance entity found for device id %s, skipping", device_id)
         return None
 
     if is_appliance:
@@ -793,13 +786,14 @@ async def utils_get_device_energy_consumption_map(
         hass,
         dt_util.now() - timedelta(days=365),
         dt_util.now(),
-        {check_entity},
+        {energy_entity} if not is_appliance else {appliance_entity},
         granularity,
         None,
         {"sum", "state"},
     )
 
     result = {}
+    check_entity = energy_entity if not is_appliance else appliance_entity
     for stat in stats.get(check_entity, []):
         start_ts = stat.get("start")
         if not start_ts:
@@ -812,6 +806,9 @@ async def utils_get_device_energy_consumption_map(
         if reading is None:
             continue
         result[map_key] = reading
+
+        if is_appliance:
+            _LOGGER.debug("Read value %d from stats for %s", reading, device_id)
 
     return result
 
