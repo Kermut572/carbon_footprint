@@ -648,7 +648,9 @@ def utils_find_energy_entity_for_device(
 
     energy_entity = lookup_device.get("energy_entity", None)
     appliance_entity = lookup_device.get("appliance_entity", None)
-    if energy_entity is not None and hass.states.get(energy_entity):
+    if (energy_entity is not None or appliance_entity is not None) and (
+        hass.states.get(energy_entity) or hass.states.get(appliance_entity)
+    ):
         return energy_entity, appliance_entity, False
 
     powercalc_sensor = None

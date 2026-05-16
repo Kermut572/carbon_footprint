@@ -114,7 +114,7 @@ async def async_setup_entry(
         device_entry = device_reg.devices.get(device_id)
 
         if not device_entry:
-            _LOGGER.debug("No entry found for device %s, skipping...", device_id)
+            _LOGGER.debug("No entry found for device %s, skipping", device_id)
             return
 
         device_name = (device_entry.name_by_user or device_entry.name) or "err"
