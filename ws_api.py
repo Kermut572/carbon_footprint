@@ -1139,7 +1139,7 @@ async def _ws_get_embodied_carbon_time_interval(
         ) = await hass.async_add_executor_job(
             utils_find_energy_entity_for_device, hass, device_id
         )
-        if not energy_entity:
+        if not energy_entity and not appliance_entity:
             # _LOGGER.debug("Could not find energy entity for device %s", device_id)
             continue
 

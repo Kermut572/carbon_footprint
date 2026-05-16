@@ -647,7 +647,10 @@ def utils_find_energy_entity_for_device(
     energy_entity = lookup_device.get("energy_entity", None)
     appliance_entity = lookup_device.get("appliance_entity", None)
     if energy_entity is not None and hass.states.get(energy_entity):
-        return energy_entity, appliance_entity, False
+        energy_entry = registry.async_get(energy_entity)
+        if energy_entry and energy_entry.platform.lower() == "powercalc":
+            return energy_entity, appliance_entity, False
+        lookup_device.pop("energy_entity", None)
 
     sensors = []
     for entry in registry.entities.values():
@@ -665,21 +668,26 @@ def utils_find_energy_entity_for_device(
     if not sensors:
         return None, None, False
 
-    sensors.sort(key=lambda entry: entry.platform.lower() != "powercalc")
-    energy_entity = sensors[0].entity_id
-    lookup_device["energy_entity"] = energy_entity
+    powercalc_sensors = [
+        sensor for sensor in sensors if sensor.platform.lower() == "powercalc"
+    ]
+    appliance_sensors = [
+        sensor for sensor in sensors if sensor.platform.lower() != "powercalc"
+    ]
+
+    energy_entity = powercalc_sensors[0].entity_id if powercalc_sensors else None
+    if energy_entity:
+        lookup_device["energy_entity"] = energy_entity
 
     appliance_entity = None
-    if len(sensors) == 1:
-        return energy_entity, None, True
-
-    appliance_entity = sensors[1].entity_id
-    for sensor in sensors[1:]:
-        if "today" in sensor.entity_id or "today" in (
-            sensor.original_name or sensor.name
-        ):
-            appliance_entity = sensor.entity_id
-    lookup_device["appliance_entity"] = appliance_entity
+    if appliance_sensors:
+        appliance_entity = appliance_sensors[0].entity_id
+        for sensor in appliance_sensors:
+            if "today" in sensor.entity_id or "today" in (
+                sensor.original_name or sensor.name
+            ):
+                appliance_entity = sensor.entity_id
+        lookup_device["appliance_entity"] = appliance_entity
 
     return energy_entity, appliance_entity, True
 
@@ -765,7 +773,7 @@ async def utils_get_device_energy_consumption_map(
     energy_entity, appliance_entity, _ = utils_find_energy_entity_for_device(
         hass, device_id
     )
-    if not energy_entity:
+    if not energy_entity and not is_appliance:
         _LOGGER.debug("No energy entity found for device id %s, skipping", device_id)
         return None
     if is_appliance and not appliance_entity:

@@ -77,19 +77,20 @@ async def async_setup_entry(
             energy_entity, appliance_entity, _ = utils_find_energy_entity_for_device(
                 hass, device_id
             )
-            if not energy_entity:
+            if not energy_entity and not appliance_entity:
                 # _LOGGER.warning("No energy entity found for %s, skipping", device_name)
                 continue
 
-            dev_entities.append(
-                CarbonUsageImpactSensor(
-                    hass=hass,
-                    device_id=device_id,
-                    device_name=device_name,
-                    energy_entity_id=energy_entity,
-                    em_entity_id=em_sensor,
+            if energy_entity:
+                dev_entities.append(
+                    CarbonUsageImpactSensor(
+                        hass=hass,
+                        device_id=device_id,
+                        device_name=device_name,
+                        energy_entity_id=energy_entity,
+                        em_entity_id=em_sensor,
+                    )
                 )
-            )
 
             if appliance_entity:
                 dev_entities.append(
@@ -137,7 +138,7 @@ async def async_setup_entry(
             hass, device_id
         )
 
-        if not energy_entity:
+        if not energy_entity and not appliance_entity:
             _LOGGER.info(
                 "Could not add sensor for %s because it has no energy sensor",
                 device_name,
@@ -150,11 +151,13 @@ async def async_setup_entry(
                 "Could not add sensor for %s because no Electricity Maps sensor was found, make sure it is installed"
             )
             return
-        entities = [
-            CarbonUsageImpactSensor(
-                hass, device_id, device_name, energy_entity, em_sensor
+        entities = []
+        if energy_entity:
+            entities.append(
+                CarbonUsageImpactSensor(
+                    hass, device_id, device_name, energy_entity, em_sensor
+                )
             )
-        ]
 
         if appliance_entity:
             entities.append(
