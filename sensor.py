@@ -157,14 +157,13 @@ async def async_setup_entry(
                     hass.async_create_task(cf_store.async_save_data())
             return True
 
-        if energy_entity and not relink_existing_sensor(
-            f"{device_id}_carbon_usage", "cu_entity"
-        ):
-            entities.append(
-                CarbonUsageImpactSensor(
-                    hass, device_id, device_name, energy_entity, em_sensor
+        if energy_entity:
+            if not relink_existing_sensor(f"{device_id}_carbon_usage", "cu_entity"):
+                entities.append(
+                    CarbonUsageImpactSensor(
+                        hass, device_id, device_name, energy_entity, em_sensor
+                    )
                 )
-            )
         elif curr_device is not None:
             curr_device["cu_entity"] = ""
             hass.async_create_task(cf_store.async_save_data())
@@ -339,6 +338,22 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
         await super().async_added_to_hass()
         self._statistic_id = self.entity_id
 
+        entries = self.hass.config_entries.async_entries(DOMAIN)
+        cf_store = None
+        curr_device = None
+        rebuilding_history = False
+        if entries:
+            cf_store = entries[0].runtime_data.cf_store
+            devices = cf_store.get_devices_data()
+            curr_device = devices.get(self._device_id, None)
+            if curr_device:
+                history_key = (
+                    "appliance_history_uploaded"
+                    if self.is_appliance
+                    else "history_uploaded"
+                )
+                rebuilding_history = not curr_device.get(history_key, False)
+
         async def _statistics_resync_listener(_now: datetime) -> None:
             """Keep the sensor state aligned with recorder stat edits."""
             await self.async_refresh_total_from_statistics()
@@ -350,7 +365,7 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
         )
 
         last_state = await self.async_get_last_state()
-        if last_state is not None:
+        if last_state is not None and not rebuilding_history:
             with contextlib.suppress(ValueError, TypeError):
                 self._total_carbon_impact = max(
                     self._total_carbon_impact, float(last_state.state)
@@ -380,20 +395,14 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
                 "Found stats %s for appliance from device %s", stats, self._device_name
             )
 
-        entries = self.hass.config_entries.async_entries(DOMAIN)
-        cf_store = None
-        if entries:
-            cf_store = entries[0].runtime_data.cf_store
-            devices = cf_store.get_devices_data()
-            curr_device = devices.get(self._device_id, None)
-            if curr_device:
-                if not self.is_appliance:
-                    curr_device["cu_entity"] = self._statistic_id
-                else:
-                    curr_device["cu_app_entity"] = self._statistic_id
-                    if not curr_device.get("energy_entity"):
-                        curr_device["cu_entity"] = ""
-                self.hass.async_create_task(cf_store.async_save_data())
+        if curr_device:
+            if not self.is_appliance:
+                curr_device["cu_entity"] = self._statistic_id
+            else:
+                curr_device["cu_app_entity"] = self._statistic_id
+                if not curr_device.get("energy_entity"):
+                    curr_device["cu_entity"] = ""
+            self.hass.async_create_task(cf_store.async_save_data())
 
         if stats:
             metadata = {
@@ -425,9 +434,11 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
                     self.hass.async_create_task(cf_store.async_save_data())
 
                 with contextlib.suppress(ValueError, TypeError):
-                    self._total_carbon_impact = max(
-                        self._total_carbon_impact,
-                        float(stats[-1].get("sum", 0.0)),
+                    rebuilt_total = float(stats[-1].get("sum", 0.0))
+                    self._total_carbon_impact = (
+                        rebuilt_total
+                        if rebuilding_history
+                        else max(self._total_carbon_impact, rebuilt_total)
                     )
 
                 state = self.hass.states.get(self._energy_entity_id)

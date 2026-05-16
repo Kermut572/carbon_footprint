@@ -1624,7 +1624,7 @@ class CarbonFootprintPanel extends HTMLElement {
                                                         ${info.cu_app_entity ? `<a href="/history?entity_id=${encodeURIComponent(info.cu_app_entity)}" target="_blank" rel="noopener noreferrer">Appliance usage sensor: ${info.cu_app_entity}</a><br>` : ``}
                                                     </div>
                                                 </div>
-                                                ${info.cu_entity ? `
+                                                ${(info.cu_entity || info.cu_app_entity) ? `
                                                 <button
                                                     type="button"
                                                     class="reset-sensor-btn"
