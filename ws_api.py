@@ -1857,8 +1857,8 @@ async def _ws_llm_detection(
     i = 1
 
     @retry(
-        wait=wait_fixed(45),
-        stop=stop_after_attempt(5),
+        wait=wait_fixed(20),
+        stop=stop_after_attempt(10),
         retry=retry_if_exception_type(ProviderError),
         reraise=True,
     )
