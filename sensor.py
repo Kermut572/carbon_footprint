@@ -81,15 +81,16 @@ async def async_setup_entry(
                 # _LOGGER.warning("No energy entity found for %s, skipping", device_name)
                 continue
 
-            dev_entities.append(
-                CarbonUsageImpactSensor(
-                    hass=hass,
-                    device_id=device_id,
-                    device_name=device_name,
-                    energy_entity_id=energy_entity,
-                    em_entity_id=em_sensor,
+            if energy_entity:
+                dev_entities.append(
+                    CarbonUsageImpactSensor(
+                        hass=hass,
+                        device_id=device_id,
+                        device_name=device_name,
+                        energy_entity_id=energy_entity,
+                        em_entity_id=em_sensor,
+                    )
                 )
-            )
 
             if appliance_entity:
                 dev_entities.append(
@@ -111,6 +112,11 @@ async def async_setup_entry(
 
         device_reg = dr.async_get(hass)
         device_entry = device_reg.devices.get(device_id)
+
+        if not device_entry:
+            _LOGGER.debug("No entry found for device %s, skipping...", device_id)
+            return
+
         device_name = (device_entry.name_by_user or device_entry.name) or "err"
 
         create_nrg = True
@@ -157,7 +163,7 @@ async def async_setup_entry(
                 devices = cf_store.get_devices_data()
                 curr_device = devices.get(device_id, None)
                 if curr_device is not None:
-                    curr_device["cu_entity"] = existing_app_entity_id
+                    curr_device["cu_app_entity"] = existing_app_entity_id
                     hass.async_create_task(cf_store.async_save_data())
             create_app = False
 
@@ -391,7 +397,7 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
         stats = await utils_build_hourly_stamps(
             self.hass,
             self._device_id,
-            (now - timedelta(days=90)).isoformat(),
+            (now - timedelta(days=180)).isoformat(),
             end_ts.isoformat(),
             self.is_appliance,
         )
