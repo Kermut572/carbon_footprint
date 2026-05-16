@@ -1837,7 +1837,7 @@ async def _ws_llm_detection(
         try:
             with OpenRouter(api_key=api_key) as client:
                 response = client.chat.send(
-                    model="google/gemma-3-12b-it:free",
+                    model="google/gemma-4-31b-it:free",
                     messages=[
                         {
                             "role": "user",
