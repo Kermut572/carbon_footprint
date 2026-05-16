@@ -81,16 +81,15 @@ async def async_setup_entry(
                 # _LOGGER.warning("No energy entity found for %s, skipping", device_name)
                 continue
 
-            if energy_entity:
-                dev_entities.append(
-                    CarbonUsageImpactSensor(
-                        hass=hass,
-                        device_id=device_id,
-                        device_name=device_name,
-                        energy_entity_id=energy_entity,
-                        em_entity_id=em_sensor,
-                    )
+            dev_entities.append(
+                CarbonUsageImpactSensor(
+                    hass=hass,
+                    device_id=device_id,
+                    device_name=device_name,
+                    energy_entity_id=energy_entity,
+                    em_entity_id=em_sensor,
                 )
+            )
 
             if appliance_entity:
                 dev_entities.append(
@@ -111,11 +110,6 @@ async def async_setup_entry(
 
         device_reg = dr.async_get(hass)
         device_entry = device_reg.devices.get(device_id)
-
-        if not device_entry:
-            _LOGGER.debug("No entry found for device %s, skipping", device_id)
-            return
-
         device_name = (device_entry.name_by_user or device_entry.name) or "err"
 
         existing_entity_id = entity_reg.async_get_entity_id("sensor", DOMAIN, uuid)
@@ -362,7 +356,7 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
         stats = await utils_build_hourly_stamps(
             self.hass,
             self._device_id,
-            (now - timedelta(days=180)).isoformat(),
+            (now - timedelta(days=90)).isoformat(),
             end_ts.isoformat(),
             self.is_appliance,
         )

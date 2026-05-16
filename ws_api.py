@@ -2391,7 +2391,6 @@ async def _ws_reset_sensors(
 
             sensors_remove.append(iot_sensor_entity)
             device_info["cu_entity"] = ""
-            device_info["energy_entity"] = ""
 
     app_sensor_entry = entity_reg.async_get(app_sensor)
     if app_sensor_entry is not None:
@@ -2405,7 +2404,6 @@ async def _ws_reset_sensors(
 
             sensors_remove.append(app_sensor_entity)
             device_info["cu_app_entity"] = ""
-            device_info["appliance_entity"] = ""
 
     device_info["history_uploaded"] = False
     device_info["appliance_history_uploaded"] = False
