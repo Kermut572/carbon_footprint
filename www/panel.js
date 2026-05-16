@@ -1755,6 +1755,7 @@ class CarbonFootprintPanel extends HTMLElement {
 
         const totalRuns = Math.max(1, Math.ceil(nbDevices / chunkSize));
         const percentIncrement = Math.round(100 / totalRuns);
+        console.log(`Running device type detection. The following devices will be detected: ${JSON.stringify(devicesDict, null, '\t')}`);
 
         try {
             this.showLoadingOverlay('Detecting device types...');
