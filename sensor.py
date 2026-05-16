@@ -107,32 +107,10 @@ async def async_setup_entry(
 
     async def add_device_from_event(device_id: str):
         entity_reg = er.async_get(hass)
-        uuid = f"{device_id}_carbon_usage"
 
         device_reg = dr.async_get(hass)
         device_entry = device_reg.devices.get(device_id)
         device_name = (device_entry.name_by_user or device_entry.name) or "err"
-
-        existing_entity_id = entity_reg.async_get_entity_id("sensor", DOMAIN, uuid)
-        if existing_entity_id is not None:
-            _LOGGER.info(
-                "Did not add a sensor for %s because one already exists (%s)",
-                device_name,
-                existing_entity_id,
-            )
-            existing_entry = entity_reg.async_get(existing_entity_id)
-            if existing_entry:
-                entity_reg.async_update_entity(existing_entity_id, device_id=device_id)
-                _LOGGER.info(
-                    "Re-linked %s to device %s", existing_entity_id, device_name
-                )
-
-                devices = cf_store.get_devices_data()
-                curr_device = devices.get(device_id, None)
-                if curr_device is not None:
-                    curr_device["cu_entity"] = existing_entity_id
-                    hass.async_create_task(cf_store.async_save_data())
-            return
 
         energy_entity, appliance_entity, _ = utils_find_energy_entity_for_device(
             hass, device_id
@@ -151,15 +129,49 @@ async def async_setup_entry(
                 "Could not add sensor for %s because no Electricity Maps sensor was found, make sure it is installed"
             )
             return
+
         entities = []
-        if energy_entity:
+        devices = cf_store.get_devices_data()
+        curr_device = devices.get(device_id, None)
+
+        def relink_existing_sensor(uuid: str, store_key: str) -> bool:
+            """Relink an existing carbon sensor to the device."""
+            existing_entity_id = entity_reg.async_get_entity_id("sensor", DOMAIN, uuid)
+            if existing_entity_id is None:
+                return False
+
+            _LOGGER.info(
+                "Did not add a sensor for %s because one already exists (%s)",
+                device_name,
+                existing_entity_id,
+            )
+            existing_entry = entity_reg.async_get(existing_entity_id)
+            if existing_entry:
+                entity_reg.async_update_entity(existing_entity_id, device_id=device_id)
+                _LOGGER.info(
+                    "Re-linked %s to device %s", existing_entity_id, device_name
+                )
+
+                if curr_device is not None:
+                    curr_device[store_key] = existing_entity_id
+                    hass.async_create_task(cf_store.async_save_data())
+            return True
+
+        if energy_entity and not relink_existing_sensor(
+            f"{device_id}_carbon_usage", "cu_entity"
+        ):
             entities.append(
                 CarbonUsageImpactSensor(
                     hass, device_id, device_name, energy_entity, em_sensor
                 )
             )
+        elif curr_device is not None:
+            curr_device["cu_entity"] = ""
+            hass.async_create_task(cf_store.async_save_data())
 
-        if appliance_entity:
+        if appliance_entity and not relink_existing_sensor(
+            f"{device_id}_appliance_carbon_usage", "cu_app_entity"
+        ):
             entities.append(
                 CarbonUsageImpactSensor(
                     hass, device_id, device_name, appliance_entity, em_sensor, True
@@ -198,7 +210,6 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
         self._device_name = device_name
         self._energy_entity_id = energy_entity_id
         self._em_entity_id = em_entity_id
-
         self._last_energy_reading = None
         self._total_carbon_impact = 0.0
         self._last_em_reading = None
@@ -380,6 +391,8 @@ class CarbonUsageImpactSensor(SensorEntity, RestoreEntity):
                     curr_device["cu_entity"] = self._statistic_id
                 else:
                     curr_device["cu_app_entity"] = self._statistic_id
+                    if not curr_device.get("energy_entity"):
+                        curr_device["cu_entity"] = ""
                 self.hass.async_create_task(cf_store.async_save_data())
 
         if stats:
