@@ -391,7 +391,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.31';
+        link.href = '/api/carbon_footprint/style.css?version=1.32';
         link.dataset.carbonFootprintStyle = 'true';
         this.appendChild(link);
     }
@@ -1290,7 +1290,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.31'; // :skull:
+        link.href = '/api/carbon_footprint/style.css?version=1.32'; // :skull:
         this.appendChild(link);
     }
 
@@ -1701,7 +1701,7 @@ class CarbonFootprintPanel extends HTMLElement {
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.type = 'text/css';
-        link.href = '/api/carbon_footprint/style.css?version=1.31'; // :skull:
+        link.href = '/api/carbon_footprint/style.css?version=1.32'; // :skull:
         this.appendChild(link);
     }
 
