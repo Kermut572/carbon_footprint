@@ -600,7 +600,7 @@ class CarbonFootprintPanel extends HTMLElement {
                 ${annualConsumption.kgCO2eq === null ? 'N/A' : annualConsumption.kgCO2eq.toFixed(2)} kgCO₂eq
                 <div style="font-size: 13px; font-weight: 400; color: #666; margin-top: 6px;">${annualConsumption.rangeText}</div>
                 <div style="font-size: 13px; font-weight: 400; color: #666; margin-top: 6px;">
-                    which is equivalent to riding ${annualConsumption.carKm === null ? 'N/A' : annualConsumption.carKm.toFixed(1)} km by car
+                    Thich is equivalent to a ${annualConsumption.carKm === null ? 'N/A' : annualConsumption.carKm.toFixed(1)} km car ride.
                     <span title="According to the ImpactCO2 framework of the French Republic. Considering a gasoline-powered car. More informations: https://impactco2.fr/outils/transport" style="display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; border: 1px solid #777; color: #555; font-size: 11px; font-weight: 600; cursor: help; margin-left: 4px;">i</span>
                 </div>
             </div>
