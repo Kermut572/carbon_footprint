@@ -1414,6 +1414,9 @@ async def _ws_get_carbon_by_room_with_usage(
             if not is_appliance
             else device_info.get("cu_app_entity")
         )
+        if is_appliance and not cu_entity:
+            continue
+
         # _LOGGER.debug("USING %s for device %s", cu_entity, device_name)
         if cu_entity:
             state = hass.states.get(cu_entity)
@@ -1466,16 +1469,22 @@ async def _ws_get_carbon_by_room_with_usage(
             }
         # Add device to room
         device_total = embodied_carbon + usage_carbon_value
-        rooms_dict[room_name]["devices"].append(
-            {
-                "id": device_id,
-                "name": device_name,
-                "embodied_carbon": round(embodied_carbon, 2),
-                "usage_carbon": round(usage_carbon_value, 2),
-                "predicted_carbon": round(predicted_usage_carbon_value, 2),
-                "total_carbon": round(device_total, 2),
-            }
-        )
+        device_data = {
+            "id": device_id,
+            "name": device_name,
+            "embodied_carbon": round(embodied_carbon, 2),
+            "usage_carbon": round(usage_carbon_value, 2),
+            "predicted_carbon": round(predicted_usage_carbon_value, 2),
+            "total_carbon": round(device_total, 2),
+        }
+        if is_appliance:
+            device_data["appliance_usage_carbon"] = round(usage_carbon_value, 2)
+            device_data["appliance_predicted_carbon"] = round(
+                predicted_usage_carbon_value, 2
+            )
+            device_data["has_appliance_usage"] = True
+
+        rooms_dict[room_name]["devices"].append(device_data)
         rooms_dict[room_name]["embodied_carbon"] += embodied_carbon
         rooms_dict[room_name]["usage_carbon"] += usage_carbon_value
         rooms_dict[room_name]["predicted_carbon"] += predicted_usage_carbon_value
@@ -1682,6 +1691,9 @@ async def _ws_get_carbon_by_type_with_usage(
             if not is_appliance
             else device_info.get("cu_app_entity")
         )
+        if is_appliance and not cu_entity:
+            continue
+
         if cu_entity:
             state = hass.states.get(cu_entity)
             if state and state.state not in ("unknown", "unavailable"):
@@ -1722,17 +1734,23 @@ async def _ws_get_carbon_by_type_with_usage(
                 "devices": [],
             }
 
-        type_dict[device_type_key]["devices"].append(
-            {
-                "id": device_id,
-                "name": device_name,
-                "embodied_carbon": round(embodied_carbon_value, 2),
-                "usage_carbon": round(usage_carbon_value, 2),
-                "total_carbon": round(device_total, 2),
-                "predicted_carbon": round(predicted_usage_carbon_value, 2),
-                "carbon": embodied_carbon_value,
-            }
-        )
+        device_data = {
+            "id": device_id,
+            "name": device_name,
+            "embodied_carbon": round(embodied_carbon_value, 2),
+            "usage_carbon": round(usage_carbon_value, 2),
+            "total_carbon": round(device_total, 2),
+            "predicted_carbon": round(predicted_usage_carbon_value, 2),
+            "carbon": embodied_carbon_value,
+        }
+        if is_appliance:
+            device_data["appliance_usage_carbon"] = round(usage_carbon_value, 2)
+            device_data["appliance_predicted_carbon"] = round(
+                predicted_usage_carbon_value, 2
+            )
+            device_data["has_appliance_usage"] = True
+
+        type_dict[device_type_key]["devices"].append(device_data)
         type_dict[device_type_key]["embodied_carbon"] += embodied_carbon_value
         type_dict[device_type_key]["usage_carbon"] += usage_carbon_value
         type_dict[device_type_key]["predicted_carbon"] += predicted_usage_carbon_value

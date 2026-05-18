@@ -646,11 +646,22 @@ def utils_find_energy_entity_for_device(
 
     energy_entity = lookup_device.get("energy_entity", None)
     appliance_entity = lookup_device.get("appliance_entity", None)
+
+    if appliance_entity is not None and not hass.states.get(appliance_entity):
+        lookup_device.pop("appliance_entity", None)
+        appliance_entity = None
+
     if energy_entity is not None and hass.states.get(energy_entity):
         energy_entry = registry.async_get(energy_entity)
-        if energy_entry and energy_entry.platform.lower() == "powercalc":
+        if (
+            energy_entry
+            and energy_entry.platform.lower() == "powercalc"
+            and appliance_entity is not None
+        ):
             return energy_entity, appliance_entity, False
-        lookup_device.pop("energy_entity", None)
+        if not energy_entry or energy_entry.platform.lower() != "powercalc":
+            lookup_device.pop("energy_entity", None)
+            energy_entity = None
 
     sensors = []
     for entry in registry.entities.values():

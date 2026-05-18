@@ -895,7 +895,7 @@ class CarbonFootprintPanel extends HTMLElement {
                 </header>
 
                 <div class="content" slot="content">
-                    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px;">
+                    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px;">
                         <ha-card header="Annual consumption">
                             <div class="card-content" style="font-size: 22px; font-weight: 600;">
                                 ${annualConsumption.kgCO2eq === null ? 'N/A' : annualConsumption.kgCO2eq.toFixed(2)} kgCO₂eq
@@ -913,14 +913,6 @@ class CarbonFootprintPanel extends HTMLElement {
                                 <span class="ci-label" style="font-size: 14px; font-weight: 500;">${carbonIntensityInfo.label}</span>
                                 <div style="font-size: 13px; font-weight: 400; color: #666; margin-top: 6px; line-height: 1.35;">
                                     ${intensityRec.message}
-                                </div>
-                            </div>
-                        </ha-card>
-                        <ha-card header="Quick actions">
-                            <div class="card-content">
-                                <div class="button-group" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; width: 100%;">
-                                    <button type="button" id="detect-devices-btn" style="width: 100%; min-height: 72px; font-size: 15px;"><div class="loader" id="loader"></div>Automatic Setup</button>
-                                    <button type="button" id="export-json-btn" style="width: 100%; min-height: 72px; font-size: 15px;">Export to JSON</button>
                                 </div>
                             </div>
                         </ha-card>
@@ -2443,11 +2435,11 @@ class CarbonFootprintPanel extends HTMLElement {
     _normalizeApplianceOnlyData(applianceData) {
         return (applianceData || []).map(item => {
             const sourceDevices = item.devices || [];
-            const applianceDevices = sourceDevices.filter(device => this._isExplicitApplianceDevice(device));
+            const applianceDevices = sourceDevices.filter(device => this._hasApplianceUsageData(device));
 
             const devices = applianceDevices.map(device => {
-                const applianceUsageCarbon = device.appliance_usage_carbon ?? device.usage_carbon ?? 0;
-                const appliancePredictedCarbon = device.appliance_predicted_carbon ?? device.predicted_carbon ?? 0;
+                const applianceUsageCarbon = Number(device.appliance_usage_carbon ?? device.usage_carbon ?? 0) || 0;
+                const appliancePredictedCarbon = Number(device.appliance_predicted_carbon ?? device.predicted_carbon ?? 0) || 0;
 
                 return {
                     ...device,
@@ -2473,12 +2465,13 @@ class CarbonFootprintPanel extends HTMLElement {
                 total_carbon: applianceUsageCarbon,
                 devices,
             };
-        });
+        }).filter(item => item.devices.length > 0);
     }
 
-    _isExplicitApplianceDevice(device) {
-        const name = `${device?.name || ''} ${device?.id || ''}`.toLowerCase();
-        return name.includes('appliance') && !name.includes('plug');
+    _hasApplianceUsageData(device) {
+        const usageCarbon = Number(device?.appliance_usage_carbon ?? device?.usage_carbon ?? 0) || 0;
+        const predictedCarbon = Number(device?.appliance_predicted_carbon ?? device?.predicted_carbon ?? 0) || 0;
+        return device?.has_appliance_usage === true || usageCarbon > 0 || predictedCarbon > 0;
     }
 
     _getFakeDataForCurrentView(data) {
