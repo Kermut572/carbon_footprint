@@ -233,14 +233,6 @@ class CarbonFootprintPanel extends HTMLElement {
                                 ${this.loadingVisual('Loading carbon intensity...')}
                             </div>
                         </ha-card>
-                        <ha-card header="Quick actions">
-                            <div class="card-content">
-                                <div class="button-group" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; width: 100%;">
-                                    <button type="button" id="detect-devices-btn" style="width: 100%; min-height: 72px; font-size: 15px;"><div class="loader" id="loader"></div>Automatic Setup</button>
-                                    <button type="button" id="export-json-btn" style="width: 100%; min-height: 72px; font-size: 15px;">Export to JSON</button>
-                                </div>
-                            </div>
-                        </ha-card>
                     </div>
 
                     <ha-card header="Energy Consumption Footprint">
@@ -387,7 +379,7 @@ class CarbonFootprintPanel extends HTMLElement {
         `;
 
         this.attachDashboardHandlers();
-        this.attachQuickActionHandlers();
+        //this.attachQuickActionHandlers();
         this.ensurePanelStyles();
     }
 
@@ -1226,7 +1218,7 @@ class CarbonFootprintPanel extends HTMLElement {
             });
         }
 
-        this.attachQuickActionHandlers();
+        //this.attachQuickActionHandlers();
 
         const groupBySelect = this.querySelector('#group-by-select');
         if (groupBySelect) {
@@ -1567,6 +1559,14 @@ class CarbonFootprintPanel extends HTMLElement {
                 </header>
 
                 <div class="content" slot="content">
+                    <ha-card header="Quick actions">
+                        <div class="card-content">
+                            <div class="button-group" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; width: 100%;">
+                                <button type="button" id="detect-devices-btn" style="width: 100%; min-height: 72px; font-size: 15px;"><div class="loader" id="loader"></div>Automatic Setup</button>
+                                <button type="button" id="export-json-btn" style="width: 100%; min-height: 72px; font-size: 15px;">Export to CFDB</button>
+                            </div>
+                        </div>
+                    </ha-card>
                     <ha-card header="Add New Device">
                         <div class="card-content">
                             ${this.renderForm(devicesArray)}
@@ -1695,6 +1695,7 @@ class CarbonFootprintPanel extends HTMLElement {
         }
 
         this.attachFormHandler();
+        this.attachQuickActionHandlers();
         this.attachBlacklistCardHandlers();
 
         const link = document.createElement('link');
